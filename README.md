@@ -1,4 +1,4 @@
-# ~NDSR~ **Stand for Tech-support KEENETIC**
+# NDSR **Stand for Tech-support KEENETIC**
 
 
 ### **TERRAFORM**
