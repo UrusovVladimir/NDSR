@@ -35,8 +35,10 @@ wget https://vdc-download.vmware.com/vmwb-repository/dcr-public/342c5e55-1053-45
 
 ### **```В переменные terraform проекта, небходимо добавить: ```**
 - Переменную ssh(для подключения terraform провайдера к docker хосту) 
-- Переменную password(для подключения к esxi хосту)
+- Переменную esxi_password(для подключения к esxi хосту)
 - Переменную esxi_username(пользователь на esxi хосте которому разрешено запускать раскатку проекта)
+- Переменную admin(администратор vm)
+- Переменную password(для root и администраторской учетки vm)
 
 ### ```Запус terraform проекта:```
 - Переходим в папку c terraform template

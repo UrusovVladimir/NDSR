@@ -11,7 +11,7 @@ variable "esxi_hostssl" {
 }
 
 variable "admin" {
-  default = "v.urusov"
+  default = ""
 }
 
 ###Varibles Networks
