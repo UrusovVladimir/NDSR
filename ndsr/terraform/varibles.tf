@@ -80,3 +80,6 @@ variable "ssh" {
   description = "Public Key for connect to Docker host"
   default = ""
 }
+variable "esxi_username" {
+  default = ""
+}
