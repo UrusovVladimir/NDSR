@@ -1,0 +1,291 @@
+version: '3'
+services:
+  kn2610:
+    image: ${IMAGE}
+    hostname: kn2610
+    mac_address: 52:c1:26:10:19:04
+    networks:
+      default:
+        ipv4_address: 10.10.19.4
+      kn2610:
+    cap_add:
+      - NET_ADMIN
+      - SYS_ADMIN
+    dns:
+      - 1.1.1.1
+      - 8.8.8.8
+    ports:
+      - 1926
+      - 2610
+    restart: on-failure:3
+  kn3710:
+    image: ${IMAGE}
+    hostname: kn3710
+    mac_address: 52:c1:37:10:19:05
+    networks:
+      default:
+        ipv4_address: 10.10.19.5
+      kn3710:
+    cap_add:
+      - NET_ADMIN
+      - SYS_ADMIN
+    dns:
+      - 1.1.1.1
+      - 8.8.8.8
+    ports:
+      - 1927
+      - 3710
+    restart: on-failure:3
+  kn2410:
+    image: ${IMAGE}
+    hostname: kn2410
+    mac_address: 52:c1:24:10:19:06
+    networks:
+      default:
+        ipv4_address: 10.10.19.6
+      kn2410:
+    cap_add:
+      - NET_ADMIN
+      - SYS_ADMIN
+    dns:
+      - 1.1.1.1
+      - 8.8.8.8
+    ports:
+      - 1928
+      - 2410
+    restart: on-failure:3
+  kn1011:
+    image: ${IMAGE}
+    hostname: kn1011
+    mac_address: 52:c1:10:11:19:07
+    networks:
+      default:
+        ipv4_address: 10.10.19.7
+      kn1011:
+    cap_add:
+      - NET_ADMIN
+      - SYS_ADMIN
+    dns:
+      - 1.1.1.1
+      - 8.8.8.8
+    ports:
+      - 1929
+      - 1011
+    restart: on-failure:3
+  kn2910:
+    image: ${IMAGE}
+    hostname: kn2910
+    mac_address: 52:c1:29:10:19:08
+    networks:
+      default:
+        ipv4_address: 10.10.19.8
+      kn2910:
+    cap_add:
+      - NET_ADMIN
+      - SYS_ADMIN
+    dns:
+      - 1.1.1.1
+      - 8.8.8.8
+    ports:
+      - 1930
+      - 2910
+    restart: on-failure:3
+  kn2311:
+    image: ${IMAGE}
+    hostname: kn2311
+    mac_address: 52:c1:23:11:19:09
+    networks:
+      default:
+        ipv4_address: 10.10.19.9
+      kn2311:
+    ports:
+      - 1931
+      - 2311
+    cap_add:
+      - NET_ADMIN
+      - SYS_ADMIN
+    dns:
+      - 1.1.1.1
+      - 8.8.8.8
+    restart: on-failure:3
+  kn3510:
+    image: ${IMAGE}
+    hostname: kn3510
+    mac_address: 52:c1:35:10:19:10
+    networks:
+      default:
+        ipv4_address: 10.10.19.10
+      kn3510:
+    cap_add:
+      - NET_ADMIN
+      - SYS_ADMIN
+    dns:
+      - 1.1.1.1
+      - 8.8.8.8
+    ports:
+      - 1932
+      - 3510
+    restart: on-failure:3
+  kn1713:
+    image: ${IMAGE}
+    hostname: kn1713
+    mac_address: 52:c1:17:13:19:11
+    networks:
+      default:
+        ipv4_address: 10.10.19.11
+      kn1713:
+    cap_add:
+      - NET_ADMIN
+      - SYS_ADMIN
+    dns:
+      - 1.1.1.1
+      - 8.8.8.8
+    ports:
+      - 1933
+      - 1733
+    restart: on-failure:3
+  kn1912:
+    image: ${IMAGE}
+    hostname: kn1912
+    mac_address: 52:c1:19:12:19:12
+    networks:
+      default:
+        ipv4_address: 10.10.19.12
+      kn1912:
+    cap_add:
+      - NET_ADMIN
+      - SYS_ADMIN
+    dns:
+      - 1.1.1.1
+      - 8.8.8.8
+    ports:
+      - 1934
+      - 1912
+    restart: on-failure:3
+  kn1811:
+    image: ${IMAGE}
+    hostname: kn1811
+    mac_address: 52:c1:18:11:19:13
+    networks:
+      default:
+        ipv4_address: 10.10.19.13
+      kn1811:
+    cap_add:
+      - NET_ADMIN
+      - SYS_ADMIN
+    dns:
+      - 1.1.1.1
+      - 8.8.8.8
+    ports:
+      - 1935
+      - 1811
+    restart: on-failure:3
+networks:
+  default:
+    ipam:
+      name: ndsr-local
+      driver: default
+      config:
+        - subnet: 10.10.19.0/24
+          ip_range: 10.10.19.0/24
+          gateway: 10.10.19.1
+  kn2610:
+    name: kn2610
+    driver: ghcr.io/devplayer0/docker-net-dhcp:release-linux-amd64
+    driver_opts:
+      bridge: kn2610
+      ipv6: 'false'
+      ignore_conflicts: 'false'
+      skip_routes: 'false'
+    ipam:
+      driver: 'null'
+  kn3710:
+    name: kn3710
+    driver: ghcr.io/devplayer0/docker-net-dhcp:release-linux-amd64
+    driver_opts:
+      bridge: kn3710
+      ipv6: 'false'
+      ignore_conflicts: 'false'
+      skip_routes: 'false'
+    ipam:
+      driver: 'null'
+  kn2410:
+    name: kn2410
+    driver: ghcr.io/devplayer0/docker-net-dhcp:release-linux-amd64
+    driver_opts:
+      bridge: kn2410
+      ipv6: 'false'
+      ignore_conflicts: 'false'
+      skip_routes: 'false'
+    ipam:
+      driver: 'null'
+  kn1011:
+    name: kn1011
+    driver: ghcr.io/devplayer0/docker-net-dhcp:release-linux-amd64
+    driver_opts:
+      bridge: kn1011
+      ipv6: 'false'
+      ignore_conflicts: 'false'
+      skip_routes: 'false'
+    ipam:
+      driver: 'null'
+  kn2910:
+    name: kn2910
+    driver: ghcr.io/devplayer0/docker-net-dhcp:release-linux-amd64
+    driver_opts:
+      bridge: kn2910
+      ipv6: 'false'
+      ignore_conflicts: 'false'
+      skip_routes: 'false'
+    ipam:
+      driver: 'null'
+  kn2311:
+    name: kn2311
+    driver: ghcr.io/devplayer0/docker-net-dhcp:release-linux-amd64
+    driver_opts:
+      bridge: kn2311
+      ipv6: 'false'
+      ignore_conflicts: 'false'
+      skip_routes: 'false'
+    ipam:
+      driver: 'null'
+  kn3510:
+    name: kn3510
+    driver: ghcr.io/devplayer0/docker-net-dhcp:release-linux-amd64
+    driver_opts:
+      bridge: kn3510
+      ipv6: 'false'
+      ignore_conflicts: 'false'
+      skip_routes: 'false'
+    ipam:
+      driver: 'null'
+  kn1713:
+    name: kn1713
+    driver: ghcr.io/devplayer0/docker-net-dhcp:release-linux-amd64
+    driver_opts:
+      bridge: kn1713
+      ipv6: 'false'
+      ignore_conflicts: 'false'
+      skip_routes: 'false'
+    ipam:
+      driver: 'null'
+  kn1912:
+    name: kn1912
+    driver: ghcr.io/devplayer0/docker-net-dhcp:release-linux-amd64
+    driver_opts:
+      bridge: kn1912
+      ipv6: 'false'
+      ignore_conflicts: 'false'
+      skip_routes: 'false'
+    ipam:
+      driver: 'null'
+  kn1811:
+    name: kn1811
+    driver: ghcr.io/devplayer0/docker-net-dhcp:release-linux-amd64
+    driver_opts:
+      bridge: kn1811
+      ipv6: 'false'
+      ignore_conflicts: 'false'
+      skip_routes: 'false'
+    ipam:
+      driver: 'null'

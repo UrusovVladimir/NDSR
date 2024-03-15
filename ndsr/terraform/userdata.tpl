@@ -37,6 +37,7 @@ packages:
   - iproute2
   - traceroute
   - net-tools
+  - sshpass
 
 runcmd:
   - userdel -r -f ubuntu
