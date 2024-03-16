@@ -2,20 +2,19 @@
 BRIDGE=(kn2610 kn3710 kn2410 kn1011 kn2910 kn2311 kn3510 kn1713 kn1912 kn1811)
 IP_ADDRESS=10.10.19.
 PORT_SSH=1926
-PORT_WEB=
+PORT_WEB=(2610 3710 2410 1011 2910 2311 3510 1713 1912 1811)
+###Создаем правила для форварда
 for br in "${BRIDGE[@]}"; do
-  sudo iptables -I FORWARD 1 -i $br -j ACCEPT
-        echo "$br"
+  echo "sudo iptables -I FORWARD -i $br -j ACCEPT"
 done
-
-for i in {4..13}; do
-echo "10.19.1.$i"
-done
-
-i=10.10.19.
-f=1926
-for ip  in "$i"{4..13}
+###проброс ssh
+for ip  in "$IP_ADDRESS"{4..13}
 do
-  echo "sudo iptables -t nat -A PREROUTING -i internet -d 172.16.78.254 -p tcp --dport $((f++)) -j DNAT --to-destination $ip:22"
+  echo "sudo iptables -t nat -A PREROUTING -i internet -d 172.16.78.254 -p tcp --dport $((PORT_SSH++)) -j DNAT --to-destination $ip:22"
+done
+###проброс web порта на кинетики
+i=4
+for web in "${PORT_WEB[@]}"; do
+  echo "sudo iptables -t nat -A PREROUTING -i internet -d 172.16.78.254 -p tcp --dport $web -j DNAT --to-destination $IP_ADDRESS""$((i++))":"$web"
 done
 exit 0
