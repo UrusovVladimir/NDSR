@@ -47,6 +47,7 @@ resource "esxi_guest" "US07_Docker02" {
   numvcpus       = var.numvcpus
   boot_disk_type = var.boot_disk_type
   boot_disk_size = var.boot_disk_size
+
   # connection {
   #   host = "172.16.77.249"
   #   user = "v.urusov"
@@ -56,11 +57,11 @@ resource "esxi_guest" "US07_Docker02" {
   #   source = "./jammy-server-cloudimg-amd64.ova"
   #   destination = "~/jammy-server-cloudimg-amd64.ova"
   # }
-    guestinfo = {
+    guestinfo           = {
     "metadata.encoding" = "base64"
-    "metadata"      = base64encode(data.template_file.cloud-metadata.rendered)
+    "metadata"          = base64encode(data.template_file.cloud-metadata.rendered)
     "userdata.encoding" = "base64"
-    "userdata"      = base64encode(data.template_file.cloud-userdata.rendered)
+    "userdata"          = base64encode(data.template_file.cloud-userdata.rendered)
   }
   ovf_properties {
     key   = "username"
