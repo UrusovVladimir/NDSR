@@ -1,0 +1,78 @@
+---
+- name: Setup iptables for DHCP
+  ansible.builtin.iptables:
+    chain: FORWARD
+    in_interface: '{{ item.bridge }}'
+    rule_num: '1'
+    action: insert
+    protocol: all
+    jump: ACCEPT
+  become: yes
+  when: "'test' in group_names"
+  with_items: "{{ network_bridge }}"
+
+- name: FORWARD rules for traffic from containers
+  ansible.builtin.iptables:
+    chain: FORWARD
+    in_interface: 'internet'
+    destination: '10.10.19.0/24'
+    action: insert
+    protocol: all
+    jump: ACCEPT
+  become: yes
+  when: "'test' in group_names"
+
+- name: Allow related and established connections
+  ansible.builtin.iptables:
+    chain: INPUT
+    ctstate: ESTABLISHED,RELATED
+    jump: ACCEPT
+  become: yes
+  when: "'test' in group_names"
+
+- name: HTTP setup
+  ansible.builtin.iptables:
+    table: nat
+    chain: PREROUTING
+    in_interface: internet
+    protocol: tcp
+    destination_port: '{{ item.port }}'
+    jump: DNAT
+    to_destination: '{{ item.ip }}'
+  with_items: "{{ http_forward }}"
+  become: yes
+  when: "'test' in group_names"
+
+- name: SSH setup
+  ansible.builtin.iptables:
+    table: nat
+    chain: PREROUTING
+    in_interface: internet
+    protocol: tcp
+    destination_port: '{{ item.port }}'
+    jump: DNAT
+    to_destination: '{{ item.ip }}'
+  with_items: "{{ ssh_forward }}"
+  become: yes
+  when: "'test' in group_names"
+
+- name: VNC setup
+  ansible.builtin.iptables:
+    table: nat
+    chain: PREROUTING
+    in_interface: internet
+    protocol: tcp
+    destination_port: '{{ item.port }}'
+    jump: DNAT
+    to_destination: '{{ item.ip }}'
+  with_items: "{{ vnc_forward }}"
+  become: yes
+  when: "'test' in group_names"
+
+- name: Add iptables rule for TCPMSS
+  ansible.builtin.script: ../../../scripts/tcpmss.sh
+
+- name: iptables save
+  shell: netfilter-persistent save
+  when: "'TRASP' in group_names"
+  become: yes

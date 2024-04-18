@@ -1,0 +1,32 @@
+---
+
+- name: Delete repo in resources
+  lineinfile: dest=/etc/apt/sources.list
+              state=absent
+              regexp='buster-backports'
+  become: yes
+
+- name: Install iptables-persistent
+  ansible.builtin.apt:
+    name: iptables-persistent
+    update_cache: yes
+    state: present
+  become: yes
+
+- name: Create rule for MASQUERADE
+  ansible.builtin.iptables:
+    table: nat
+    chain: POSTROUTING
+    out_interface: eth0
+    jump: MASQUERADE
+  when: "'containers' in group_names"
+  become: yes
+
+- name: Setup IPTABLES for nat WEB!
+  ansible.builtin.script: ../../../scripts/setupIptablesCFK.sh
+  when: "'TRASP' in inventory_hostname"
+
+- name: iptables save
+  shell: netfilter-persistent save
+  when: "'containers' in group_names"
+  become: yes

@@ -1,0 +1,5 @@
+- name: Setup Docker Compose and containers
+  hosts: TRASP, containers
+  roles:
+    - NDSR-Compose-role
+    - iptablesForContainers

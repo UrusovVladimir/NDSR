@@ -1,0 +1,15 @@
+---
+- name: Tear  down existing services
+   community.docker.docker_compose_v2:
+     project_src: ../../../../../Docker/ContainersForKeenetic
+     env_files: ../../../../../Docker/ContainersForKeenetic/VARS.env
+     state: absent
+- name: Run `docker-compose up` again
+   community.docker.docker_compose_v2:
+     project_name: ndsr
+     project_src: ../../../../../Docker/ContainersForKeenetic
+     env_files: ../../../../../Docker/ContainersForKeenetic/VARS.env
+   register: output
+- name: Show results
+   debug:
+     var: output
