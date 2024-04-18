@@ -45,3 +45,11 @@ wget https://vdc-download.vmware.com/vmwb-repository/dcr-public/342c5e55-1053-45
 - Выполняем init для того чтобы установить provider esxi и template ```terraform init```
 - Предварительно смотрим, какие изменения terraform собирается произвести ```terraform plan``` эту команду лучше делать всегда перед применением любых изменений в проекте.
 - Для того чтобы запустить инстанс выполняем команду ```terraform apply -auto-approve```
+
+### ```Условные обозначения в проекте```
+- DH - docker host хост контейнеровоз, на котором разворачиваются контейнеры для keenetic-ов
+- CFK - контейнер для кинетика
+- TRASP - tools remote access support
+
+### ```Данные для подключения к контейнерам по SSH,VNC```
+```debian/debian```
