@@ -8,8 +8,17 @@
     protocol: all
     jump: ACCEPT
   become: yes
-  when: "'test' in group_names"
+  when: "'TRASP' in inventory_hostname"
   with_items: "{{ network_bridge }}"
+
+- name: Create rule for MASQUERADE
+  ansible.builtin.iptables:
+    table: nat
+    chain: POSTROUTING
+    out_interface: internet
+    jump: MASQUERADE
+  when: "'TRASP' in inventory_hostname"
+  become: yes
 
 - name: FORWARD rules for traffic from containers
   ansible.builtin.iptables:
@@ -20,15 +29,19 @@
     protocol: all
     jump: ACCEPT
   become: yes
-  when: "'test' in group_names"
+  when: "'TRASP' in inventory_hostname"
 
 - name: Allow related and established connections
   ansible.builtin.iptables:
-    chain: INPUT
+    chain: '{{ item }}'
+    rule_num: '1'
     ctstate: ESTABLISHED,RELATED
     jump: ACCEPT
   become: yes
-  when: "'test' in group_names"
+  when: "'TRASP' in inventory_hostname"
+  loop:
+    - INPUT
+    - FORWARD
 
 - name: HTTP setup
   ansible.builtin.iptables:

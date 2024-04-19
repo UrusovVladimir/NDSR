@@ -11,13 +11,13 @@ fi
 
 sed -i '/IMAGE/{d}' ./IMAGE.env
 IMAGE=$(docker image ls --format '{{json .}}' | jq 'select(.Repository == "v.urusov/systemd-debian")' | jq .ID -r)
-echo "IMAGE=$IMAGE" >> ../Docker/ContainersForKeenetic/VARS.env
+echo "IMAGE=$IMAGE" >> /home/$USER/VARS.env
 
-bash ./ssh_keygen.sh
-RET=$?
-if [ ${RET} -ne 0 ]; then
-    echo -e "ssh-keygen failed or key was created earlier: exit code is ${RET} \n\n\n"
-    exit 1
-else
-    echo -e "Completed! \n\n\n"
-fi
+# bash ./ssh_keygen.sh
+# RET=$?
+# if [ ${RET} -ne 0 ]; then
+#     echo -e "ssh-keygen failed or key was created earlier: exit code is ${RET} \n\n\n"
+#     exit 1
+# else
+#     echo -e "Completed! \n\n\n"
+# fi

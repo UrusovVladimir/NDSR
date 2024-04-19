@@ -35,6 +35,7 @@ package_update: true
 package_upgrade: true
 packages:
   - speedtest-cli
+  - sshpass
   - bridge-utils
   - python3-pip
   - git
@@ -48,10 +49,11 @@ packages:
 
 runcmd:
   - userdel -r -f ubuntu
+  - sudo sed -i -e '/#Port 22/s/^.*$/Port 9678/' /etc/ssh/sshd_config
+  - sudo systemctl restart sshd
   - mkdir /home/${user}/docker_deb
-  - sed -i -e '/^Port/s/^.*$/Port 9678/' /etc/ssh/sshd_config
-  - wget ${dockerCe} -O /home/${user}/docker_deb/docker-ce_24.0.7-1~ubuntu.22.04~jammy_amd64.deb
   - wget ${dockerCompose} -O /home/${user}/docker_deb/docker-compose-plugin_2.21.0-1~ubuntu.22.04~jammy_amd64.deb
+  - wget ${dockerCe} -O /home/${user}/docker_deb/docker-ce_24.0.7-1~ubuntu.22.04~jammy_amd64.deb
   - wget ${dockerCli} -O /home/${user}/docker_deb/docker-ce-cli_24.0.7-1~ubuntu.22.04~jammy_amd64.deb
   - wget ${containerD} -O /home/${user}/docker_deb/containerd.io_1.6.25-1_amd64.deb
   - wget ${dockerBuild} -O /home/${user}/docker_deb/docker-buildx-plugin_0.11.2-1~ubuntu.22.04~jammy_amd64.deb

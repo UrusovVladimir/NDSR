@@ -1,15 +1,30 @@
----
-- name: Tear  down existing services
-   community.docker.docker_compose_v2:
-     project_src: ../../../../../Docker/ContainersForKeenetic
-     env_files: ../../../../../Docker/ContainersForKeenetic/VARS.env
-     state: absent
+#- name: Tear  down existing services
+#  community.docker.docker_compose_v2:
+#     project_src: /home/vladimir/NDSR/ndsr/Docker/ContainersForKeenetic/
+#     env_files: /home/vladimir/NDSR/ndsr/Docker/ContainersForKeenetic/VARS.env
+#     files: ndsr.yml
+#     state: absent
+
+- name: Download IMAGE and search image id
+  ansible.builtin.script: ../../../../../startDH.sh "{{ password }}"
+
+- name: Copy docker-compose file to remote host
+  copy:
+   src: ../../../../../Docker/ContainersForKeenetic/ndsr.yml
+   dest: /home/v.urusov
+
+- name: Copy docker-compose file to remote host
+  copy:
+   src: ../../../../../Docker/ContainersForKeenetic/VARS.env
+   dest: /home/v.urusov
+
 - name: Run `docker-compose up` again
-   community.docker.docker_compose_v2:
+  community.docker.docker_compose_v2:
+     project_src: ./
      project_name: ndsr
-     project_src: ../../../../../Docker/ContainersForKeenetic
-     env_files: ../../../../../Docker/ContainersForKeenetic/VARS.env
-   register: output
+     env_files: VARS.env
+  register: output
+
 - name: Show results
-   debug:
+  debug:
      var: output

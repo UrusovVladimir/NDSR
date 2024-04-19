@@ -1,0 +1,6 @@
+- name: Setup IPTABLES for DHCP
+  hosts: TRASP
+  vars:
+   password: "pass"
+  roles:
+    - NDSR-Compose-role

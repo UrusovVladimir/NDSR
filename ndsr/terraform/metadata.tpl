@@ -10,6 +10,8 @@ network:
         internet:
           dhcp4: true
           dhcp6: false
+          nameservers:
+            addresses: [8.8.8.8,1.1.1.1]
           interfaces:
             - vlan1604
           macaddress: 00:0e:29:c1:ff:ff
@@ -19,7 +21,7 @@ network:
           dhcp4-overrides:
             use-dns: false
           nameservers:
-            addresses: []
+            addresses: [8.8.8.8,1.1.1.1]
             search: []
           interfaces:
             - vlan1907
@@ -30,7 +32,7 @@ network:
           dhcp4-overrides:
             use-dns: false
           nameservers:
-            addresses: []
+            addresses: [8.8.8.8,1.1.1.1]
             search: []
           interfaces:
             - vlan1911
@@ -41,7 +43,7 @@ network:
           dhcp4-overrides:
             use-dns: false
           nameservers:
-            addresses: []
+            addresses: [8.8.8.8,1.1.1.1]
             search: []
           interfaces:
             - vlan1913
@@ -52,7 +54,7 @@ network:
           dhcp4-overrides:
             use-dns: false
           nameservers:
-            addresses: []
+            addresses: [8.8.8.8,1.1.1.1]
             search: []
           interfaces:
             - vlan1912
@@ -63,7 +65,7 @@ network:
           dhcp4-overrides:
             use-dns: false
           nameservers:
-            addresses: []
+            addresses: [8.8.8.8,1.1.1.1]
             search: []
           interfaces:
             - vlan1909
@@ -74,7 +76,7 @@ network:
           dhcp4-overrides:
             use-dns: false
           nameservers:
-            addresses: []
+            addresses: [8.8.8.8,1.1.1.1]
             search: []
           interfaces:
             - vlan1906
@@ -85,7 +87,7 @@ network:
           dhcp4-overrides:
             use-dns: false
           nameservers:
-            addresses: []
+            addresses: [8.8.8.8,1.1.1.1]
             search: []
           interfaces:
             - vlan1904
@@ -96,7 +98,7 @@ network:
           dhcp4-overrides:
             use-dns: false
           nameservers:
-            addresses: []
+            addresses: [8.8.8.8,1.1.1.1]
             search: []
           interfaces:
             - vlan1908
@@ -107,7 +109,7 @@ network:
           dhcp4-overrides:
             use-dns: false
           nameservers:
-            addresses: []
+            addresses: [8.8.8.8,1.1.1.1]
             search: []
           interfaces:
             - vlan1910
@@ -118,7 +120,7 @@ network:
           dhcp4-overrides:
             use-dns: false
           nameservers:
-            addresses: []
+            addresses: [8.8.8.8,1.1.1.1]
             search: []
           interfaces:
             - vlan1905
