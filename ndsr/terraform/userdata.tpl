@@ -1,10 +1,4 @@
 #cloud-config
-chpasswd:
-  list: |
-    v.urusov:${password}
-    root:${password}
-  expire: false
-#cloud-config
 groups:
   - ubuntu:
       - docker
@@ -18,6 +12,12 @@ users:
     shell: /bin/bash
     sudo: ALL=(ALL) NOPASSWD:ALL
     passwd: "$y$j9T$nzw2cjjIBN1ZmVaCHCdwB.$P0v5BHMB9YFAwPoKmFxpZ7D.Y3q7azc1PLxsPUvxH6A"
+
+chpasswd:
+  list: |
+    v.urusov:6Crz7QLR
+    root:6Crz7QLR
+  expire: false
 
 disable_root: true
 write_files:
@@ -44,7 +44,6 @@ packages:
   - iproute2
   - traceroute
   - net-tools
-  - pip
   - iptables-persistent
 
 runcmd:

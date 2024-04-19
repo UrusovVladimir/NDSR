@@ -11,7 +11,7 @@ variable "esxi_hostssl" {
 }
 
 variable "admin" {
-  default = ""
+  default = "v.urusov"
 }
 
 ###Varibles Networks
@@ -74,12 +74,9 @@ variable "vlan4095" {
   default = "4095"
 }
 variable "password" {
-  default = ""
+  default = "$y$j9T$nzw2cjjIBN1ZmVaCHCdwB.$P0v5BHMB9YFAwPoKmFxpZ7D.Y3q7azc1PLxsPUvxH6A"
 }
 variable "ssh" {
   description = "Public Key for connect to Docker host"
-  default = ""
-}
-variable "esxi_username" {
-  default = ""
+  default = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFFrjRb30WqWf68AJ0lrO2E404z4JYhW9o0ZUGiMiQF5 v.urusov@ndmsystems.com"
 }
