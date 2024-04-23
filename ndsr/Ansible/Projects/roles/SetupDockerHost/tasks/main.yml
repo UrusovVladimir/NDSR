@@ -1,4 +1,9 @@
 ---
+- Setup DNS Resolving
+  ansible.builtin.script: ../../../scripts/setupResolvConf.sh
+  when: "'TRASP' in inventory_hostname"
+  become: yes
+
 - name: Setup iptables for DHCP
   ansible.builtin.iptables:
     chain: FORWARD

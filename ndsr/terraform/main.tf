@@ -12,7 +12,8 @@ resource "esxi_portgroup" "Trunk" {
   name = var.esxi_trunk
   vswitch = var.switch
   vlan = var.vlan4095
-  forged_transmits = true
+  forged_transmits = false
+  promiscuous_mode = false
 }
 #########################################
 #  ESXI Guest resource                  #
@@ -31,7 +32,6 @@ data "template_file" "cloud-userdata" {
     containerD    = "https://download.docker.com/linux/ubuntu/dists/jammy/pool/stable/amd64/containerd.io_1.6.25-1_amd64.deb",
     dockerBuild   = "https://download.docker.com/linux/ubuntu/dists/jammy/pool/stable/amd64/docker-buildx-plugin_0.11.2-1~ubuntu.22.04~jammy_amd64.deb",
     user          =  var.admin
-    sshKey        =  var.ssh
     password      =  var.password
   }
 }

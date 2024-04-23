@@ -74,9 +74,9 @@ variable "vlan4095" {
   default = "4095"
 }
 variable "password" {
-  default = "$y$j9T$nzw2cjjIBN1ZmVaCHCdwB.$P0v5BHMB9YFAwPoKmFxpZ7D.Y3q7azc1PLxsPUvxH6A"
+  default = ""
 }
 variable "ssh" {
   description = "Public Key for connect to Docker host"
-  default = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFFrjRb30WqWf68AJ0lrO2E404z4JYhW9o0ZUGiMiQF5 v.urusov@ndmsystems.com"
+  default = ""
 }

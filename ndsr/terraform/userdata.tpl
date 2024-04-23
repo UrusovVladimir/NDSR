@@ -15,8 +15,8 @@ users:
 
 chpasswd:
   list: |
-    v.urusov:6Crz7QLR
-    root:6Crz7QLR
+    v.urusov:${password}
+    root:${password}
   expire: false
 
 disable_root: true

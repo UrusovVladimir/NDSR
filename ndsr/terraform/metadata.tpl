@@ -18,10 +18,8 @@ network:
         kn1011:
           dhcp4: false
           dhcp6: false
-          dhcp4-overrides:
-            use-dns: false
           nameservers:
-            addresses: [8.8.8.8,1.1.1.1]
+            addresses: []
             search: []
           interfaces:
             - vlan1907
@@ -29,10 +27,8 @@ network:
         kn1713:
           dhcp4: false
           dhcp6: false
-          dhcp4-overrides:
-            use-dns: false
           nameservers:
-            addresses: [8.8.8.8,1.1.1.1]
+            addresses: []
             search: []
           interfaces:
             - vlan1911
@@ -40,10 +36,8 @@ network:
         kn1811:
           dhcp4: false
           dhcp6: false
-          dhcp4-overrides:
-            use-dns: false
           nameservers:
-            addresses: [8.8.8.8,1.1.1.1]
+            addresses: []
             search: []
           interfaces:
             - vlan1913
@@ -51,10 +45,8 @@ network:
         kn1912:
           dhcp4: false
           dhcp6: false
-          dhcp4-overrides:
-            use-dns: false
           nameservers:
-            addresses: [8.8.8.8,1.1.1.1]
+            addresses: []
             search: []
           interfaces:
             - vlan1912
@@ -62,10 +54,8 @@ network:
         kn2311:
           dhcp4: false
           dhcp6: false
-          dhcp4-overrides:
-            use-dns: false
           nameservers:
-            addresses: [8.8.8.8,1.1.1.1]
+            addresses: []
             search: []
           interfaces:
             - vlan1909
@@ -73,10 +63,8 @@ network:
         kn2410:
           dhcp4: false
           dhcp6: false
-          dhcp4-overrides:
-            use-dns: false
           nameservers:
-            addresses: [8.8.8.8,1.1.1.1]
+            addresses: []
             search: []
           interfaces:
             - vlan1906
@@ -84,10 +72,8 @@ network:
         kn2610:
           dhcp4: false
           dhcp6: false
-          dhcp4-overrides:
-            use-dns: false
           nameservers:
-            addresses: [8.8.8.8,1.1.1.1]
+            addresses: []
             search: []
           interfaces:
             - vlan1904
@@ -95,10 +81,8 @@ network:
         kn2910:
           dhcp4: false
           dhcp6: false
-          dhcp4-overrides:
-            use-dns: false
           nameservers:
-            addresses: [8.8.8.8,1.1.1.1]
+            addresses: []
             search: []
           interfaces:
             - vlan1908
@@ -106,10 +90,8 @@ network:
         kn3510:
           dhcp4: false
           dhcp6: false
-          dhcp4-overrides:
-            use-dns: false
           nameservers:
-            addresses: [8.8.8.8,1.1.1.1]
+            addresses: []
             search: []
           interfaces:
             - vlan1910
@@ -117,10 +99,8 @@ network:
         kn3710:
           dhcp4: false
           dhcp6: false
-          dhcp4-overrides:
-            use-dns: false
           nameservers:
-            addresses: [8.8.8.8,1.1.1.1]
+            addresses: []
             search: []
           interfaces:
             - vlan1905
@@ -128,45 +108,56 @@ network:
   vlans:
         vlan1604:
           dhcp4: false
+          dhcp6: false
           id: 1604
           link: int
         vlan1904:
           dhcp4: false
+          dhcp6: false
           id: 1904
           link: int
         vlan1905:
           dhcp4: false
+          dhcp6: false
           id: 1905
           link: int
         vlan1906:
           dhcp4: false
+          dhcp6: false
           id: 1906
           link: int
         vlan1907:
           dhcp4: false
+          dhcp6: false
           id: 1907
           link: int
         vlan1908:
           dhcp4: false
+          dhcp6: false
           id: 1908
           link: int
         vlan1909:
           dhcp4: false
+          dhcp6: false
           id: 1909
           link: int
         vlan1910:
           dhcp4: false
+          dhcp6: false
           id: 1910
           link: int
         vlan1911:
           dhcp4: false
+          dhcp6: false
           id: 1911
           link: int
         vlan1912:
           dhcp4: false
+          dhcp6: false
           id: 1912
           link: int
         vlan1913:
           dhcp4: false
+          dhcp6: false
           id: 1913
           link: int
