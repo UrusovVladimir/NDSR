@@ -1,5 +1,5 @@
 ---
-- Setup DNS Resolving
+- name: Setup DNS Resolving
   ansible.builtin.script: ../../../scripts/setupResolvConf.sh
   when: "'TRASP' in inventory_hostname"
   become: yes
