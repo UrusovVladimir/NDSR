@@ -1,0 +1,57 @@
+#- name: Tear  down existing services
+#  community.docker.docker_compose_v2:
+#     project_src: /home/vladimir/NDSR/ndsr/Docker/ContainersForKeenetic/
+#     env_files: /home/vladimir/NDSR/ndsr/Docker/ContainersForKeenetic/VARS.env
+#     files: ndsr.yml
+#     state: absent
+- name: Install Plugin
+  ansible.builtin.script: ../../../scripts/installPlugin.sh
+
+- name: Enable the plugin
+  community.docker.docker_plugin:
+    plugin_name: ghcr.io/devplayer0/docker-net-dhcp:golang
+    state: enable
+
+- name: Download IMAGE and search image id
+  ansible.builtin.script: ../../../../../startDH.sh "{{ password }}"
+
+- name: Copy docker-compose file to remote host
+  copy:
+   src: ../../../../../Docker/ContainersForKeenetic/ndsr.yml
+   dest: /home/v.urusov
+
+- name: Copy docker-compose file to remote host
+  copy:
+   src: ../../../../../Docker/ContainersForKeenetic/VARS.env
+   dest: /home/v.urusov
+
+- name: Run `docker-compose up` again
+  community.docker.docker_compose_v2:
+     project_src: ./
+     files: ndsr.yml
+     project_name: ndsr
+     env_files: VARS.env
+  register: output
+
+- name: Show results
+  debug:
+     var: output
+
+- name: Create start docker compose systemd service file
+  template:
+    src: ../templates/docker_start.service.j2
+    dest: /etc/systemd/system/docker_start.service
+    owner: root
+    group: root
+    mode: 0644
+  become: true
+  vars:
+   path_to_compose: "/home/v.urusov/ndsr.yml"
+   env_file: "/home/v.urusov/VARS.env"
+
+- name: Enable docker compose service
+  systemd:
+    name: docker_start
+    enabled: yes
+    daemon_reload: yes
+  become: true

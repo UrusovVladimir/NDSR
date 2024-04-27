@@ -20,7 +20,6 @@ services:
       - ${GIANT_SSH}:22
       - ${GIANT_WEB}:${GIANT_WEB}
       - ${GIANT_VNC}:6080
-    restart: on-failure
   kn3710:
     image: ${IMAGE}
     hostname: ${SPRINTER}
@@ -41,7 +40,6 @@ services:
       - ${SPRINTER_SSH}:22
       - ${SPRINTER_WEB}:${SPRINTER_WEB}
       - ${SPRINTER_VNC}:6080
-    restart: on-failure
   kn2410:
     image: ${IMAGE}
     hostname: ${GIGA_SE}
@@ -62,7 +60,6 @@ services:
       - ${GIGA_SE_SSH}:22
       - ${GIGA_SE_WEB}:${GIGA_SE_WEB}
       - ${GIGA_SE_VNC}:6080
-    restart: on-failure
   kn1011:
     image: ${IMAGE}
     hostname: ${GIGA}
@@ -83,7 +80,6 @@ services:
       - ${GIGA_SSH}:22
       - ${GIGA_WEB}:${GIGA_WEB}
       - ${GIGA_VNC}:6080
-    restart: on-failure
   kn2910:
     image: ${IMAGE}
     hostname: ${SKIPER_4G}
@@ -104,7 +100,6 @@ services:
       - ${SKIPER_4G_SSH}:22
       - ${SKIPER_4G_WEB}:${SKIPER_4G_WEB}
       - ${SKIPER_4G_VNC}:6080
-    restart: on-failure
   kn2311:
     image: ${IMAGE}
     hostname: ${HERO_4G}
@@ -125,7 +120,6 @@ services:
     dns:
       - 1.1.1.1
       - 8.8.8.8
-    restart: on-failure
   kn3510:
     image: ${IMAGE}
     hostname: ${VOYAGER}
@@ -146,7 +140,6 @@ services:
       - ${VOYAGER_SSH}:22
       - ${VOYAGER_WEB}:${VOYAGER_WEB}
       - ${VOYAGER_VNC}:6080
-    restart: on-failure
   kn1713:
     image: ${IMAGE}
     hostname: ${EXTRA}
@@ -167,7 +160,6 @@ services:
       - ${EXTRA_SSH}:22
       - ${EXTRA_WEB}:${EXTRA_WEB}
       - ${EXTRA_VNC}:6080
-    restart: on-failure
   kn1912:
     image: ${IMAGE}
     hostname: ${VIVA}
@@ -188,7 +180,6 @@ services:
       - ${VIVA_SSH}:22
       - ${VIVA_WEB}:${VIVA_WEB}
       - ${VIVA_VNC}:6080
-    restart: on-failure
   kn1811:
     image: ${IMAGE}
     hostname: ${TITAN}
@@ -209,7 +200,6 @@ services:
       - ${TITAN_SSH}:22
       - ${TITAN_WEB}:${TITAN_WEB}
       - ${TITAN_VNC}:6080
-    restart: on-failure
 networks:
   default:
     ipam:

@@ -1,0 +1,14 @@
+[Unit]
+Description=Docker-Compose Start
+After=network-online.target docker.socket docker.service iptables.service containerd.service
+Wants=network-online.target
+Requires=docker.socket containerd.service docker.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=docker compose -f {{ path_to_compose }} --env-file {{ env_file }} start
+ExecStop=docker compose -f {{ path_to_compose }} --env-file {{ env_file }} stop
+
+[Install]
+WantedBy=multi-user.target
