@@ -11,7 +11,7 @@ fi
 
 sed -i '/IMAGE/{d}' /home/$USER/VARS.env
 IMAGE=$(docker image ls --format '{{json .}}' | jq 'select(.Repository == "v.urusov/systemd-debian")' | jq .ID -r)
-echo "IMAGE=$IMAGE" >> /home/$USER/VARS.env
+echo -e "\nIMAGE=$IMAGE" >> /home/$USER/VARS.env
 
 # bash ./ssh_keygen.sh
 # RET=$?
