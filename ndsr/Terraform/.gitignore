@@ -2,7 +2,7 @@
 *.tfstate.*.backup
 *.tfstate.backup
 *.tfvars
-*.terraform.lock.hlc
+#*.terraform.lock.hlc
 .terraform/
 jammy-server-cloudimg-amd64.ova
 credentials.tf
