@@ -210,7 +210,7 @@ networks:
           gateway: 10.10.19.1
   kn2610:
     name: kn2610
-    driver: ghcr.io/devplayer0/docker-net-dhcp:release-linux-amd64
+    driver: ghcr.io/devplayer0/docker-net-dhcp:golang
     driver_opts:
       bridge: kn2610
       ipv6: 'false'
@@ -220,7 +220,7 @@ networks:
       driver: 'null'
   kn3710:
     name: kn3710
-    driver: ghcr.io/devplayer0/docker-net-dhcp:release-linux-amd64
+    driver: ghcr.io/devplayer0/docker-net-dhcp:golang
     driver_opts:
       bridge: kn3710
       ipv6: 'false'
@@ -230,7 +230,7 @@ networks:
       driver: 'null'
   kn2410:
     name: kn2410
-    driver: ghcr.io/devplayer0/docker-net-dhcp:release-linux-amd64
+    driver: ghcr.io/devplayer0/docker-net-dhcp:golang
     driver_opts:
       bridge: kn2410
       ipv6: 'false'
@@ -240,7 +240,7 @@ networks:
       driver: 'null'
   kn1011:
     name: kn1011
-    driver: ghcr.io/devplayer0/docker-net-dhcp:release-linux-amd64
+    driver: ghcr.io/devplayer0/docker-net-dhcp:golang
     driver_opts:
       bridge: kn1011
       ipv6: 'false'
@@ -250,7 +250,7 @@ networks:
       driver: 'null'
   kn2910:
     name: kn2910
-    driver: ghcr.io/devplayer0/docker-net-dhcp:release-linux-amd64
+    driver: ghcr.io/devplayer0/docker-net-dhcp:golang
     driver_opts:
       bridge: kn2910
       ipv6: 'false'
@@ -260,7 +260,7 @@ networks:
       driver: 'null'
   kn2311:
     name: kn2311
-    driver: ghcr.io/devplayer0/docker-net-dhcp:release-linux-amd64
+    driver: ghcr.io/devplayer0/docker-net-dhcp:golang
     driver_opts:
       bridge: kn2311
       ipv6: 'false'
@@ -270,7 +270,7 @@ networks:
       driver: 'null'
   kn3510:
     name: kn3510
-    driver: ghcr.io/devplayer0/docker-net-dhcp:release-linux-amd64
+    driver: ghcr.io/devplayer0/docker-net-dhcp:golang
     driver_opts:
       bridge: kn3510
       ipv6: 'false'
@@ -280,7 +280,7 @@ networks:
       driver: 'null'
   kn1713:
     name: kn1713
-    driver: ghcr.io/devplayer0/docker-net-dhcp:release-linux-amd64
+    driver: ghcr.io/devplayer0/docker-net-dhcp:golang
     driver_opts:
       bridge: kn1713
       ipv6: 'false'
@@ -290,7 +290,7 @@ networks:
       driver: 'null'
   kn1912:
     name: kn1912
-    driver: ghcr.io/devplayer0/docker-net-dhcp:release-linux-amd64
+    driver: ghcr.io/devplayer0/docker-net-dhcp:golang
     driver_opts:
       bridge: kn1912
       ipv6: 'false'
@@ -300,7 +300,7 @@ networks:
       driver: 'null'
   kn1811:
     name: kn1811
-    driver: ghcr.io/devplayer0/docker-net-dhcp:release-linux-amd64
+    driver: ghcr.io/devplayer0/docker-net-dhcp:golang
     driver_opts:
       bridge: kn1811
       ipv6: 'false'
