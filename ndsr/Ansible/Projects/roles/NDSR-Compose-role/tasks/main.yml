@@ -12,9 +12,6 @@
     plugin_name: ghcr.io/devplayer0/docker-net-dhcp:golang
     state: enable
 
-- name: Download IMAGE and search image id
-  ansible.builtin.script: ../../../../../startDH.sh "{{ password }}"
-
 - name: Copy docker-compose file to remote host
   copy:
    src: ../../../../../Docker/ContainersForKeenetic/ndsr.yml
@@ -24,6 +21,9 @@
   copy:
    src: ../../../../../Docker/ContainersForKeenetic/VARS.env
    dest: /home/v.urusov
+
+- name: Download IMAGE and search image id
+  ansible.builtin.script: ../../../../../startDH.sh "{{ password }}"
 
 - name: Run `docker-compose up` again
   community.docker.docker_compose_v2:
