@@ -26,11 +26,6 @@ data "template_file" "cloud-metadata" {
 data "template_file" "cloud-userdata" {
   template = file("userdata.tpl")
   vars     = {
-    dockerCe      = "https://download.docker.com/linux/ubuntu/dists/jammy/pool/stable/amd64/docker-ce_24.0.7-1~ubuntu.22.04~jammy_amd64.deb",
-    dockerCompose = "https://download.docker.com/linux/ubuntu/dists/jammy/pool/stable/amd64/docker-compose-plugin_2.21.0-1~ubuntu.22.04~jammy_amd64.deb",
-    dockerCli     = "https://download.docker.com/linux/ubuntu/dists/jammy/pool/stable/amd64/docker-ce-cli_24.0.7-1~ubuntu.22.04~jammy_amd64.deb",
-    containerD    = "https://download.docker.com/linux/ubuntu/dists/jammy/pool/stable/amd64/containerd.io_1.6.25-1_amd64.deb",
-    dockerBuild   = "https://download.docker.com/linux/ubuntu/dists/jammy/pool/stable/amd64/docker-buildx-plugin_0.11.2-1~ubuntu.22.04~jammy_amd64.deb",
     user          =  var.admin
     password      =  var.password
   }
