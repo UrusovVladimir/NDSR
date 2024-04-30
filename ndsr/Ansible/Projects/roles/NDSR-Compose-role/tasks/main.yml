@@ -46,8 +46,8 @@
     mode: 0644
   become: true
   vars:
-   path_to_compose: "/home/v.urusov/ndsr.yml"
-   env_file: "/home/v.urusov/VARS.env"
+   HOME: "/home/{{ user }}"
+  
 
 - name: Enable docker compose service
   systemd:

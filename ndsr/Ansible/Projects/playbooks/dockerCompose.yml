@@ -1,6 +1,7 @@
 - name: Setup IPTABLES for DHCP
   hosts: TRASP
   vars:
-   password: "pass"
+   user: "user - project administrator"
+   password: "password for connect to ESXI"
   roles:
     - NDSR-Compose-role
