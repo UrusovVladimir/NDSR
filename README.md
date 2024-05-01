@@ -34,6 +34,7 @@ wget https://vdc-download.vmware.com/vmwb-repository/dcr-public/342c5e55-1053-45
 ### Создаём виртуальную машину для docker на esxi хосте.
 
 ### **```В переменные terraform проекта, небходимо добавить: ```**
+- В папку с проектом Terraform необходимо скачать образ ОС Ubuntu по следующей ссылке ```sshpass -p 'сюда пишем пароль для подключенияк ESXI по ssh' scp -r  -o StrictHostKeyChecking=no  terra@192.168.77.132:/vmfs/volumes/datastore1/ova_files/jammy-server-cloudimg-amd64.ova ./```
 - Переменную ssh(для подключения terraform провайдера к docker хосту) 
 - Переменную esxi_password(для подключения к esxi хосту)
 - Переменную esxi_username(пользователь на esxi хосте которому разрешено запускать раскатку проекта)
