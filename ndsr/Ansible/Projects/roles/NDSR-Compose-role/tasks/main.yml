@@ -23,7 +23,7 @@
    dest: /home/v.urusov
 
 - name: Download IMAGE and search image id
-  ansible.builtin.script: ../../../../../startDH.sh "{{ password }}"
+  ansible.builtin.script: ../../../../../startDH.sh "'{{ password }}'"
 
 - name: Run `docker-compose up` again
   community.docker.docker_compose_v2:
@@ -39,11 +39,12 @@
 
 - name: Copy script for auto-sart containers after reboot
   copy:
-    src: ../../../scripts/start_ndsr.sh
-    dst: /usr/bin
+    src: ../../../scripts/startNdsrService.sh
+    dest: /usr/bin
     owner: '{{ user }}'
     group: '{{ user }}'
     mode: 0775
+  become: true
 
 - name: Create start docker compose systemd service file
   template:
