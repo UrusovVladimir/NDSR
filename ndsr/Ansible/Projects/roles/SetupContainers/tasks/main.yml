@@ -13,15 +13,6 @@
     state: present
   become: yes
 
-- name: Create rule for MASQUERADE
-  ansible.builtin.iptables:
-    table: nat
-    chain: POSTROUTING
-    out_interface: eth0
-    jump: MASQUERADE
-  when: "'containers' in group_names"
-  become: yes
-
 - name: Setup IPTABLES for nat WEB!
   ansible.builtin.script: ../../../scripts/setupIptablesCFK.sh
   when: "'TRASP' in inventory_hostname"
@@ -30,3 +21,7 @@
   shell: netfilter-persistent save
   when: "'containers' in group_names"
   become: yes
+
+- name: setup Default Route
+  ansible.builtin.script: ../../../scripts/defaultRoute.sh
+  when: "'containers' in group_names"

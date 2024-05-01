@@ -7,7 +7,7 @@ Requires=docker.socket containerd.service docker.service
 [Service]
 Type=oneshot
 RemainAfterExit=yes
-ExecStart=/home/{{HOME}}/start_ndsr.sh
+ExecStart=/usr/bin/startNdsrService.sh
 
 [Install]
 WantedBy=multi-user.target
