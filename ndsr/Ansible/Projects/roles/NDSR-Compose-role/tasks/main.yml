@@ -41,8 +41,8 @@
   copy:
     src: ../../../scripts/start_ndsr.sh
     dst: /usr/bin
-    owner: {{ user }}
-    group: {{ user }}
+    owner: '{{ user }}'
+    group: '{{ user }}'
     mode: 0775
 
 - name: Create start docker compose systemd service file
