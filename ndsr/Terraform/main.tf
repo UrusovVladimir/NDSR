@@ -12,8 +12,8 @@ resource "esxi_portgroup" "Trunk" {
   name = var.esxi_trunk
   vswitch = var.switch
   vlan = var.vlan4095
-  forged_transmits = true
-  promiscuous_mode = true
+  forged_transmits = false
+  promiscuous_mode = false
 }
 #########################################
 #  ESXI Guest resource                  #
