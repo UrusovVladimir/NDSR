@@ -64,3 +64,11 @@
     enabled: yes
     daemon_reload: yes
   become: true
+
+- name: Setup IPTABLES for nat WEB!
+  ansible.builtin.script: ../../../scripts/setupIptablesCFK.sh
+  when: "'TRASP' in inventory_hostname"
+
+- name: setup Default Route
+  ansible.builtin.script: ../../../scripts/defaultRoute.sh
+  when: "'TRASP' in group_names"
