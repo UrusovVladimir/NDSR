@@ -73,6 +73,12 @@ variable "vlan1604" {
 variable "vlan4095" {
   default = "4095"
 }
+variable "esxi_password" {
+  default = ""
+}
+variable "esxi_username" {
+  default = "terra"
+}
 variable "password" {
   default = ""
 }
