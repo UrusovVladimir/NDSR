@@ -4,5 +4,5 @@ RET=$?
 if [ $RET != 0 ];then 
 git clone https://github.com/Celerway/docker-net-dhcp.git ; cd ./docker-net-dhcp ; make create
 else
-exit 1
+exit 0
 fi
