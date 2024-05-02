@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-model=$(docker ps -a --format '{{json .}}' |  jq -r .Names)
+model=$(docker ps -a --format '{{json .}}' |  jq -r .Names) | grep 
 
 
 for models in $model; do

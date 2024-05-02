@@ -13,15 +13,7 @@
     state: present
   become: yes
 
-- name: Setup IPTABLES for nat WEB!
-  ansible.builtin.script: ../../../scripts/setupIptablesCFK.sh
-  when: "'TRASP' in inventory_hostname"
-
 - name: iptables save
   shell: netfilter-persistent save
   when: "'containers' in group_names"
   become: yes
-
-- name: setup Default Route
-  ansible.builtin.script: ../../../scripts/defaultRoute.sh
-  when: "'containers' in group_names"
