@@ -24,10 +24,10 @@ data "template_file" "cloud-metadata" {
 }
 
 data "template_file" "cloud-userdata" {
-  template = file("userdata.tpl")
-  vars     = {
-    user          =  var.admin
-    password      =  var.password
+  template       = file("userdata.tpl")
+  vars           = {
+    user         = var.admin
+    password     = var.password
   }
 }
 
@@ -78,4 +78,16 @@ resource "esxi_guest" "US07_Docker02" {
 lifecycle {
   create_before_destroy = true
 }
+}
+resource "null_resource" "cloud"{
+  provisioner "remote-exec" {
+  connection {
+      type = "ssh"
+      user = "v.urusov"
+      private_key = "~/.ssh/${var.admin}"
+      host = "${ip}"
+      port = "22"
+    }
+  inline = ["cloud-init status --wait"]
+  }
 }
