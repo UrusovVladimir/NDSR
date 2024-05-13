@@ -25,7 +25,7 @@
 - name: Download IMAGE and search image id
   ansible.builtin.script: ../../../../../startDH.sh "'{{ password }}'"
 
-- name: Run `docker-compose up` again
+- name: Run `docker-compose up`
   community.docker.docker_compose_v2:
      project_src: ./
      files: ndsr.yml
@@ -69,6 +69,6 @@
   ansible.builtin.script: ../../../scripts/setupIptablesCFK.sh
   when: "'TRASP' in inventory_hostname"
 
-- name: setup Default Route
-  ansible.builtin.script: ../../../scripts/defaultRoute.sh
+- name: Setup IPtables, access to CFK
+  ansible.builtin.script: ../../../scripts/setupIptablesDH.sh
   when: "'TRASP' in group_names"

@@ -7,7 +7,7 @@ groups:
 users:
   - name: v.urusov
     ssh_authorized_keys:
-      - "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFFrjRb30WqWf68AJ0lrO2E404z4JYhW9o0ZUGiMiQF5 v.urusov@ndmsystems.com"
+      - ""
     groups: [docker,root]
     shell: /bin/bash
     sudo: ALL=(ALL) NOPASSWD:ALL

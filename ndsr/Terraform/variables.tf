@@ -11,7 +11,6 @@ variable "esxi_hostssl" {
 }
 
 variable "admin" {
-  default = "v.urusov"
 }
 
 ###Varibles Networks
@@ -80,9 +79,11 @@ variable "esxi_username" {
   default = "terra"
 }
 variable "password" {
-  default = ""
 }
 variable "ssh" {
   description = "Public Key for connect to Docker host"
-  default = ""
+}
+
+variable "ip_docker_host" {
+  default = "172.16.78.254"
 }

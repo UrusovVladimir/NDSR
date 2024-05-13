@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 
-model=$(docker ps -a --format '{{json .}}' |  jq -r .Names) | grep 
+model=$(docker ps -a --format '{{json .}}' |  jq -r .Names)
 
 
 for models in $model; do
-port=${model:3:4}
+port=${models:3:4}
 current=$(docker exec $models iptables -t nat -S | grep 'to-destination 192.168.1.1:80')
 if [[ ! $current ]]; then
  docker exec $models iptables -t nat -A PREROUTING -p tcp --dport $port -j DNAT --to-destination 192.168.1.1:80

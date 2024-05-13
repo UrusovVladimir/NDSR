@@ -28,6 +28,7 @@ data "template_file" "cloud-userdata" {
   vars           = {
     user         = var.admin
     password     = var.password
+    ssh          = var.ssh
   }
 }
 
@@ -85,7 +86,7 @@ resource "null_resource" "cloud"{
       type = "ssh"
       user = "v.urusov"
       private_key = "~/.ssh/${var.admin}"
-      host = "${ip}"
+      host = "${var.ip_docker_host}"
       port = "22"
     }
   inline = ["cloud-init status --wait"]

@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-NAME_IMAGE=v.urusov/systemd-debian
+NAME_IMAGE=systemd
 PASSWORD=$1
-CURRENT_NAME_IMAGE=$(docker image ls --format '{{json .}}' | jq 'select(.Repository == "v.urusov/systemd-debian")' | jq .Repository -r)
-###в переменную image, присваивается id image который будет использоваться для создания контейнеров. В текущем примере это v.urusov/systemd:v3
+CURRENT_NAME_IMAGE=$(docker image ls --format '{{json .}}' | jq 'select(.Repository == "systemd")' | jq .Repository -r)
+###в переменную image, присваивается id image который будет использоваться для создания контейнеров. В текущем примере это systemd
 
 if  [[ ! $CURRENT_NAME_IMAGE == $NAME_IMAGE ]]; then
         sshpass -p $PASSWORD scp -r  -o StrictHostKeyChecking=no terra@192.168.77.132:/vmfs/volumes/datastore1/docker_images/novnc_systemd.tar.gz /home/$USER/
@@ -10,7 +10,7 @@ if  [[ ! $CURRENT_NAME_IMAGE == $NAME_IMAGE ]]; then
 fi
 
 sed -i '/IMAGE/{d}' /home/$USER/VARS.env
-IMAGE=$(docker image ls --format '{{json .}}' | jq 'select(.Repository == "v.urusov/systemd-debian")' | jq .ID -r)
+IMAGE=$(docker image ls --format '{{json .}}' | jq 'select(.Repository == "systemd")' | jq .ID -r)
 echo -e "\nIMAGE=$IMAGE" >> /home/$USER/VARS.env
 
 # bash ./ssh_keygen.sh
