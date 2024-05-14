@@ -17,3 +17,30 @@
   shell: netfilter-persistent save
   when: "'containers' in group_names"
   become: yes
+
+  - name: Copy script for automatically update ip address on containers
+  copy:
+    src: ../../../scripts/changeContainersIp.sh
+    dest: /usr/bin
+    owner: root
+    mode: 0775
+  become: true
+
+- name: Create monitor-ip systemd service file
+  template:
+    src: ../templates/changeContainersIp.j2
+    dest: /etc/systemd/system/monitor.service
+    owner: root
+    group: root
+    mode: 0777
+  become: true
+  when: "'containers' in group_names"
+  with_items: "{{ http_forward }}"
+  
+
+- name: Enable monitor service
+  systemd:
+    name: monitor
+    enabled: yes
+    daemon_reload: yes
+  become: true

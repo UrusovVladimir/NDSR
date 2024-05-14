@@ -1,0 +1,12 @@
+[Unit]
+Description=Monitor Start
+After=network-online.target iptables.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/bin/monitor.sh {{item.interface_name}} {{item.port}}
+
+[Install]
+WantedBy=multi-user.target
