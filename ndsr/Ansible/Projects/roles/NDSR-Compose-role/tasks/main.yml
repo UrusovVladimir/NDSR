@@ -57,7 +57,6 @@
   vars:
    HOME: "/home/{{ user }}"
   
-
 - name: Enable docker compose service
   systemd:
     name: docker_start
@@ -72,3 +71,6 @@
 - name: Setup IPtables, access to CFK
   ansible.builtin.script: ../../../scripts/setupIptablesDH.sh
   when: "'TRASP' in group_names"
+
+- name: Setup correct default route in containers
+  ansible.builtin.script: ../../../scripts/defaultRoute.sh
