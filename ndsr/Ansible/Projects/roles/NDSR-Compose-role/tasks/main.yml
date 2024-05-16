@@ -23,7 +23,7 @@
    dest: /home/v.urusov
 
 - name: Download IMAGE and search image id
-  ansible.builtin.script: ../../../scripts/startDH.sh "'{{ password }}'"
+  ansible.builtin.script: ../../../scripts/start_DH.sh "'{{ password }}'"
 
 - name: Run `docker-compose up`
   community.docker.docker_compose_v2:
