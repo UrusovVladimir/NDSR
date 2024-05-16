@@ -6,7 +6,7 @@ Wants=network-online.target
 [Service]
 Type=oneshot
 RemainAfterExit=yes
-ExecStart=/usr/bin/changeContainersIp.sh {{item.interface_name}} {{item.port}}
+ExecStart=/usr/bin/monitorRoutes.sh
 
 [Install]
 WantedBy=multi-user.target
