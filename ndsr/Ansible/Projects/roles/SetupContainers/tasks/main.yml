@@ -34,7 +34,7 @@
     mode: 0775
   become: true
 
-- name: Create monitor-ip systemd service file
+- name: Create monitorGw systemd service file
   template:
     src: ../templates/changeContainersIp.j2
     dest: /etc/systemd/system/monitorGw.service
@@ -45,7 +45,7 @@
   when: "'containers' in group_names"
   with_items: "{{ http_forward }}"
   
-- name: Create monitor-ip systemd service file
+- name: Create monitorRoute systemd service file
   template:
     src: ../templates/monitorRoutes.j2
     dest: /etc/systemd/system/monitorRoute.service
@@ -56,14 +56,14 @@
   when: "'containers' in group_names"
   
 
-- name: Enable monitor service
+- name: Enable monitorGW service
   systemd:
     name: monitorGw
     enabled: yes
     daemon_reload: yes
   become: true
 
-- name: Enable monitorRoutes service
+- name: Enable monitorRoute service
   systemd:
     name: monitorRoute
     enabled: yes

@@ -7,7 +7,7 @@ http_forward:
     web_keenetic: "192.168.1.1:80"
   - port: "2410"
     interface_name: "KN-24100"
-    web_keenetic: "192.168.1.1:80"
+tweb_keenetic: "192.168.1.1:80"
   - port: "1011"
     interface_name: "KN-10110"
     web_keenetic: "192.168.1.1:80"
@@ -29,4 +29,3 @@ http_forward:
   - port: "1811"
     interface_name: "KN-18110"
     web_keenetic: "192.168.1.1:80"
-
