@@ -8,7 +8,7 @@ exit 1
 fi
 #echo "${MODELS[@]}"
 
-IPv4_ADDRESS=$(docker inspect --format='{{.NetworkSettings.Networks.vurusov_FRONT_default.IPAddress}}' $(docker ps -a --format '{{json .}}' |  jq -r .Names))
+IPv4_ADDRESS=$(docker inspect --format='{{.NetworkSettings.Networks.ndsr_default.IPAddress}}' $(docker ps -a --format '{{json .}}' |  jq -r .Names))
 IFS=$'\n' readarray -t IPv4_ADDRESS <<< "$IPv4_ADDRESS"
 
 WEB_PORTS=$(docker ps -a --format '{{json .}}' |  jq -r .Names | sed 's/KN-//g')
@@ -46,3 +46,18 @@ else
 fi
 
 done
+
+for ifconfig in ${MODELS[@]}; do
+IP_INTERFACE+=( $(docker exec -it "$ifconfig" ifconfig | grep -P "kn[\d]+" | grep -Po "kn[\d]+") )
+done
+
+if [ ! -z ${IP_INTERFACE} ]; then
+for rule in ${!MODELS[@]}; do
+docker exec -it ${MODELS[$rule]} iptables -t nat -S POSTROUTING -v | grep -P "POSTROUTING -o ${IP_INTERFACE[$rule]}" > /dev/null
+RET=$?
+
+if [ ! $RET -eq 0 ]; then
+docker exec -it ${MODELS[$rule]} iptables -t nat -A POSTROUTING -o ${IP_INTERFACE[$rule]} -j MASQUERADE
+fi
+done
+fi

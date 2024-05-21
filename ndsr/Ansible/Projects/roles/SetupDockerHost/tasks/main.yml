@@ -1,6 +1,6 @@
 ---
 - name: Setup DNS Resolving
-  ansible.builtin.script: ../../../scripts/setupResolvConf.sh
+  ansible.builtin.script: ./scripts/setupResolvConf.sh
   when: "'TRASP' in inventory_hostname"
   become: yes
 
@@ -88,7 +88,7 @@
   when: "'test' in group_names"
 
 - name: Add iptables rule for TCPMSS
-  ansible.builtin.script: ../../../scripts/tcpmss.sh
+  ansible.builtin.script: ./scripts/tcpmss.sh
 
 - name: iptables save
   shell: netfilter-persistent save

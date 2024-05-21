@@ -20,7 +20,7 @@
 
   - name: Copy script for automatically update ip address on containers
   copy:
-    src: ../../../scripts/changeContainersIp.sh
+    src: ./scripts/changeContainersIp.sh
     dest: /usr/bin
     owner: root
     mode: 0775
@@ -28,7 +28,7 @@
 
   - name: Copy script for monitoring routes
   copy:
-    src: ../../../scripts/monitorRoutes.sh
+    src: ./scripts/monitorRoutes.sh
     dest: /usr/bin
     owner: root
     mode: 0775
@@ -36,7 +36,7 @@
 
 - name: Create monitorGw systemd service file
   template:
-    src: ../templates/changeContainersIp.j2
+    src: changeContainersIp.j2
     dest: /etc/systemd/system/monitorGw.service
     owner: root
     group: root
@@ -47,7 +47,7 @@
   
 - name: Create monitorRoute systemd service file
   template:
-    src: ../templates/monitorRoutes.j2
+    src: monitorRoutes.j2
     dest: /etc/systemd/system/monitorRoute.service
     owner: root
     group: root
