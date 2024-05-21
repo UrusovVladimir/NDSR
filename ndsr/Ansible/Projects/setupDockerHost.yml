@@ -1,0 +1,4 @@
+- name: Setup IPTABLES for DHCP
+  hosts: TRASP
+  roles:
+    - SetupDockerHost
