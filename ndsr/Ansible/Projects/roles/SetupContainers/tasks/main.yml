@@ -18,16 +18,16 @@
   when: "'containers' in group_names"
   become: yes
 
-  - name: Copy script for automatically update ip address on containers
-  copy:
+- name: Copy script for automatically update ip address on containers
+  ansible.builtin.copy:
     src: ./scripts/changeContainersIp.sh
     dest: /usr/bin
     owner: root
     mode: 0775
   become: true
 
-  - name: Copy script for monitoring routes
-  copy:
+- name: Copy script for monitoring routes
+  ansible.builtin.copy:
     src: ./scripts/monitorRoutes.sh
     dest: /usr/bin
     owner: root
@@ -62,6 +62,7 @@
     enabled: yes
     daemon_reload: yes
   become: true
+  when: "'containers' in group_names"
 
 - name: Enable monitorRoute service
   systemd:
@@ -69,3 +70,4 @@
     enabled: yes
     daemon_reload: yes
   become: true  
+  when: "'containers' in group_names"
