@@ -1,0 +1,14 @@
+- name: Docker Compose Restart
+  hosts: TRASP
+  tasks:
+    - name: Down Docker Compose
+      community.docker.docker_compose_v2:
+       project_src: ./
+       files: ndsr.yml
+       project_name: ndsr
+       env_files: VARS.env
+       state: restarted
+      register: output
+
+
+ 
