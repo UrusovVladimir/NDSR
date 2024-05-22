@@ -1,0 +1,17 @@
+- 
+  name: Docker Compose (UP|DOWN|RESTART)
+  hosts: TRASP
+  tasks:
+    - name: Docker Compose (UP|DOWN|RESTART)
+      community.docker.docker_compose_v2:
+       project_src: ./
+       files: ndsr.yml
+       project_name: ndsr
+       env_files: VARS.env
+       state: '{{ state }}'
+      register: output
+  vars_prompt:
+     - name: state
+       prompt: "Enter state docker compose(present|stopped|restarted)"
+       unsafe: true
+       private: false
