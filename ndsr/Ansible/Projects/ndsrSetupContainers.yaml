@@ -1,4 +1,4 @@
 - name: Setup Docker Compose and containers
-  hosts: TRASP, containers
+  hosts: containers
   roles:
     - SetupContainers
