@@ -65,3 +65,6 @@
 - name: Setup IPTABLES, access to CFK
   ansible.builtin.script: ./scripts/setupIptablesDH.sh
   when: "'TRASP' in inventory_hostname"
+
+- name: Setup correct default route in containers
+  ansible.builtin.script: ./scripts/defaultRoute.sh
