@@ -10,6 +10,20 @@
        env_files: VARS.env
        state: restarted
       register: output
-
+  vars_prompt:
+   - name: user
+     prompt: "Enter the user to connect to ESXI"
+     unsafe: true
+     private: false
+   - name: password
+     prompt: "Enter password for the user"
+     unsafe: true
+     private: true
+   - name: admin
+     prompt: "Enter the user admin project's"
+     unsafe: true
+     private: false
+  roles:
+    - NDSR-Compose-role
 
  
