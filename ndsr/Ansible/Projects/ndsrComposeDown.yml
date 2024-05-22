@@ -2,7 +2,7 @@
   name: Docker Compose Down
   hosts: TRASP
   tasks:
-    - name: Down Docker Compose
+    - name: Docker Compose Down
       community.docker.docker_compose_v2:
        project_src: ./
        files: ndsr.yml

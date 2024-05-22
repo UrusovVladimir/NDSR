@@ -1,7 +1,8 @@
-- name: Docker Compose Restart
+- 
+  sname: Docker Compose Restart
   hosts: TRASP
   tasks:
-    - name: Down Docker Compose
+    - name: Docker Compose Restart
       community.docker.docker_compose_v2:
        project_src: ./
        files: ndsr.yml
