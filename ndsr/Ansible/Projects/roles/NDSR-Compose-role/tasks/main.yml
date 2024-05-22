@@ -23,7 +23,7 @@
    dest: /home/v.urusov
 
 - name: Download IMAGE and search image id
-  ansible.builtin.script: ./scripts/start_DH.sh "'{{ password }}'"
+  ansible.builtin.script: ./scripts/downloadImage.sh "'{{ password }}' '{{ user }}'"
 
 - name: Run `docker-compose up`
   community.docker.docker_compose_v2:
@@ -55,7 +55,7 @@
     mode: 0644
   become: true
   vars:
-   HOME: "/home/{{ user }}"
+   HOME: "/home/{{ admin }}"
   
 - name: Enable docker compose service
   systemd:
