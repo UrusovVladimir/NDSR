@@ -1,9 +1,13 @@
-#- name: Tear  down existing services
-#  community.docker.docker_compose_v2:
-#     project_src: /home/vladimir/NDSR/ndsr/Docker/ContainersForKeenetic/
-#     env_files: /home/vladimir/NDSR/ndsr/Docker/ContainersForKeenetic/VARS.env
-#     files: ndsr.yml
-#     state: absent
+- name: Tear down existing services
+  community.docker.docker_compose_v2:
+     project_src: ./
+     files: ndsr.yml
+     project_name: ndsr
+     env_files: VARS.env
+     state: absent
+  register: output
+
+
 - name: Install Plugin
   ansible.builtin.script: ./scripts/installPlugin.sh
 
@@ -15,12 +19,12 @@
 - name: Copy docker-compose file to remote host
   copy:
    src: ndsr.yml
-   dest: /home/v.urusov
+   dest: /home/{{ admin }}
 
 - name: Copy docker-compose file to remote host
   copy:
    src: VARS.env
-   dest: /home/v.urusov
+   dest: /home/{{ admin }}
 
 - name: Download IMAGE and search image id
   ansible.builtin.script: ./scripts/downloadImage.sh "'{{ password }}' '{{ user }}'"
@@ -70,7 +74,4 @@
 
 - name: Setup IPTABLES, access to CFK
   ansible.builtin.script: ./scripts/setupIptablesDH.sh
-  when: "'TRASP' in group_names"
-
-- name: Setup correct default route in containers
-  ansible.builtin.script: ./scripts/defaultRoute.sh
+  when: "'TRASP' in inventory_hostname"

@@ -14,4 +14,4 @@
      unsafe: true
      private: false
   roles:
-    - NDSR-Compose-role
+    - NDSR-Compose-role-UP

@@ -1,0 +1,13 @@
+[Unit]
+Description=Docker-Compose Start
+After=network-online.target docker.socket docker.service iptables.service containerd.service
+Wants=network-online.target
+Requires=docker.socket containerd.service docker.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/bin/startNdsrService.sh
+
+[Install]
+WantedBy=multi-user.target

@@ -1,15 +1,6 @@
 - 
-  sname: Docker Compose Restart
+  name: Docker Compose Restart
   hosts: TRASP
-  tasks:
-    - name: Docker Compose Restart
-      community.docker.docker_compose_v2:
-       project_src: ./
-       files: ndsr.yml
-       project_name: ndsr
-       env_files: VARS.env
-       state: restarted
-      register: output
   vars_prompt:
    - name: user
      prompt: "Enter the user to connect to ESXI"
@@ -24,6 +15,6 @@
      unsafe: true
      private: false
   roles:
-    - NDSR-Compose-role
+    - NDSR-Compose-role-RESTART
 
  

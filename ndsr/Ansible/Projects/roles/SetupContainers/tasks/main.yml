@@ -1,5 +1,7 @@
 ---                                                                                                                                                                                                                                        
-                                                                                                                                                                                                                                           
+- name: Setup correct default route in containers
+  ansible.builtin.script: ./scripts/defaultRoute.sh
+                                                                                                                                                                                                                                             
 - name: Delete repo in resources                                                                                                                                                                                                           
   lineinfile: dest=/etc/apt/sources.list                                                                                                                                                                                                   
               state=absent                                                                                                                                                                                                                 
