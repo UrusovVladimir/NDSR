@@ -68,7 +68,7 @@
   ansible.builtin.script: ./scripts/setupIptablesCFK.sh
   when: "'TRASP' in inventory_hostname"
 
-- name: Setup IPtables, access to CFK
+- name: Setup IPTABLES, access to CFK
   ansible.builtin.script: ./scripts/setupIptablesDH.sh
   when: "'TRASP' in group_names"
 
