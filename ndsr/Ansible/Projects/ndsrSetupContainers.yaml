@@ -1,4 +1,5 @@
-- name: Setup Docker Compose and containers
+- 
+  name: Setup Docker Compose and containers
   hosts: containers
   roles:
     - SetupContainers
