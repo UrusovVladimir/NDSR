@@ -70,3 +70,20 @@
     daemon_reload: yes
   #when: "'containers' in group_names"
   become: true  
+
+- name: Start monitorGW service
+  systemd:
+    name: monitorGw
+    state: started
+  #when: "'containers' in group_names"
+  become: true  
+  
+- name: Start monitorRoute service
+  systemd:
+    name: monitorRoute
+    state: started
+  #when: "'containers' in group_names"
+  become: true  
+
+
+  
