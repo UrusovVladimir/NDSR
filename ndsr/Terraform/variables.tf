@@ -11,6 +11,7 @@ variable "esxi_hostssl" {
 }
 
 variable "admin" {
+  description = "NDSR's Project Administrator"
 }
 
 ###Varibles Networks
