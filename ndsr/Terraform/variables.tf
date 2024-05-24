@@ -75,10 +75,11 @@ variable "vlan4095" {
 }
 
 variable "esxi_username" {
-  description = "ESXI connection account. Enter username/password."
+  description = "Enter username to connect to ESXI."
 }
 
 variable "esxi_password" {
+  description = "Enter password to connect to ESXI."
 
 }
 
