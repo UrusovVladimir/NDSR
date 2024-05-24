@@ -85,10 +85,11 @@ resource "null_resource" "cloud"{
   connection {
       type = "ssh"
       user = "v.urusov"
-      private_key = "~/.ssh/${var.admin}"
+      private_key = file("~/.ssh/${var.admin}")
       host = "${var.ip_docker_host}"
       port = "22"
     }
   inline = ["cloud-init status --wait"]
   }
+  depends_on = [ esxi_guest.US07_Docker02 ]
 }

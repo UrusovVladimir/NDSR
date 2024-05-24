@@ -17,7 +17,7 @@
    dest: /home/{{ admin }}
 
 - name: Download IMAGE and search image id
-  ansible.builtin.script: ./scripts/downloadImage.sh "'{{ password }}' '{{ user }}'"
+  ansible.builtin.script: ./scripts/downloadImage.sh '{{ password }}' '{{ user }}'
 
 - name: Run `docker-compose up`
   community.docker.docker_compose_v2:

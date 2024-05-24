@@ -25,7 +25,7 @@ wget https://hashicorp-releases.yandexcloud.net/terraform/1.7.3/terraform_1.7.3_
 ```sh
 wget https://vdc-download.vmware.com/vmwb-repository/dcr-public/342c5e55-1053-45c3-afe7-6d60a975a3f5/60ff09ea-612f-47e5-ad26-7ae42562674d/VMware-ovftool-4.4.3-18663434-lin.i386.zip && unzip VMware-ovftool-4.4.3-18663434-lin.i386.zip && rm ./VMware-ovftool-4.4.3-18663434-lin.i386.zip
 ```
->После распаковки также как и с terraform необходимо прописать в переменную PATH путь к папке, в которой находится исполняемый файл: ```export PATH=$PATH:/home/vladimir/Documents/ovftool```
+>После распаковки также как и с terraform необходимо прописать в переменную PATH путь к папке, в которой находится исполняемый файл: ```export PATH=$PATH:/home/vladimir/Documents/ovftool/```
 
 создаём папку **Deploy_ndsr**  к примеру ```mkdir ~/Deploy_nddr && cd ~/Deploy_ndsr``` скачиваем релиз 1.7.3 terraform и 4.4.3 версию ovftools по следующим ссылкам:
 
