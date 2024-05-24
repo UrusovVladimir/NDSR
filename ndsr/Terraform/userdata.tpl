@@ -7,7 +7,7 @@ groups:
 users:
   - name: v.urusov
     ssh_authorized_keys:
-      - ""
+      - "${ssh}"
     groups: [docker,root]
     shell: /bin/bash
     sudo: ALL=(ALL) NOPASSWD:ALL

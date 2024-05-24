@@ -58,9 +58,9 @@
     daemon_reload: yes
   become: true
 
-- name: Setup IPTABLES for nat WEB
-  ansible.builtin.script: ./scripts/setupIptablesCFK.sh
-  when: "'TRASP' in inventory_hostname"
+# - name: Setup IPTABLES for nat WEB
+#   ansible.builtin.script: ./scripts/setupIptablesCFK.sh
+#   when: "'TRASP' in inventory_hostname"
 
 - name: Setup IPTABLES, access to CFK
   ansible.builtin.script: ./scripts/setupIptablesDH.sh

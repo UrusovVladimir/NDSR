@@ -18,8 +18,8 @@ variable "esxi_trunk" {
   default = "Trunk"
 }
 variable "ovf_file" {
-  #  A local file downloaded from https://cloud-images.ubuntu.com
-  default = "jammy-server-cloudimg-amd64.ova"
+  #default = "jammy-server-cloudimg-amd64.ova"
+  default = "https://cloud-images.ubuntu.com/releases/jammy/release/ubuntu-22.04-server-cloudimg-amd64.ova"
 }
 variable "vm_hostname" {
   default = "US07_DockerHost02"
@@ -63,7 +63,7 @@ variable "switch" {
 
 variable "network_adapter" {
   default = "vmnic1"
-} 
+}
 
 variable "vlan1604" {
   default = "1604"
@@ -72,13 +72,17 @@ variable "vlan1604" {
 variable "vlan4095" {
   default = "4095"
 }
-variable "esxi_password" {
-  default = ""
-}
+
 variable "esxi_username" {
-  default = "terra"
+  description = "ESXI connection account. Enter username/password."
 }
+
+variable "esxi_password" {
+
+}
+
 variable "password" {
+  description = "Password for NDSR(DockerHost) administrator's account"
 }
 variable "ssh" {
   description = "Public Key for connect to Docker host"

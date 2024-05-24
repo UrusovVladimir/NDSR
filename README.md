@@ -54,3 +54,7 @@ wget https://vdc-download.vmware.com/vmwb-repository/dcr-public/342c5e55-1053-45
 
 ### ```Данные для подключения к контейнерам по SSH,VNC```
 ```debian/debian```
+
+
+
+нужно не забывать после того как terraform создаст проект, нужно сменить на trunk интерфейсе режим promisc 
