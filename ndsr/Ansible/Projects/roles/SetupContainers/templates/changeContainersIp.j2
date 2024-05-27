@@ -4,9 +4,9 @@ After=network-online.target iptables.service
 Wants=network-online.target
 
 [Service]
-Type=oneshot
-RemainAfterExit=yes
+Type=simple
 ExecStart=/usr/bin/changeContainersIp.sh {{ id }} {{ port }} 
+PIDFile=/tmp/changeContainersIp
 
 [Install]
 WantedBy=multi-user.target
