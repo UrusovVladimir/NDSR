@@ -55,35 +55,37 @@
   become: true
   #when: "'containers' in group_names"
 
-- name: Enable monitorGW service
+- name: Enable&&Start monitorGW service
   systemd:
     name: monitorGw
     enabled: yes
+    state: started
     daemon_reload: yes
   #when: "'containers' in group_names"
   become: true
 
-- name: Enable monitorRoute service
+- name: Enable&&Start monitorRoute service
   systemd:
     name: monitorRoute
     enabled: yes
+    state: started
     daemon_reload: yes
   #when: "'containers' in group_names"
   become: true  
 
-- name: Start monitorGW service
-  systemd:
-    name: monitorGw
-    state: started
-  #when: "'containers' in group_names"
-  become: true  
+# - name: Start monitorGW service
+#   systemd:
+#     name: monitorGw
+#     state: started
+#   #when: "'containers' in group_names"
+#   become: true  
   
-- name: Start monitorRoute service
-  systemd:
-    name: monitorRoute
-    state: started
-  #when: "'containers' in group_names"
-  become: true  
+# - name: Start monitorRoute service
+#   systemd:
+#     name: monitorRoute
+#     state: started
+#   #when: "'containers' in group_names"
+#   become: true  
 
 
   
