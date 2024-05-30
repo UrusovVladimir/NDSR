@@ -1,6 +1,6 @@
 - name: Create Dockerfile and copy to docker host
   template:
-    src: Dockerfile.j2
+    src: Dockerfile.js
     dest: /home/{{ admin }}/Dockerfile
 
 - name: WebTelnet image
