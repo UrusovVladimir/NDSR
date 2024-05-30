@@ -1,0 +1,56 @@
+@import 'bootstrap/dist/css/bootstrap.min.css';
+@import 'vue3-toastify/dist/index.css';
+
+:root {
+    --toastify-font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
+    --toastify-toast-width: 435px
+}
+
+.led-box {
+  height: 13px;
+  width: 13px;
+  position: absolute;
+  margin: 130px 0 0 0;
+  left: 49%;
+  background: none;
+  border-radius: 50%;
+}
+
+.led-red {
+  margin: 0 auto;
+  width: 13px;
+  height: 13px;
+  background-color: #F00;
+  border-radius: 50%;
+  box-shadow: rgba(0, 0, 0, .5) 0 -1px 7px 1px, inset #441313 0 -1px 9px, rgba(255, 0, 0, 0.5) 0 2px 12px;
+}
+
+.led-green {
+    margin: 0 auto;
+    width: 13px;
+    height: 13px;
+    background-color: #ABFF00;
+    border-radius: 50%;
+    box-shadow: rgba(0.8, 0, 0, 10.2) 0 -1px 7px 1px, inset #304701 0 -1px 9px, #89FF00 0 2px 12px;
+}
+
+.led-grey {
+    background-color: #CCC;
+    box-shadow: rgba(0.8, 0, 0, 10.2) 0 -1px 7px 1px, inset #181818 0 -1px 9px, #929391 0 2px 12px;
+    animation: no;
+}
+
+.bd-placeholder-img {
+  font-size: 1.125rem;
+  text-anchor: middle;
+}
+
+@media (min-width: 768px) {
+  .bd-placeholder-img-lg {
+    font-size: 3.5rem;
+  }
+}
+
+.form-check > * {
+    cursor: pointer;
+}

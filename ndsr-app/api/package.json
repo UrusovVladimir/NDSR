@@ -1,0 +1,19 @@
+{
+    "name": "backend",
+    "type": "module",
+    "version": "1.0.0",
+    "description": "backend",
+    "main": "server.js",
+    "scripts": {
+        "server-dev": "nodemon ./server.js",
+        "server-prod": "node ./server.js"
+    },
+    "dependencies": {
+        "axios": "^1.6.5",
+        "dotenv": "^16.3.1",
+        "socket.io": "^4.7.4"
+    },
+    "devDependencies": {
+        "nodemon": "^3.0.3"
+    }
+}

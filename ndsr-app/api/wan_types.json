@@ -1,0 +1,108 @@
+[
+    {
+        "type": "IPoE NAT(Vlan1617)",
+        "vlanId": "1617",
+        "onCommands": [
+                        "rename ISP-Vlan",
+                        "description IPoE_NAT_IP",
+                        "interface ISP",
+                        "no ip global",
+                        "interface ISP-Vlan",
+                        "role inet",
+                        "ip address dhcp",
+                        "ip global 63000",
+                        "up",
+                        "interface FastEthernet0/0",
+                        "role inet for FastEthernet0/Vlan1617",
+                        "switchport mode trunk",
+                        "switchport trunk vlan 1617"
+                        ],
+        "offCommands": [
+            "no interface :interface_value:"
+]
+    },
+    {
+        "type": "IPoE Public(Vlan7)",
+        "vlanId": "7",
+        "onCommands": [
+                        "rename ISP-Vlan",
+                        "description IPoE_Public_IP",
+                        "interface ISP",
+                        "no ip global",
+                        "interface ISP-Vlan",
+                        "role inet",
+                        "ip address dhcp",
+                        "ip global 64200",
+                        "up"
+        ],
+        "offCommands": [
+            "no interface :interface_value:"
+        ]
+    },
+    {
+        "type": "Ds-Lite(Vlan3001)",
+        "vlanId": "3001",
+        "onCommands": [
+                        "description Ds-Lite",
+                        "ip global 54000",
+                        "ipv6 address auto",
+                        "ipv6 prefix auto",
+                        "ipv6 name-servers",
+                        "interface ISP",
+                        "no ip global",
+                        "up"
+        ],
+        "offCommands": [
+                        "no interface DsLite0",
+                        "interface ISP ip global 700",
+                        "interface ISP description Ethernet-ISP",
+                        "no interface :interface_value:"
+        ]
+    },
+    {
+        "type": "MAP-T(Vlan3004)",
+        "vlanId": "3004",
+        "onCommands": [
+                        "description MAP-T",
+                        "ip global 55000",
+                        "ipv6 address auto",
+                        "ipv6 prefix auto",
+                        "ipv6 name-servers",
+                        "up",
+                        "interface ISP",
+                        "no ip global"
+        ],
+        "offCommands": [
+                        "no interface MapT0",
+                        "interface ISP ip global 700",
+                        "interface ISP description Ethernet-ISP",
+                        "no interface :interface_value:"
+        ]
+    },
+    {
+        "type": "PPPoE(Vlan747)",
+        "vlanId": "747",
+        "onCommands": [
+                        "no ip address",
+                        "description For_PPPoE",
+                        "role inet for PPPoE0",
+                        "rename PPPoE",
+                        "up",
+                        "interface PPPoE0",
+                        "description PPPoE",
+                        "role inet",
+                        "authentication identity techsupport",
+                        "authentication password techsupport",
+                        "ip tcp adjust-mss pmtu",
+                        "ip global 65000",
+                        "connect via PPPoE",
+                        "interface ISP",
+                        "no ip global"
+        ],
+        "offCommands": [
+                        "no interface PPPoE0",
+                        "interface ISP ip global 700",
+                        "no interface :interface_value:"
+        ]
+    }
+]

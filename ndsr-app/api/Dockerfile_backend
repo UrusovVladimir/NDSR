@@ -1,0 +1,7 @@
+###создаем image для Backend
+FROM node:20.13.1-alpine3.20
+WORKDIR /app
+COPY ./api .
+RUN mv ./api/.env.example ./.env
+RUN npm install --production
+CMD [ "node", "./api/server.js" ]
