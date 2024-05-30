@@ -4,7 +4,7 @@
     dest: /home/{{ admin }}
 
 - name: Copy files for ndsr-app
-   template:
+  template:
     src: .env.example.js
     dest: /home/{{ admin }}/ndsr-app/api/.env.example
 
