@@ -20,7 +20,7 @@
 
 - name: Run `docker-compose APP up`
   community.docker.docker_compose_v2:
-     project_src: ./
+     project_src: /home/{{ admin }}
      files: ndsr-app.yml
      project_name: ndsr-app
      env_files: VARS-APP.env
