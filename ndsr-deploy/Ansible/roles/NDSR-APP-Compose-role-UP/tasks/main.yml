@@ -15,7 +15,7 @@
 
 - name: Copy app env file to remote host
   copy:
-   src: VARS.env
+   src: VARS-APP.env
    dest: /home/{{ admin }}
 
 - name: Run `docker-compose APP up`
