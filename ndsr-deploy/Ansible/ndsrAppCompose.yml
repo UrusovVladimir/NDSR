@@ -1,0 +1,5 @@
+- 
+  name: Docker Compose start/UP project NDSR-APP
+  hosts: TRASP
+  roles:
+   - NDSR-APP-Compose-role-UP
