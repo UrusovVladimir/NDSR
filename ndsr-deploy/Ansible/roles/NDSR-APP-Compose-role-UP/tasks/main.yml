@@ -6,7 +6,7 @@
 - name: Copy files for ndsr-app
   ansible.builtin.copy:
     src: .env.example
-    dest: /home/{{ admin }}/api/.env.example
+    dest: /home/{{ admin }}/ndsr-app/api/.env.example
 
 - name: Create Dockerfile Webtelnet image's and copy to docker host
   template:
