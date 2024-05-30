@@ -11,7 +11,7 @@
    src: ndsr.yml
    dest: /home/{{ admin }}
 
-- name: Copy docker-compose file to remote host
+- name: Copy env file to remote host
   copy:
    src: VARS.env
    dest: /home/{{ admin }}

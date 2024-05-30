@@ -1,27 +1,54 @@
-- name: Create Dockerfile and copy to docker host
+ - name: Copy files for ndsr-app
+   ansible.builtin.copy:
+     src: ../../../../ndsr-app
+     dest: /home/{{ admin }}
+
+- name: Create Dockerfile Webtelnet image's and copy to docker host
   template:
     src: Dockerfile.js
-    dest: /home/{{ admin }}/Dockerfile
+    dest: /home/{{ admin }}/Dockerfile_webtelnet
 
-- name: WebTelnet image
-  community.docker.docker_image_build:
-    name: ndsr/webtelnet:v1
-    path: /home/{{ admin }}
-    dockerfile: Dockerfile
+- name: Copy app docker-compose file to remote host
+  copy:
+   src: ndsr-app.yml
+   dest: /home/{{ admin }}
 
-- name: Copy files for backend
-  ansible.builtin.copy:
-    src: ../../../../ndsr-app/api
-    dest: /home/{{ admin }}
+- name: Copy app env file to remote host
+  copy:
+   src: VARS.env
+   dest: /home/{{ admin }}
 
-- name: NDSR-APP Backend image
-  community.docker.docker_image_build:
-    name: ndsr/backend:v1
-    path: /home/{{ admin }}/api/
-    dockerfile: Dockerfile_backend
+- name: Run `docker-compose APP up`
+  community.docker.docker_compose_v2:
+     project_src: ./
+     files: ndsr-app.yml
+     project_name: ndsr-app
+     env_files: VARS-APP.env
+  register: output
 
-- name: NDSR-APP Frontend image
-  community.docker.docker_image_build:
-    name: ndsr/frontend:v1
-    path: /home/{{ admin }}/api/
-    dockerfile: Dockerfile_backend
+- name: Show results
+  debug:
+     var: output
+
+# - name: WebTelnet image
+#   community.docker.docker_image_build:
+#     name: ndsr/webtelnet:v1
+#     path: /home/{{ admin }}
+#     dockerfile: Dockerfile
+
+# - name: Copy files for backend
+#   ansible.builtin.copy:
+#     src: ../../../../ndsr-app/api
+#     dest: /home/{{ admin }}
+
+# - name: NDSR-APP Backend image
+#   community.docker.docker_image_build:
+#     name: ndsr/backend:v1
+#     path: /home/{{ admin }}/api/
+#     dockerfile: Dockerfile_backend
+
+# - name: NDSR-APP Frontend image
+#   community.docker.docker_image_build:
+#     name: ndsr/frontend:v1
+#     path: /home/{{ admin }}/api/
+#     dockerfile: Dockerfile_backend
