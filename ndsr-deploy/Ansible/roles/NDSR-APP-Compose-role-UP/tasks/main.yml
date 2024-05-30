@@ -3,6 +3,11 @@
     src: ../../../../ndsr-app
     dest: /home/{{ admin }}
 
+- name: Copy files for ndsr-app
+  ansible.builtin.copy:
+    src: .env.example
+    dest: /home/{{ admin }}/api/.env.example
+
 - name: Create Dockerfile Webtelnet image's and copy to docker host
   template:
     src: Dockerfile.js
@@ -29,26 +34,3 @@
 - name: Show results
   debug:
      var: output
-
-# - name: WebTelnet image
-#   community.docker.docker_image_build:
-#     name: ndsr/webtelnet:v1
-#     path: /home/{{ admin }}
-#     dockerfile: Dockerfile
-
-# - name: Copy files for backend
-#   ansible.builtin.copy:
-#     src: ../../../../ndsr-app/api
-#     dest: /home/{{ admin }}
-
-# - name: NDSR-APP Backend image
-#   community.docker.docker_image_build:
-#     name: ndsr/backend:v1
-#     path: /home/{{ admin }}/api/
-#     dockerfile: Dockerfile_backend
-
-# - name: NDSR-APP Frontend image
-#   community.docker.docker_image_build:
-#     name: ndsr/frontend:v1
-#     path: /home/{{ admin }}/api/
-#     dockerfile: Dockerfile_backend
