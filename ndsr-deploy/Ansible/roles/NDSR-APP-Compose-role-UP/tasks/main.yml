@@ -1,0 +1,17 @@
+- name: Create Dockerfile and copy to docker host
+  template:
+    src: Dockerfile.j2
+    dest: /home/{{ admin }}/Dockerfile
+
+- name: WebTelnet image
+  community.docker.docker_image_build:
+    name: ndsr/webtelnet:v1
+    path: /home/{{ admin }}
+    dockerfile: Dockerfile
+
+
+- name: WebTelnet image
+  community.docker.docker_image_build:
+    name: ndsr/frontend:v1
+    path: 
+    dockerfile: Dockerfile
