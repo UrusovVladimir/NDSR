@@ -1,7 +1,8 @@
 ###создаем image для Backend
 FROM node:20.13.1-alpine3.20
 WORKDIR /app
-COPY ./api .
-RUN mv ./api/.env.example ./.env
+COPY . .
+RUN mv ./.env.example ./.env
+RUN npm install telnet-client
 RUN npm install --production
-CMD [ "node", "./api/server.js" ]
+CMD [ "node", "server.js" ]

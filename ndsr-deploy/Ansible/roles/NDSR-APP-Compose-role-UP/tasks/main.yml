@@ -9,9 +9,19 @@
     path: /home/{{ admin }}
     dockerfile: Dockerfile
 
+- name: Copy files for backend
+  ansible.builtin.copy:
+    src: ../../../../ndsr-app/api
+    dest: /home/{{ admin }}
 
-- name: WebTelnet image
+- name: NDSR-APP Backend image
+  community.docker.docker_image_build:
+    name: ndsr/backend:v1
+    path: /home/{{ admin }}/api/
+    dockerfile: Dockerfile_backend
+
+- name: NDSR-APP Frontend image
   community.docker.docker_image_build:
     name: ndsr/frontend:v1
-    path: 
-    dockerfile: Dockerfile
+    path: /home/{{ admin }}/api/
+    dockerfile: Dockerfile_backend

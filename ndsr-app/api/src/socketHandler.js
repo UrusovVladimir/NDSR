@@ -2,7 +2,7 @@ import {devices, getDeviceById, getDevicesStatus, getDeviceStatusCode, wanTypes}
 import {changeWanType} from "./actions/changeWanType.js";
 import {resetConfig} from "./actions/resetConfig.js";
 import {rebootDevice} from "./actions/rebootDevice.js";
-import {resetDslLine} from "/home/ndm-dev-rack-service/api/resetDslLine.js";
+import {resetDslLine} from "/app/resetDslLine.js";
 
 function broadcastDevicesStatus(io) {
     if (io.engine.clientsCount > 0)
