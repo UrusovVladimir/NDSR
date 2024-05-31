@@ -1,4 +1,6 @@
 websocket_ip: "10.10.19.253"
+moxa_ip: "172.16.78.252"
+webtelnet_ip: "172.16.78.254:5005"
 devices_path: "/app/devices.json"
 wan_type_path: "/app/wan_types.json"
 jerome_ip: "172.16.78.253"
