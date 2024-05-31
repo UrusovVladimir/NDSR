@@ -142,6 +142,6 @@ function consoleOpen() {
 
 function vncOpen() {
   let params = `scrollbars=no,resizable=no,status=no,location=no,toolbar=no,menubar=no,width=900,height=600,left=200,top=100`;
-  window.open(`http://${props.device.vncUrl}`, props.device.hwId, params);
+  window.open(`${props.device.vncUrl}`, props.device.hwId, params);
 }
 </script>
