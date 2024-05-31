@@ -33,14 +33,16 @@
             </button>
           </div>
         </div>
-        <div class="d-flex justify-content-between align-items-center"></div>
-        <div class="btn-group flex-wrap">
-            <button @click="vncOpen" type="button" class="btn btn-sm btn-outline-secondary">
+        <div class="d-flex justify-content-between align-items-center">
+           <div class="btn-group flex-wrap">
+             <button @click="vncOpen" type="button" class="btn btn-sm btn-outline-secondary">
               <span>Remote Desktop</span>
             </button>
+           </div>
           </div>
+        </div>
       </div>
-    </div>
+    
 
     <Modal :title="`${device.shortName} ${device.hwId}`" ref="wanTypesModal">
       <template #body>
