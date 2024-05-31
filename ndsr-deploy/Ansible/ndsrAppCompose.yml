@@ -3,3 +3,8 @@
   hosts: TRASP
   roles:
    - NDSR-APP-Compose-role-UP
+  vars_prompt:
+   - name: admin
+     prompt: "Enter the user admin project's"
+     unsafe: true
+     private: false

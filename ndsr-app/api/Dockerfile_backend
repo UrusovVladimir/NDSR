@@ -3,6 +3,8 @@ FROM node:20.13.1-alpine3.20
 WORKDIR /app
 COPY . .
 RUN mv ./.env.example ./.env
-RUN npm install telnet-client
-RUN npm install --production
+RUN npm install telnet-client && npm install --production
 CMD [ "node", "server.js" ]
+
+
+#делать гит клоне в контейнер и уже в него комироаать файлы json, таким образом нам не надо будет клонировать репу на ансибл хост 

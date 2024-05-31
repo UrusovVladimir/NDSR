@@ -1,11 +1,11 @@
 FROM python:3.6.15-bullseye
-RUN apt update && apt install telnet
-RUN git clone https://github.com/UrusovVladimir/flask-remote-terminal.git
+ARG moxa_ip=172.16.78.252
+RUN apt update && apt install telnet && git clone https://github.com/UrusovVladimir/flask-remote-terminal.git
 WORKDIR /flask-remote-terminal
 RUN rm ./config_sample.py
 RUN  <<EOF cat >> ./config.py
 TERM_INIT_CONFIG = {
-    'domain': '{{ moxa_ip }}', # or ip address like 192.168.10.11
+    'domain': '${moxa_ip}', # or ip address like 192.168.10.11
     'client_path': {
         'telnet': '/usr/bin/telnet', # confirmed location of your client binary (with cmd like 'which telnet')
     }

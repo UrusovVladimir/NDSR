@@ -3,10 +3,15 @@
     src: ../../../../ndsr-app
     dest: /home/{{ admin }}
 
-- name: Copy files for ndsr-app
+- name: Copy files for ndsr-app-backend
   template:
-    src: .env.example.j2
+    src: .env.example_back.j2
     dest: /home/{{ admin }}/ndsr-app/api/.env.example
+
+- name: Copy files for ndsr-app-frontend
+  template:
+    src: .env.example_front.j2
+    dest: /home/{{ admin }}/ndsr-app/.env.example
 
 - name: Create Dockerfile Webtelnet image's and copy to docker host
   template:
