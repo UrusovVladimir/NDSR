@@ -31,9 +31,11 @@
             <button @click="showWanTypesModal" :disabled="isLoading || isOffline" type="button" class="btn btn-sm btn-outline-secondary">
               <span>WAN connection type</span>
             </button>
+            <div class="btn-group flex-wrap">
             <button @click="vncOpen" type="button" class="btn btn-sm btn-outline-secondary">
               <span>Remote Desktop</span>
             </button>
+            </div>
           </div>
         </div>
       </div>
