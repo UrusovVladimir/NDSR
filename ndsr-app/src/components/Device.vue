@@ -31,6 +31,9 @@
             <button @click="showWanTypesModal" :disabled="isLoading || isOffline" type="button" class="btn btn-sm btn-outline-secondary">
               <span>WAN connection type</span>
             </button>
+            <button @click="vncOpen" type="button" class="btn btn-sm btn-outline-secondary">
+              <span>Remote Desktop</span>
+            </button>
           </div>
         </div>
       </div>
@@ -135,5 +138,10 @@ function saveWanTypes() {
 function consoleOpen() {
   let params = `scrollbars=no,resizable=no,status=no,location=no,toolbar=no,menubar=no,width=900,height=600,left=200,top=100`;
   window.open(`http://${VITE_WEB_TELNET_IP}/remote/telnet/telnet/${props.device.consolePort}`, props.device.hwId, params);
+}
+
+function vncOpen() {
+  let params = `scrollbars=no,resizable=no,status=no,location=no,toolbar=no,menubar=no,width=900,height=600,left=200,top=100`;
+  window.open(`http://${props.device.vncUrl}`, props.device.hwId, params);
 }
 </script>
