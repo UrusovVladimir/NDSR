@@ -32,12 +32,13 @@
               <span>WAN connection type</span>
             </button>
           </div>
-          <div class="btn-group flex-wrap">
+        </div>
+        <div class="d-flex justify-content-between align-items-center"></div>
+        <div class="btn-group flex-wrap">
             <button @click="vncOpen" type="button" class="btn btn-sm btn-outline-secondary">
               <span>Remote Desktop</span>
             </button>
           </div>
-        </div>
       </div>
     </div>
 
