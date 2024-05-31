@@ -11,7 +11,7 @@
 - name: Copy files for ndsr-app-frontend
   template:
     src: .env.example_front.j2
-    dest: /home/{{ admin }}/ndsr-app/.env.example
+    dest: /home/{{ admin }}/ndsr-app/.env
 
 - name: Create Dockerfile Webtelnet image's and copy to docker host
   template:

@@ -150,7 +150,7 @@
         "country": "EA/EU",
         "ip": "10.10.19.13/24",
         "shortName": "Titan",
-        "checkUrl": "http://10.10.19.2:1811",
+        "checkUrl": "http://10.10.19.13:1811",
         "URL": "http://172.16.78.254:1811", 
         "interfaceID" : "GigabitEthernet1",
         "consolePort": "1913",
