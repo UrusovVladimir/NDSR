@@ -54,3 +54,7 @@
 .form-check > * {
     cursor: pointer;
 }
+
+.flex-item {
+  flex: 1 1 0%;
+ }
