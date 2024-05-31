@@ -15,7 +15,7 @@
       <div class="card-body">
         <p class="card-text">Connect to SSH: {{ device.sshContainer }}</p>
         <div class="d-flex justify-content-between align-items-center">
-          <div class="btn-group flex-wrap">
+          <div class="btn-group flex-wrap flex-item">
             <button @click="consoleOpen" type="button" class="btn btn-sm btn-outline-secondary">
               <span>Console</span>
             </button>
@@ -34,7 +34,7 @@
           </div>
         </div>
         <div class="d-flex justify-content-between align-items-center">
-           <div class="btn-group flex-wrap">
+           <div class="btn-group flex-wrap flex-item">
              <button @click="vncOpen" type="button" class="btn btn-sm btn-outline-secondary">
               <span>Remote Desktop</span>
             </button>
