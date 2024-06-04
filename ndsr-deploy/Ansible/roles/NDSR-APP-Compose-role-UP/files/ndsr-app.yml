@@ -1,7 +1,7 @@
 services:
   frontend:
      build:
-      context: /home/v.urusov/ndsr-app/
+      context: /home/{{ admin }}/ndsr-app/
       dockerfile: Dockerfile_frontend
      hostname: ndsr-app-frontend
      container_name: ndsr-app-front
@@ -17,7 +17,7 @@ services:
 
   backend:
     build:
-      context: /home/v.urusov/ndsr-app/api
+      context: /home/{{ admin }}/ndsr-app/api
       dockerfile: Dockerfile_backend
     hostname: ndsr-app-backend
     container_name: ndsr-app-back
@@ -33,7 +33,7 @@ services:
 
   webtelnet:
       build:
-       context: /home/v.urusov
+       context: /home/{{ admin }}
        dockerfile: Dockerfile_webtelnet
       hostname: webtelnet
       container_name: ndsr-webtelnet-console
