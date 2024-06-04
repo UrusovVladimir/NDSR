@@ -18,6 +18,7 @@ while true; do
     NEW_GW=$(ip r | grep -Po "default via \K[\d.]+")
     iptables -t nat -D PREROUTING -i eth0 -p tcp --dport ${PORT} -j DNAT --to-destination ${CURRENT_GW}:80
     iptables -t nat -A PREROUTING -i eth0 -p tcp --dport ${PORT} -j DNAT --to-destination ${NEW_GW}:80
+    netfilter-persistent save
   else
     :
   fi
