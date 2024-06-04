@@ -1,0 +1,14 @@
+server {
+        listen 80;    
+        root /usr/share/nginx/html;
+        index index.html index.htm;
+        server_name stand.ndms.tech www.stand.ndms.tech;        
+        
+        location {
+                proxy_pass http://10.10.19.254:80;
+        }        
+        location ~ /.well-known/acme-challenge {
+                allow all;
+                root /usr/share/nginx/html;
+        }
+}

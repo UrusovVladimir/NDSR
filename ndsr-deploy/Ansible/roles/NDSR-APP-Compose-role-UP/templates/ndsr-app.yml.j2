@@ -1,0 +1,52 @@
+services:
+  frontend:
+     build:
+      context: /home/{{ admin }}/ndsr-app/
+      dockerfile: Dockerfile_frontend
+     hostname: ndsr-app-frontend
+     container_name: ndsr-app-front
+     mac_address: 52:10:10:19:02:54
+     networks:
+       ndsr_default:
+         ipv4_address: ${FRONTEND_IP}
+     dns:
+       - 1.1.1.1
+       - 8.8.8.8
+     ports:
+       - 80:80
+
+  backend:
+    build:
+      context: /home/{{ admin }}/ndsr-app/api
+      dockerfile: Dockerfile_backend
+    hostname: ndsr-app-backend
+    container_name: ndsr-app-back
+    mac_address: 52:10:10:19:02:53
+    networks:
+      ndsr_default:
+        ipv4_address: ${BACKEND_IP}
+    dns:
+        - 1.1.1.1
+        - 8.8.8.8
+    ports:
+      - 3000:3000
+
+  webtelnet:
+      build:
+       context: /home/{{ admin }}
+       dockerfile: Dockerfile_webtelnet
+      hostname: webtelnet
+      container_name: ndsr-webtelnet-console
+      mac_address: 52:10:10:19:02:52
+      networks:
+       ndsr_default:
+         ipv4_address: ${WEBTELNET_IP}
+      dns:
+        - 1.1.1.1
+        - 8.8.8.8
+      ports:
+        - 5005:5000
+
+networks:
+  ndsr_default:
+    external: true
