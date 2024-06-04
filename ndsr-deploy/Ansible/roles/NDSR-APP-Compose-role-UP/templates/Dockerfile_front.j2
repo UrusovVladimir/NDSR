@@ -5,7 +5,7 @@ COPY /home/{{ admin }}/ndsr-app .
 RUN npm install && npm run build
 
 FROM nginx
-RUN rm -rf /usr/share/nginx/html
+RUN rm -rf /usr/share/nginx/html && rm /etc/nginx/config.d/default
 COPY --from=builder /app/dist /usr/share/nginx/html
-COPY ./nginx.conf.j2 /usr/share/nginx/html
+COPY ./nginx.conf.j2 /etc/nginx/config.d/nginx.conf
 CMD ["nginx", "-g", "daemon off;"]
