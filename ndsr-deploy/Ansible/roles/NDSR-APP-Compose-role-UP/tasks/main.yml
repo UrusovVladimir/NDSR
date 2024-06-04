@@ -19,9 +19,9 @@
     dest: /home/{{ admin }}/Dockerfile_webtelnet
 
 - name: Copy app docker-compose file to remote host
-  copy:
-   src: ndsr-app.yml
-   dest: /home/{{ admin }}
+  template:
+   src: ndsr-app.yml.j2
+   dest: /home/{{ admin }}/ndsr-app.yml
 
 - name: Copy app env file to remote host
   copy:
