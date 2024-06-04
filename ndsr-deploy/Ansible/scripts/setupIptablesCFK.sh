@@ -32,7 +32,7 @@ done
 
 
 
-MODELS=$(docker ps -a --format '{{json .}}' |  jq -r .Names)
+MODELS=$(docker ps -a --format '{{json .}}' |  jq -r .Names | grep KN)
 IFS=$'\n' readarray -t MODELS <<< "$MODELS"
 
 for ifconfig in ${MODELS[@]}; do
