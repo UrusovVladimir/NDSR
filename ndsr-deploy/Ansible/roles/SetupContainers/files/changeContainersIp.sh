@@ -17,7 +17,7 @@ while true; do
     dhclient $MODEL_NAME >/dev/null 2>&1
     NEW_GW=$(ip r | grep -Po "default via \K[\d.]+")
     iptables -t nat -D PREROUTING -i eth0 -p tcp --dport ${PORT} -j DNAT --to-destination ${OLD_ARP_ADDR}:80
-    iptables -t nat -I PREROUTING 1 -i eth0 -p tcp --dport ${PORT} -j DNAT --to-destination ${NEW_GW}:80
+    iptables -t nat -I PREROUTING 1 -i eth0 -p tcp --dport ${PORT} -j DNAT --to-destination ${NEW_ARP_ADDR}:80
     netfilter-persistent save
   else
     :
