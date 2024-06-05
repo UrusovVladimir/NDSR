@@ -16,7 +16,7 @@ while true; do
     ip link set arp on dev $MODEL_NAME
     dhclient $MODEL_NAME >/dev/null 2>&1
     NEW_GW=$(ip r | grep -Po "default via \K[\d.]+")
-    iptables -t nat -D PREROUTING -i eth0 -p tcp --dport ${PORT} -j DNAT --to-destination ${CURRENT_GW}:80
+    iptables -t nat -D PREROUTING -i eth0 -p tcp --dport ${PORT} -j DNAT --to-destination ${OLD_ARP_ADDR}:80
     iptables -t nat -A PREROUTING -i eth0 -p tcp --dport ${PORT} -j DNAT --to-destination ${NEW_GW}:80
     netfilter-persistent save
   else
