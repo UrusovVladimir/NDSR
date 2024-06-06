@@ -23,4 +23,13 @@ while true; do
     :
   fi
   CURRENT_GW=$NEW_GW
+
+VAR=$(iptables -t nat -S | grep -P "eth0 -p tcp -m tcp --dport ${PORT}" | grep -Po "(?:\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})(?=[\s|:])")
+if [ -z ${VAR} ];then
+iptables -t nat -F PREROUTING
+iptables -t nat -A PREROUTING -i eth0 -p tcp --dport ${PORT} -j DNAT --to-destination ${NEW_ARP_ADDR}:80
+else
+:
+fi
+
 done
