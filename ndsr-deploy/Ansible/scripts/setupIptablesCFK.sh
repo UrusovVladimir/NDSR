@@ -7,7 +7,7 @@ for models in $model; do
 port=${models:3:4}
 current=$(docker exec $models iptables -t nat -S | grep 'to-destination 192.168.1.1:80')
 if [[ ! $current ]]; then
- docker exec $models iptables -t nat -A PREROUTING -p tcp --dport $port -j DNAT --to-destination 192.168.1.1:80
+ docker exec $models iptables -t nat -A PREROUTING -i eth0 -p tcp --dport $port -j DNAT --to-destination 192.168.1.1:80
  echo "$models Правило iptables -t nat -A PREROUTING -p tcp --dport $port -j DNAT --to-destination 192.168.1.1:80 добавлено." > /dev/tty11
 fi
 
