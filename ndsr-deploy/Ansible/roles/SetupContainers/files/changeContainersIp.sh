@@ -28,6 +28,7 @@ VAR=$(iptables -t nat -S | grep -P "eth0 -p tcp -m tcp --dport ${PORT}" | grep -
 if [ -z ${VAR} ];then
 iptables -t nat -F PREROUTING
 iptables -t nat -A PREROUTING -i eth0 -p tcp --dport ${PORT} -j DNAT --to-destination ${NEW_ARP_ADDR}:80
+netfilter-persistent save
 else
 :
 fi
