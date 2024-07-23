@@ -13,7 +13,8 @@
         "resetPort": "22",
         "rebootPort": "1",
         "sshContainer":"172.16.78.254:1926",
-        "vncUrl":"http://172.16.78.254:6804/vnc.html"
+        "vncUrl":"http://172.16.78.254:6804/vnc.html",
+        "jeromeID": "1"
     },
     {
         "id": "3710",
@@ -29,7 +30,8 @@
         "resetPort": "21",
         "rebootPort": "2",
         "sshContainer":"172.16.78.254:1927",
-        "vncUrl":"http://172.16.78.254:6805/vnc.html"
+        "vncUrl":"http://172.16.78.254:6805/vnc.html",
+        "jeromeID": "1"
     },
     {
         "id": "2410",
@@ -45,7 +47,8 @@
         "resetPort": "20",
         "rebootPort": "3",
         "sshContainer":"172.16.78.254:1928",
-        "vncUrl":"http://172.16.78.254:6806/vnc.html"
+        "vncUrl":"http://172.16.78.254:6806/vnc.html",
+        "jeromeID": "1"
     },
     {
         "id": "1011",
@@ -61,7 +64,8 @@
         "resetPort": "19",
         "rebootPort": "4",
         "sshContainer":"172.16.78.254:1929",
-        "vncUrl":"http://172.16.78.254:6807/vnc.html"
+        "vncUrl":"http://172.16.78.254:6807/vnc.html",
+        "jeromeID": "1"
     },
     {
         "id": "2910",
@@ -77,7 +81,8 @@
         "resetPort": "18",
         "rebootPort": "5",
         "sshContainer":"172.16.78.254:1930",
-        "vncUrl":"http://172.16.78.254:6808/vnc.html"
+        "vncUrl":"http://172.16.78.254:6808/vnc.html",
+        "jeromeID": "1"
     },
     {
         "id": "2311",
@@ -93,7 +98,8 @@
         "resetPort": "17",
         "rebootPort": "6",
         "sshContainer":"172.16.78.254:1931",
-        "vncUrl":"http://172.16.78.254:6809/vnc.html"
+        "vncUrl":"http://172.16.78.254:6809/vnc.html",
+        "jeromeID": "1"
     },
     {
         "id": "3510",
@@ -109,7 +115,8 @@
         "resetPort": "16",
         "rebootPort": "7",
         "sshContainer":"172.16.78.254:1932",
-        "vncUrl":"http://172.16.78.254:6810/vnc.html"
+        "vncUrl":"http://172.16.78.254:6810/vnc.html",
+        "jeromeID": "1"
     },
     {
         "id": "1713",
@@ -125,7 +132,8 @@
         "resetPort": "15",
         "rebootPort": "8",
         "sshContainer":"172.16.78.254:1933",
-        "vncUrl":"http://172.16.78.254:6811/vnc.html"
+        "vncUrl":"http://172.16.78.254:6811/vnc.html",
+        "jeromeID": "1"
     },
     {
         "id": "1912",
@@ -141,7 +149,8 @@
         "resetPort": "14",
         "rebootPort": "9",
         "sshContainer":"172.16.78.254:1934",
-        "vncUrl":"http://172.16.78.254:6812/vnc.html"
+        "vncUrl":"http://172.16.78.254:6812/vnc.html",
+        "jeromeID": "1"
     },
     {
         "id": "1811",
@@ -157,6 +166,24 @@
         "resetPort": "13",
         "rebootPort": "10",
         "sshContainer":"172.16.78.254:1935",
-        "vncUrl":"http://172.16.78.254:6813/vnc.html"
+        "vncUrl":"http://172.16.78.254:6813/vnc.html",
+        "jeromeID": "1"
+    },
+    {
+        "id": "2110",
+        "hwId": "KN-2110",
+        "type": "router",
+        "country": "EA/EU",
+        "ip": "10.10.19.14/24",
+        "shortName": "DUO",
+        "checkUrl": "http://10.10.19.14:2110",
+        "URL": "http://172.16.78.254:2110", 
+        "interfaceID" : "FastEthernet0",
+        "consolePort": "1914",
+        "resetPort": "22",
+        "rebootPort": "1",
+        "sshContainer":"172.16.78.254:1936",
+        "vncUrl":"http://172.16.78.254:6814/vnc.html",
+        "jeromeID": "2"
     }
 ]
