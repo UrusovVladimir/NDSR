@@ -8,8 +8,10 @@ export async function resetConfig(deviceId) {
 
     const connection = new Telnet()
 
+    let JEROME_HOST = device.jeromeID == 1 ? process.env.JEROME_1_IP : process.env.JEROME_2_IP
+
     const params = {
-        host: process.env.JEROME_IP,
+        host: JEROME_HOST,
         port: process.env.JEROME_PORT,
         negotiationMandatory: false,
         timeout: 3500,
