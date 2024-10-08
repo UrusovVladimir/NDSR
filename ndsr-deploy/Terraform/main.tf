@@ -42,7 +42,7 @@ resource "esxi_guest" "US07_Docker02" {
   memsize        = var.memsize
   numvcpus       = var.numvcpus
   boot_disk_type = var.boot_disk_type
-  boot_disk_size = var.boot_disk_size
+  boot_disk_size = var.boot_disk_size[0]
 
   # connection {
   #   host = "172.16.77.249"
@@ -80,6 +80,7 @@ lifecycle {
   create_before_destroy = true
 }
 }
+
 resource "null_resource" "cloud"{
   provisioner "remote-exec" {
   connection {
@@ -92,4 +93,19 @@ resource "null_resource" "cloud"{
   inline = ["cloud-init status --wait"]
   }
   depends_on = [ esxi_guest.US07_Docker02 ]
+}
+
+resource "esxi_guest" "DHCP" {
+  
+  guest_name     = var.vm_hostname_dhcp
+  disk_store     = var.disk_store
+  guestos        = var.guestos
+  virthwver      = var.virthwver
+  ovf_source     = var.ovf_file
+  power          = var.power
+  memsize        = var.memsize_dhcp
+  numvcpus       = var.numvcpus_dhcp
+  boot_disk_type = var.boot_disk_type
+  boot_disk_size = var.boot_disk_size[1]
+  
 }

@@ -6,7 +6,7 @@ CURRENT_NAME_IMAGE=$(docker image ls --format '{{json .}}' | jq 'select(.Reposit
 ###в переменную image, присваивается id image который будет использоваться для создания контейнеров. В текущем примере это systemd
 
 if  [[ ! $CURRENT_NAME_IMAGE == $NAME_IMAGE ]]; then
-        sshpass -p $PASSWORD scp -r  -o StrictHostKeyChecking=no $ADMIN@192.168.77.132:/vmfs/volumes/datastore1/docker_images/novnc_systemd.tar.gz /home/$USER/
+        sshpass -p $PASSWORD scp -r -o StrictHostKeyChecking=no $ADMIN@192.168.77.132:/vmfs/volumes/datastore1/docker_images/novnc_systemd.tar.gz /home/$USER/
         gunzip -c /home/$USER/novnc_systemd.tar.gz | docker load
 fi
 

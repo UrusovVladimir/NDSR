@@ -6,9 +6,15 @@ model=$(docker ps -a --format '{{json .}}' |  jq -r .Names | grep KN)
 for models in $model; do
 port=${models:3:4}
 current=$(docker exec $models iptables -t nat -S | grep 'to-destination 192.168.1.1:80')
+AP_FORWARD=$(docker exec $models iptables -t nat -S | grep 'to-destination 192.168.1.3:80')
 if [[ ! $current ]]; then
  docker exec $models iptables -t nat -A PREROUTING -i eth0 -p tcp --dport $port -j DNAT --to-destination 192.168.1.1:80
  echo "$models Правило iptables -t nat -A PREROUTING -p tcp --dport $port -j DNAT --to-destination 192.168.1.1:80 добавлено." > /dev/tty11
+fi
+
+if [ $models == "KN-1613" ] && [ ! $AP_FORWARD ]; then
+ docker exec $models iptables -t nat -A PREROUTING -p tcp --dport $port -j DNAT --to-destination 192.168.1.3:80
+ echo "$models Правило iptables -t nat -A PREROUTING -p tcp --dport $port -j DNAT --to-destination 192.168.1.3:80 добавлено."
 fi
 
 current=$(docker exec $models iptables -L FORWARD -nv | sudo iptables -L FORWARD -nv | grep 'TCPMSS clamp to PMTU')

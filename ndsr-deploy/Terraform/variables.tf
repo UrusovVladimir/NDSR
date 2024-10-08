@@ -22,8 +22,13 @@ variable "ovf_file" {
   #default = "jammy-server-cloudimg-amd64.ova"
   default = "https://cloud-images.ubuntu.com/releases/jammy/release/ubuntu-22.04-server-cloudimg-amd64.ova"
 }
+
 variable "vm_hostname" {
   default = "US07_DockerHost02"
+}
+
+variable "vm_hostname_dhcp" {
+  default = "US08_DHCP"
 }
 
 variable "disk_store" {
@@ -39,8 +44,13 @@ variable "virthwver" {
 }
 
 variable "boot_disk_size" {
-  default = "250"
+  type =list(string) 
+  default = [
+    "250",
+    "10"
+  ]
 }
+
 
 variable "power" {
   default = "on"
@@ -50,8 +60,16 @@ variable "memsize" {
   default = "10240"
 }
 
+variable "memsize_dhcp" {
+  default = "256"
+}
+
 variable "numvcpus" {
   default = "6"
+}
+
+variable "numvcpus_dhcp" {
+  default = "1"
 }
 
 variable "guestos" {
@@ -86,6 +104,7 @@ variable "esxi_password" {
 variable "password" {
   description = "Password for NDSR(DockerHost) administrator's account"
 }
+
 variable "ssh" {
   description = "Public Key for connect to Docker host"
 }

@@ -200,6 +200,66 @@ services:
       - ${TITAN_SSH}:22
       - ${TITAN_WEB}:${TITAN_WEB}
       - ${TITAN_VNC}:6080
+  kn2110:
+    image: ${IMAGE}
+    hostname: ${DUO}
+    container_name: ${DUO}
+    mac_address: 52:c1:18:11:19:14
+    privileged: true
+    networks:
+      default:
+        ipv4_address: ${DUO_IP}
+      kn2110:
+    cap_add:
+      - NET_ADMIN
+      - SYS_ADMIN
+    dns:
+      - 1.1.1.1
+      - 8.8.8.8
+    ports:
+      - ${DUO_SSH}:22
+      - ${DUO_WEB}:${DUO_WEB}
+      - ${DUO_VNC}:6080
+  kn1613:
+    image: ${IMAGE}
+    hostname: ${AIR}
+    container_name: ${AIR}
+    mac_address: 52:c1:18:11:19:15
+    privileged: true
+    networks:
+      default:
+        ipv4_address: ${AIR_IP}
+      kn1613:
+    cap_add:
+      - NET_ADMIN
+      - SYS_ADMIN
+    dns:
+      - 1.1.1.1
+      - 8.8.8.8
+    ports:
+      - ${AIR_SSH}:22
+      - ${AIR_WEB}:${AIR_WEB}
+      - ${AIR_VNC}:6080
+  kn2211:
+    image: ${IMAGE}
+    hostname: ${RUNNER_4G}
+    container_name: ${RUNNER_4G}
+    mac_address: 52:c1:18:11:19:16
+    privileged: true
+    networks:
+      default:
+        ipv4_address: ${RUNNER_4G_IP}
+      kn2211:
+    cap_add:
+      - NET_ADMIN
+      - SYS_ADMIN
+    dns:
+      - 1.1.1.1
+      - 8.8.8.8
+    ports:
+      - ${RUNNER_4G_SSH}:22
+      - ${RUNNER_4G_WEB}:${RUNNER_4G_WEB}
+      - ${RUNNER_4G_VNC}:6080
 networks:
   default:
     ipam:
@@ -303,6 +363,36 @@ networks:
     driver: ghcr.io/devplayer0/docker-net-dhcp:golang
     driver_opts:
       bridge: kn1811
+      ipv6: 'false'
+      ignore_conflicts: 'false'
+      skip_routes: 'false'
+    ipam:
+      driver: 'null'
+  kn2110:
+    name: kn2110
+    driver: ghcr.io/devplayer0/docker-net-dhcp:golang
+    driver_opts:
+      bridge: kn2110
+      ipv6: 'false'
+      ignore_conflicts: 'false'
+      skip_routes: 'false'
+    ipam:
+      driver: 'null'
+  kn1613:
+    name: kn1613
+    driver: ghcr.io/devplayer0/docker-net-dhcp:golang
+    driver_opts:
+      bridge: kn1613
+      ipv6: 'false'
+      ignore_conflicts: 'false'
+      skip_routes: 'false'
+    ipam:
+      driver: 'null'
+  kn2211:
+    name: kn2211
+    driver: ghcr.io/devplayer0/docker-net-dhcp:golang
+    driver_opts:
+      bridge: kn2211
       ipv6: 'false'
       ignore_conflicts: 'false'
       skip_routes: 'false'

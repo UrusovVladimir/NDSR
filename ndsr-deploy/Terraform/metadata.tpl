@@ -105,6 +105,33 @@ network:
           interfaces:
             - vlan1905
           macaddress: 00:0e:29:c1:37:10
+        kn2110:
+          dhcp4: false
+          dhcp6: false
+          nameservers:
+            addresses: []
+            search: []
+          interfaces:
+            - vlan1914
+          macaddress: 00:0e:29:c1:21:10
+        kn1613:
+          dhcp4: false
+          dhcp6: false
+          nameservers:
+            addresses: []
+            search: []
+          interfaces:
+            - vlan1915
+          macaddress: 00:0e:29:c1:16:13
+        kn2211:
+          dhcp4: false
+          dhcp6: false
+          nameservers:
+            addresses: []
+            search: []
+          interfaces:
+            - vlan1916
+          macaddress: 00:0e:29:c1:22:11
   vlans:
         vlan1604:
           dhcp4: false
@@ -161,3 +188,18 @@ network:
           dhcp6: false
           id: 1913
           link: int
+        vlan1914:
+          dhcp4: false
+          dhcp6: false
+          id: 1914
+          link: int
+        vlan1915:
+          dhcp4: false
+          dhcp6: false
+          id: 1915
+          link: int
+        vlan1916:
+          dhcp4: false
+          dhcp6: false
+          id: 1916
+          link: int            

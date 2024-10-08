@@ -30,6 +30,10 @@ services:
         - 8.8.8.8
     ports:
       - 3000:3000
+    volumes:
+      - /home/{{ admin }}/ndsr-app/api/devices.json:/app/devices.json
+      - /home/{{ admin }}/ndsr-app/api/wan_types.json:/app/wan_types.json
+
 
   webtelnet:
       build:
