@@ -11,7 +11,7 @@ users:
     groups: [docker,root]
     shell: /bin/bash
     sudo: ALL=(ALL) NOPASSWD:ALL
-    passwd: "$y$j9T$nzw2cjjIBN1ZmVaCHCdwB.$P0v5BHMB9YFAwPoKmFxpZ7D.Y3q7azc1PLxsPUvxH6A"
+    passwd: ""
 
 chpasswd:
   list: |
