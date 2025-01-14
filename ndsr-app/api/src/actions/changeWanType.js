@@ -1,67 +1,74 @@
-import {Telnet} from "telnet-client"
-import {getDeviceById, wanTypes} from "../devices.js";
+import {TelnetConnection} from "./telnetClass.js"
 
-export async function changeWanType(deviceId, checkedWanTypeIds) {
+import {getDeviceById, getVlanId, wanTypes} from "../devices.js";
 
-    let device = getDeviceById(deviceId)
-    if (!device || !device.interfaceID || !device.consolePort)
-        throw new Error('The device was not found or the parameters are incorrect')
 
-    const connection = new Telnet()
-
-    const params = {
-        host: process.env.MOXA_IP,
-        port: device.consolePort,
-        negotiationMandatory: false,
-        timeout: 3500,
-        sendTimeout: 2500,
-    }
-
-    let res
-
-    await connection.connect(params)
-    await connection.send("\n");
-
-    console.log('Connected to ' + device.hwId)
-
-    res = await connection.exec('eula accept', {shellPrompt: /\(config\)[> ]/i});
-    console.log('eula accept', res)
-
-    let unSelectedWanTypes = wanTypes.filter(wan => !checkedWanTypeIds.includes(String(wan.vlanId)))
-
-    for (let wan of unSelectedWanTypes) {
-        let vlan = device.type === 'router' ? 'Vlan' + wan.vlanId : wan.vlanId
-        for (let cmd of wan.offCommands) {
-            cmd = cmd.replace(':interface_value:', `${device.interfaceID}/${vlan}`);
-            res = await connection.send(cmd, {waitFor: /\(config\)[> ]/i});
-            console.log(res)
-        }
-    }
-
+ async function changeWanType(deviceId,checkedWanTypeIds) {
     let selectedWanTypes = wanTypes.filter(wan => checkedWanTypeIds.includes(String(wan.vlanId)))
+    // let selectedWanTypes = wanTypes.filter(wan => checkedWanTypeIds === wan.vlanId)
+    console.log(selectedWanTypes)
+    let PVID = wanTypes.find(command => "onVlanPVID" === command.setting)
+    let VLAN = wanTypes.find(command => "onVlanFixPort" === command.setting)
+    let OFF_VLAN = wanTypes.find(command => "offVlanFixPort" === command.setting)
+    let device = getDeviceById(deviceId);
+    let wanVlan = getVlanId()
 
-    if (selectedWanTypes.length) {
+    const connection = new TelnetConnection(process.env.SWITCH,process.env.SWITCH_LOGIN,process.env.SWITCH_PASSWORD);
 
-        for (let wan of selectedWanTypes) {
-            let vlan = device.type === 'router' ? 'Vlan' + wan.vlanId : wan.vlanId
-            let interfaceValue = `${device.interfaceID}/${vlan}`
-            res = await connection.exec('interface ' + interfaceValue, {shellPrompt: /\(config-if\)[> ]/i});
-            console.log('interface ' + interfaceValue, res)
+    let res;
+        await connection.connect();
+        
 
-            for (let cmd of wan.onCommands) {
-                cmd = cmd.replace(':interface_value:', interfaceValue);
-                res = await connection.exec(cmd, {shellPrompt: /\(config-if\)[> ]/i});
-                console.log(cmd, res)
+        if (selectedWanTypes.length) {
+            await connection.executeCommand( 'configure', null, /MGS3520-Techsupport\(config\)[# ]/i);
+            
+            for (let cmd of OFF_VLAN.commands){
+                for (let wan of wanVlan){
+                    console.log("vlan",+ wan)
+                    await connection.executeCommand("vlan", wan, /MGS3520-Techsupport\(config-vlan\)[# ]/i);
+                    await connection.executeCommand(cmd, device.switchPortWan, /MGS3520-Techsupport\(config-vlan\)#/i);
+                    await connection.executeCommand("exit",null,/MGS3520-Techsupport\(config\)[# ]/i);
+                }}
+                for (let wan of selectedWanTypes) {
+                    let vlan = wan.vlanId;
+                    for (let cmd of PVID.commands) {
+                        await connection.executeCommand( cmd, cmd === 'interface port-channel' ? device.switchPortWan : (cmd === 'pvid' ? vlan : null), /MGS3520-Techsupport\(config-interface\)[# ]/i);
+                        }
+                    await connection.executeCommand("exit",null,/MGS3520-Techsupport\(config\)[# ]/i);
+                    await connection.executeCommand( "vlan", vlan, /MGS3520-Techsupport\(config-vlan\)[# ]/i);
+                    }
+                
+                for (let cmd of VLAN.commands) {
+                        await connection.executeCommand( cmd, device.switchPortWan, /MGS3520-Techsupport\(config-vlan\)[# ]/i);
+                    }
+                }
+        else {
+            console.error(`No WAN types matching the given VLAN IDs found.Applying fake vlan`);
+            let OFF_PVID = wanTypes.find(command => "offVlanPVID" === command.setting)
+            res = await connection.exec('configure',{shellPrompt: /MGS3520-Techsupport\(config\)[# ]/i});
+            let switchPort = device.switchPortWan
+            
+            for (let cmd of OFF_PVID.commands){
+                let fakeVlan = "4094"
+                await connection.executeCommand( cmd, cmd === 'interface port-channel' ? device.switchPortWan : (cmd === 'pvid' ? fakeVlan : null), /MGS3520-Techsupport\(config-interface\)[# ]/i);
             }
+            await connection.executeCommand("exit",null,/MGS3520-Techsupport\(config\)[# ]/i);
+            for (let cmd of OFF_VLAN.commands){
+                for (let wan of wanVlan){
+                    await connection.executeCommand("vlan", wan, /MGS3520-Techsupport\(config-vlan\)[# ]/i);
+                    await connection.executeCommand(cmd, device.switchPortWan, /MGS3520-Techsupport\(config-vlan\)#/i);
+                    await connection.executeCommand("exit",null,/MGS3520-Techsupport\(config\)[# ]/i);
+                }
+            }
+
         }
+    
+    
 
-        res = await connection.exec('exit', {shellPrompt: /\(config\)[> ]/i});
-        console.log('exit', res)
-    }
+        await connection.end(); // Не забудьте закрыть соединение
+ }
 
-    res = await connection.exec('system configuration save', {shellPrompt: /\(config\)[> ]/i});
-    console.log('system configuration save', res)
 
-    await connection.end()
-}
-
+ export{
+    changeWanType
+ }

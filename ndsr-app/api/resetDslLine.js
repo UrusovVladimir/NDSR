@@ -1,5 +1,5 @@
 import {Telnet} from "telnet-client"
-import {getDeviceById} from "/app/src/devices.js";
+import {getDeviceById} from "./src/devices.js";
 
 export async function resetDslLine(deviceId) {
     let device = getDeviceById(deviceId)

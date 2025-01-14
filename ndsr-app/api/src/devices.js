@@ -45,10 +45,45 @@ function getDeviceById(id) {
     return devices.find(device => device.id == String(id))
 }
 
+
+function getDeviceLanPortByID(vlanLocal) {
+    const device = devices.find(device => String(device.vlanLocal) === String(vlanLocal));
+    return device.switchPortLan
+}   
+
+function getParamRouter(id){
+    const router = devices.find(device => String(device.id) === (String(id)))
+    if (router){
+        return{
+        port: router.switchPortLan,
+        vlan: router.vlanLocal};
+    }
+    else{
+        return null
+    }
+}
+
+
+function getVlanId(){
+    let wanVlan = []
+    wanTypes.forEach(element => {
+        if (element.vlanId){
+            wanVlan.push(element.vlanId)
+        }
+    });
+    return wanVlan
+}
+
+
+
 export {
     devices,
     wanTypes,
     getDevicesStatus,
     getDeviceStatusCode,
     getDeviceById,
+    getVlanId,
+    getDeviceLanPortByID,
+    getParamRouter
+    
 }

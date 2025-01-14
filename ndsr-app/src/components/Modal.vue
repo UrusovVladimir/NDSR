@@ -24,10 +24,16 @@
 import {onMounted, ref} from "vue";
 import {Modal} from "bootstrap";
 
+
+
+
+
+
+
 defineProps({
   title: {
     type: String,
-  },
+  }
 });
 
 let modalElement = ref(null);
@@ -45,6 +51,12 @@ function _hide() {
   thisModalObj.hide();
 }
 
+
+
+
 defineExpose({show: _show, hide: _hide});
 
+
 </script>
+
+

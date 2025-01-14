@@ -14,7 +14,10 @@
         "rebootPort": "1",
         "sshContainer":"172.16.78.254:1926",
         "vncUrl":"http://172.16.78.254:6804/vnc.html",
-        "jeromeID": "1"
+        "jeromeID": "1",
+        "vlanLocal": "1904",
+        "switchPortWan": "1",
+        "switchPortLan": "44"
     },
     {
         "id": "3710",
@@ -31,7 +34,10 @@
         "rebootPort": "2",
         "sshContainer":"172.16.78.254:1927",
         "vncUrl":"http://172.16.78.254:6805/vnc.html",
-        "jeromeID": "1"
+        "jeromeID": "1",
+        "vlanLocal": "1905",
+        "switchPortWan": "2",
+        "switchPortLan": "43"
     },
     {
         "id": "2410",
@@ -48,7 +54,10 @@
         "rebootPort": "3",
         "sshContainer":"172.16.78.254:1928",
         "vncUrl":"http://172.16.78.254:6806/vnc.html",
-        "jeromeID": "1"
+        "jeromeID": "1",
+        "vlanLocal": "1906",
+        "switchPortWan": "3",
+        "switchPortLan": "42"
     },
     {
         "id": "1011",
@@ -65,7 +74,10 @@
         "rebootPort": "4",
         "sshContainer":"172.16.78.254:1929",
         "vncUrl":"http://172.16.78.254:6807/vnc.html",
-        "jeromeID": "1"
+        "jeromeID": "1",
+        "vlanLocal": "1907",
+        "switchPortWan": "4",
+        "switchPortLan": "41"
     },
     {
         "id": "2910",
@@ -82,7 +94,10 @@
         "rebootPort": "5",
         "sshContainer":"172.16.78.254:1930",
         "vncUrl":"http://172.16.78.254:6808/vnc.html",
-        "jeromeID": "1"
+        "jeromeID": "1",
+        "vlanLocal": "1908",
+        "switchPortWan": "5",
+        "switchPortLan": "40"
     },
     {
         "id": "2311",
@@ -99,7 +114,10 @@
         "rebootPort": "6",
         "sshContainer":"172.16.78.254:1931",
         "vncUrl":"http://172.16.78.254:6809/vnc.html",
-        "jeromeID": "1"
+        "jeromeID": "1",
+        "vlanLocal": "1909",
+        "switchPortWan": "6",
+        "switchPortLan": "39"
     },
     {
         "id": "3510",
@@ -116,7 +134,10 @@
         "rebootPort": "7",
         "sshContainer":"172.16.78.254:1932",
         "vncUrl":"http://172.16.78.254:6810/vnc.html",
-        "jeromeID": "1"
+        "jeromeID": "1",
+        "vlanLocal": "1910",
+        "switchPortWan": "7",
+        "switchPortLan": "38"
     },
     {
         "id": "1713",
@@ -133,7 +154,11 @@
         "rebootPort": "8",
         "sshContainer":"172.16.78.254:1933",
         "vncUrl":"http://172.16.78.254:6811/vnc.html",
-        "jeromeID": "1"
+        "jeromeID": "1",
+        "vlanLocal": "1911",
+        "switchPortWan": "8",
+        "switchPortLan": "37"
+
     },
     {
         "id": "1912",
@@ -150,7 +175,10 @@
         "rebootPort": "9",
         "sshContainer":"172.16.78.254:1934",
         "vncUrl":"http://172.16.78.254:6812/vnc.html",
-        "jeromeID": "1"
+        "jeromeID": "1",
+        "vlanLocal": "1912",
+        "switchPortWan": "9",
+        "switchPortLan": "36"
     },
     {
         "id": "1811",
@@ -167,7 +195,10 @@
         "rebootPort": "10",
         "sshContainer":"172.16.78.254:1935",
         "vncUrl":"http://172.16.78.254:6813/vnc.html",
-        "jeromeID": "1"
+        "jeromeID": "1",
+        "vlanLocal": "1913",
+        "switchPortWan": "10",
+        "switchPortLan": "35"
     },
     {
         "id": "2110",
@@ -184,12 +215,15 @@
         "rebootPort": "1",
         "sshContainer":"172.16.78.254:1936",
         "vncUrl":"http://172.16.78.254:6814/vnc.html",
-        "jeromeID": "2"
+        "jeromeID": "2",
+        "vlanLocal": "1914",
+        "switchPortWan": "12",
+        "switchPortLan": "34"
     },
     {
         "id": "1613",
         "hwId": "KN-1613",
-        "type": "extander",
+        "type": "AP",
         "country": "EA/EU",
         "ip": "10.10.19.15/24",
         "shortName": "Air",
@@ -201,7 +235,8 @@
         "rebootPort": "2",
         "sshContainer":"172.16.78.254:1937",
         "vncUrl":"http://172.16.78.254:6815/vnc.html",
-        "jeromeID": "2"
+        "jeromeID": "2",
+        "switchPortLan": "33"
     },
     {
         "id": "2211",
@@ -218,6 +253,9 @@
         "rebootPort": "3",
         "sshContainer":"172.16.78.254:1938",
         "vncUrl":"http://172.16.78.254:6816/vnc.html",
-        "jeromeID": "2"
+        "jeromeID": "2",
+        "vlanLocal": "1916",
+        "switchPortWan": "11",
+        "switchPortLan": "32"
     }
 ]

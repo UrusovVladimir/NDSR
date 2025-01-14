@@ -22,4 +22,4 @@ function savePasswordToFile(password = null) {
     });
 }
 
-
+console.log(generatePassword())

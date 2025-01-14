@@ -12,6 +12,7 @@ export const socket = io(import.meta.env.VITE_WS_HOST, {path: "/ws/"});
 socket.on("connect", () => {
     console.log('socket connected');
     state.connected = true;
+    // socket.emit("sendDisplayCheckedWanTypeIds");
 });
 
 socket.on("disconnect", () => {
