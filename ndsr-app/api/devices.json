@@ -11,7 +11,7 @@
         "consolePort": "1904",
         "resetPort": "22",
         "rebootPort": "1",
-        "sshContainer":"172.16.78.254:1926",f21
+        "sshContainer":"172.16.78.254:1926",
         "vncUrl":"http://172.16.78.254:6804/vnc.html",
         "jeromeID": "1",
         "vlanLocal": "1904",
