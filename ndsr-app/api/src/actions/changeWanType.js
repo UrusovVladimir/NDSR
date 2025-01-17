@@ -45,7 +45,7 @@ import {getDeviceById, getVlanId, wanTypes} from "../devices.js";
         else {
             console.error(`No WAN types matching the given VLAN IDs found.Applying fake vlan`);
             let OFF_PVID = wanTypes.find(command => "offVlanPVID" === command.setting)
-            res = await connection.exec('configure',{shellPrompt: /MGS3520-Techsupport\(config\)[# ]/i});
+            res = await connection.executeCommand('configure',{shellPrompt: /MGS3520-Techsupport\(config\)[# ]/i});
             let switchPort = device.switchPortWan
             
             for (let cmd of OFF_PVID.commands){
