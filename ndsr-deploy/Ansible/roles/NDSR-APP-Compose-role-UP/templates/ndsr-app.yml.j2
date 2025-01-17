@@ -1,7 +1,7 @@
 services:
   frontend:
      build:
-      context: /home/{{ admin }}/ndsr-app/
+      context: /home/{{ admin }}/
       dockerfile: Dockerfile_frontend
      hostname: ndsr-app-frontend
      container_name: ndsr-app-front
@@ -17,7 +17,7 @@ services:
 
   backend:
     build:
-      context: /home/{{ admin }}/ndsr-app/api
+      context: /home/{{ admin }}/
       dockerfile: Dockerfile_backend
     hostname: ndsr-app-backend
     container_name: ndsr-app-back
