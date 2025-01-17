@@ -17,6 +17,16 @@
   template:
     src: Dockerfile.j2
     dest: /home/{{ admin }}/Dockerfile_webtelnet
+    
+- name: Create Dockerfile Frontend image's and copy to docker host
+  template:
+    src: Dockerfile_front.j2
+    dest: /home/{{ admin }}/Dockerfile_frontend
+    
+- name: Create Dockerfile Webtelnet image's and copy to docker host
+  template:
+    src: Dockerfile_back.j2
+    dest: /home/{{ admin }}/Dockerfile_backend
 
 - name: Copy app docker-compose file to remote host
   template:
