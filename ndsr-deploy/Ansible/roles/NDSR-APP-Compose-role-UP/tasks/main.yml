@@ -6,7 +6,7 @@
 - name: Copy files for ndsr-app-backend
   template:
     src: .env.example_back.j2
-    dest: /home/{{ admin }}/ndsr-app/api/.env.example
+    dest: /home/{{ admin }}/ndsr-app/api/.env
 
 - name: Copy files for ndsr-app-frontend
   template:
