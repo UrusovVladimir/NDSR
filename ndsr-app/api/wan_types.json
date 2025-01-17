@@ -9,7 +9,11 @@
     },
     {
         "type": "PPPoE(Vlan747)",
-        "vlanId": "747"
+        "vlanId": "747",
+        "credentials": [
+           "techsupport",
+           "techsupport"
+        ]
     },
     {
         "type": "Ds-Lite(Vlan3001)",
