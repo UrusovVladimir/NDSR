@@ -2,7 +2,12 @@
   ansible.builtin.copy:
     src: ../../../../ndsr-app
     dest: /home/{{ admin }}
-
+    
+-name: Copy file nginx for ndsr-frontend
+  template:
+    src: nginx.conf.j2
+    dest: /home/{{ admin }}
+    
 - name: Copy files for ndsr-app-backend
   template:
     src: .env.example_back.j2
