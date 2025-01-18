@@ -31,7 +31,7 @@
                   AP Connected to MWS Router: {{ currentMwsRouter }}   
                   <Popper style="height: auto; width: auto;"
                     :offset-distance="offsetDistance + ''"
-                    :content="currentWanType"
+                    :content="'Extender connected to router:' + currentMwsRouter"
                     :arrow="true"
                     :hover="true"> <svg style="padding-left:1px;" width="14" height="14"><use xlink:href="/img/info.svg#info-fill"/></svg>
                   </Popper>
@@ -191,9 +191,8 @@ const currentMwsRouter = computed(() => {
     return displayCheckMwsRouterId.value || "None"
   }
   else{
-  return infoMwsRouter(displayCheckMwsRouterId.value)
+  return infoMwsRouter(displayCheckMwsRouterId.value) || "None"
 }})
-
 
 socket.on('device:currentMwsRouter',(currentMwsRouter,connectDisconnectAp) =>{
   if (connectDisconnectAp === 'None'){
