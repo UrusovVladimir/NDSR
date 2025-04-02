@@ -19,13 +19,13 @@
                 <span v-if="!displayCheckedWanTypeIds.length || displayCheckedWanTypeIds.length === 0" class="badge rounded-pill bg-secondary" style="height:auto; width: auto;"></span>
                 <span v-else class="badge rounded-pill bg-secondary" style="height:auto; width: auto;"></span>
                 <span v-show="device.type==='router'" class="badge rounded-pill bg-secondary" style="height:1.50rem; width: auto;">
-                  WAN Type: {{ wanTypeValue }}  
-                  <Popper style="height: auto; width: auto;"
+                  WAN Type: {{ wanTypeValue }}
+                  <!-- <Popper style="height: auto; width: auto;"
                     :offset-distance="offsetDistance + ''"
                     :content="currentWanType"
                     :arrow="true"
                     :hover="true"> <svg style="padding-left:1px;" width="14" height="14"><use xlink:href="/img/info.svg#info-fill"/></svg>
-                  </Popper>
+                  </Popper> -->
                 </span>
                 <span v-show="device.type==='AP'"  class="badge rounded-pill bg-secondary" style="height:auto; width: auto;text-align: center">
                   AP Connected to MWS Router: {{ currentMwsRouter }}   
@@ -51,41 +51,42 @@
             <button v-if="device.dslPort" @click="resetDslLine" :disabled="isLoading || isOffline" type="button" class="btn btn-sm btn-outline-secondary">
               <span>Reset DSL line</span>
             </button>
+            <button v-if="props.device.dslPort === 'yes'" @click="showDslModal" type="button" class="btn btn-sm btn-outline-secondary">
+            <span>Setup DSL</span>
+            </button>
             <button v-if="device.type === 'router'" @click="showWanTypesModal" :disabled="isLoading || isOffline" type="button" class="btn btn-sm btn-outline-secondary">
               <span>WAN connection type</span>
             </button>
             <button v-if="device.type === 'AP'" @click="showMwsModal" type="button" class="btn btn-sm btn-outline-secondary">
               <span>Connection to router for MWS</span>
-            </button >
-          </div>
-          
-        </div>
-        <div  v-if="device.type === 'router'" class="d-flex justify-content-between align-items-center">
-           <div class="btn-group flex-wrap flex-item">
-             <button  @click="vncOpen" :disabled="isLoading || isOffline"  type="button" class="btn btn-sm btn-outline-secondary">
+            </button>
+            <button v-if="device.type === 'router'" @click="vncOpen" :disabled="isLoading || isOffline"  type="button" class="btn btn-sm btn-outline-secondary">
               <span>Remote Desktop</span>
             </button>
            </div>
-          </div>
-        </div>
-      </div>
+          </div>  
+          </div> 
+            </div>
+
+
     
 
     <Modal :title="`WAN connection type for ${device.shortName} ${device.hwId}`" ref="wanTypesModal">
       <template #body>
-        <div v-for="wan in wanTypes" class="form-check my-3 fs-5">
+        <div v-for="wan in filteredWanTypesIds" class="form-check my-3 fs-5">
           <label class="form-check-label">
-            <input v-if="wan.type" v-model="wanTypesValues" :value="wan.vlanId" class="form-check-input" type="checkbox">
+            <input v-model="wanTypesValues" :value="wan.vlanId" class="form-check-input" type="radio">
             {{ wan.type }}
           </label>
         </div>
-        <div v-if=anyWanSelected() class="alert alert-primary d-flex align-items-center" role="alert" style="font-family: Segoe UI, sans-serif;font-size: 1.1rem;">
-            <div>
-              <img src="/img/alert.svg">
-                You can choose only one type
+
+        <div v-if="wanTypesValues === '747'" class="alert alert-success d-flex align-items-center" role="alert">
+              <svg class="bi flex-shrink-0 me-2" width="24" height="24"><use xlink:href="/img/info.svg#info-fill"/></svg>
+            <div class="sapcer">
+            Login: <b>support</b>
+            Password: <b>support2019</b>
+          </div>
             </div>
-        </div>
-        
         <div v-if="wanTypesValues.length === 0" class="alert alert-success d-flex align-items-center" role="alert">
             <svg class="bi flex-shrink-0 me-2" width="24" height="24"><use xlink:href="/img/info.svg#info-fill"/></svg>
           <div style="font-family: Segoe UI, sans-serif;font-size: 0.95rem;">
@@ -94,7 +95,10 @@
         </div>
       </template>
       <template #footer>
-        <button @click="saveWanTypes" class="btn btn-primary" type="button" :disabled="isLoading || isOffline || anyWanSelected()">
+        <button @click="closeModal()" type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+            Close&Clear
+          </button>
+        <button @click="saveWanTypes" class="btn btn-primary" type="button" :disabled="isLoading || isOffline">
           <span v-if="isLoading" class="spinner-border spinner-border-sm me-2" aria-hidden="true"></span>
           <span role="status">Apply changes</span>
         </button>
@@ -124,6 +128,29 @@
     </template>
   </ModalLan>
 
+
+  <ModalDsl :title="`DSL settings for the ${device.shortName} ${device.hwId}`" ref="dslModal">
+  <template #body>
+    <div v-for="wan in filteredWanTypes" :key="wan.description" class="form-check my-3 fs-5">
+  <label class="form-check-label">
+    <input v-model="dslModalValue" :value="wan.description" class="form-check-input" type="radio">
+    {{ wan.description }}
+  </label>
+</div>
+  </template>
+  <template #footer>
+    <div class="btn-group" role="group" aria-label="Group Button">
+      <button @click="saveDslSettings()" class="btn btn-primary" type="button" :disabled="isLoading">
+        <span v-if="isLoading" class="spinner-border spinner-border-sm me-2" aria-hidden="true"></span>
+        <span role="status">Apply</span>
+      </button>
+      <button @click="saveMwsDevice('disconnect')" type="button" class="btn btn-secondary" :disabled="isLoading || lanMwsModalValue.length === 0">
+        <span role="status">Reset setting</span>
+      </button>
+    </div>
+  </template>
+</ModalDsl>
+
 </template>
 
 <script setup>
@@ -131,6 +158,7 @@ import {socket} from "@/socket.js";
 import {computed, ref,watch} from "vue";
 import Modal from "@/components/Modal.vue";
 import ModalLan from "@/components/ModalLan.vue";
+import ModalDsl from "./ModalDsl.vue";
 import {toast} from "vue3-toastify";
 import {onMounted} from "vue";
 import Popper from "vue3-popper";
@@ -148,13 +176,27 @@ const displayCheckedWanTypeIds = ref([]);
 const {VITE_WEB_TELNET_IP} = import.meta.env
 const offsetDistance = ref(15);
 const displayCheckMwsRouterId = ref([])
+const dslModal = ref();
+const dslModalValue = ref([]);
 
+function closeModal() {
+  wanTypesValues.value = [];
+}
 
+const filteredWanTypes = computed(() => {
+  const filtered = props.wanTypes.filter(wan => wan.description && wan.description.trim() !== "");
+  return filtered;
+});
 
+const filteredWanTypesIds = computed(()=>{ 
+  const filtered = props.wanTypes.filter(wan => wan.vlanId && wan.type.trim() !== "");
+  return filtered;
+})
 
 const wanTypeValue = computed(() => {
   if (displayCheckedWanTypeIds.value.length === 0) {
-    return currentWan.value.vlan || "None  ";
+    console.log(currentWan.value)
+    return currentWan.value.vlan;
   } else {
     return displayCheckedWanTypeIds.value.join(', ');
   }
@@ -170,7 +212,13 @@ const currentWanType = computed(() => {
     return infoWanType(wanTypeValue.value) || "ISP not configured!";
   });
 
-
+const saveDslSettings = () => {
+  // isLoading.value = true;
+  // socket.emit("device:saveDslSettings", dslModalValue.value);
+  dslModal.value.hide();
+  // isLoading.value = false;
+  console.log("Настраиваем:", dslModalValue.value)
+};
 
 
 function infoMwsRouter(id){
@@ -202,11 +250,7 @@ socket.on('device:currentMwsRouter',(currentMwsRouter,connectDisconnectAp) =>{
     displayCheckMwsRouterId.value = currentMwsRouter
   }
 })
-
-function anyWanSelected() {
-       return wanTypesValues.value.length > 1;
-   }
-   
+ 
 
 socket.on("device:status", (id,URL, status) => {
   if (props.device.URL === URL)
@@ -216,9 +260,12 @@ socket.on("device:status", (id,URL, status) => {
 
 socket.on('device:checkWan', (deviceId, checkedWanTypeIds) => {
     if (deviceId === props.device.id) {
-        displayCheckedWanTypeIds.value = checkedWanTypeIds;
+        const checkedWan = props.wanTypes.filter(wan => String(wan.vlanId) === String(checkedWanTypeIds));
+        // Если нужно сохранить только типы в displayCheckedWanTypeIds
+        displayCheckedWanTypeIds.value = checkedWan.map(wan => wan.type);
     }
 });
+
 
 socket.on('device:currentWanType', (deviceId, value) => {
     if (deviceId === props.device.id){
@@ -233,16 +280,20 @@ socket.on('device:checkMws', (extenderId, routerId) =>{
 
 
 function getKeyValueByDeviceId(value) {
+  // console.log("Значение", value);
   for (const key in value) {
     if (value.hasOwnProperty(key) && key === props.device.id) {
+      const type = value[key][0];
+      const matchedWan = props.wanTypes.find(wan => String(wan.vlanId) === String(type));
       return {
         device: key,
-        vlan: value[key][0]
+        vlan: matchedWan ? matchedWan.type : "None"
       };
     }
   }
   return { device: null, vlan: "None" };
 }
+
 
 function resetConfig() {
   if (isOffline.value) return
@@ -286,6 +337,10 @@ function resetDslLine() {
 
 function showWanTypesModal() {
   wanTypesModal.value.show();
+}
+
+function showDslModal() {
+  dslModal.value.show();
 }
 
 function showMwsModal() {

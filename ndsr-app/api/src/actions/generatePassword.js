@@ -22,4 +22,6 @@ function savePasswordToFile(password = null) {
     });
 }
 
-console.log(generatePassword())
+// console.log(generatePassword())
+export { generatePassword,
+     savePasswordToFile }

@@ -1,6 +1,6 @@
 import './loadEnv.js';
 import {Server} from "socket.io";
-import {broadcastDevicesStatus, sendInitData, setupEvents} from "./src/socketHandler.js";
+import {broadcastDevicesStatus, sendInitData, setupEvents,initPasswordSystem} from "./src/socketHandler.js";
 
 const io = new Server({
     path: "/ws/",
@@ -8,7 +8,7 @@ const io = new Server({
         origin: "*"
     }
 });
-
+initPasswordSystem(io);
 io.on("connection", (socket) => {
     setupEvents(socket)
     sendInitData(socket)
