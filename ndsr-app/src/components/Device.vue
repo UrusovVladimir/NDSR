@@ -195,7 +195,7 @@ const filteredWanTypesIds = computed(()=>{
 
 const wanTypeValue = computed(() => {
   if (displayCheckedWanTypeIds.value.length === 0) {
-    console.log("Текущий WAN type",currentWan.value)
+    //console.log("Текущий WAN type",currentWan.value)
     return currentWan.value.type || "ISP not configured!";
   } else {
     return displayCheckedWanTypeIds.value.join(', ');
