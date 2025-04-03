@@ -46,28 +46,40 @@ function broadcastDevicesStatus(io) {
         getDevicesStatus(devices).then(statuses => io.emit("device:statuses", statuses))
 }
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 function sendInitData(socket) {
-    socket.emit('device:list', devices)
-    // console.log(devices)
-    socket.emit('device:wanTypes', wanTypes)
-    socket.emit('DAILY_PASSWORD', { password: dailyPassword.value })
+    socket.emit('device:list', devices);
+    socket.emit('device:wanTypes', wanTypes);
+    socket.emit('DAILY_PASSWORD', { password: dailyPassword.value });
+    
     devices.forEach(device => {
         getDeviceStatusCode(device).then(status => {
-            socket.emit('device:status', device.id,device.checkUrl, status)
-            const currentWanTypeValue = currentWanTypes || null; // Значение может быть null, если нет настроек
-            console.log("Текущий WAN у",device.id," : ", currentWanTypeValue)
-            socket.emit('device:currentWanType', device.id, currentWanTypeValue);
-            // socket.emit('device:currentMwsConnected',currentMwsRouter)
-            
-            if (Object.keys(currentMwsRouter).length === 0){
-            socket.emit('device:currentMwsRouter',"None",connectDisconnectAp)
-            console.log('device:currentMwsRouter',currentMwsRouter,connectDisconnectAp)
+            socket.emit('device:status', device.id, device.checkUrl, status);
+            const wanInfo = currentWanTypes[device.id] || null;
+            socket.emit('device:currentWanType', device.id, {
+                vlanId: wanInfo?.vlanId || null,
+                type: wanInfo?.type || null
+            });
+            if (Object.keys(currentMwsRouter).length === 0) {
+                socket.emit('device:currentMwsRouter', "None", connectDisconnectAp);
+            } else {
+                socket.emit('device:currentMwsRouter', currentMwsRouter, connectDisconnectAp);
             }
-            else{
-                socket.emit('device:currentMwsRouter',currentMwsRouter,connectDisconnectAp)
-            }
-        })
-    })
+        });
+    });
 }
 
 function setupEvents(socket) {
@@ -86,20 +98,26 @@ function setupEvents(socket) {
         })  
     });
 // --------------------------------------------------------------------------------------------------------
-    socket.on('device:wanTypes:save', (deviceId, checkedWanTypeIds, callback) => {
-        changeWanType(deviceId, checkedWanTypeIds).then(() => {
-            // Сохраните обновленные значения
-            currentWanTypes[deviceId] = checkedWanTypeIds;
+socket.on('device:wanTypes:save', (deviceId, checkedWanTypeIds, callback) => {
+    changeWanType(deviceId, checkedWanTypeIds).then(() => {
+        // Находим полный объект типа WAN
+        const wanTypeObj = wanTypes.find(item => 
+            item.vlanId && String(item.vlanId) === String(checkedWanTypeIds)
+        );
+        
+        // Сохраняем полную информацию
+        currentWanTypes[deviceId] = {
+            vlanId: checkedWanTypeIds,
+            type: wanTypeObj?.type || null
+        };
 
-            // Оповестите всех клиентов об обновлении
-            io.emit('device:checkWan', deviceId, checkedWanTypeIds);
-
-            callback({status: 'ok'});
-        }).catch((error) => {
-            console.error(error);
-            callback({status: 'error'});
-        });
+        io.emit('device:checkWan', deviceId, checkedWanTypeIds);
+        callback({status: 'ok'});
+    }).catch((error) => {
+        console.error(error);
+        callback({status: 'error'});
     });
+});
 
     socket.on('device:resetConfig', (deviceId, callback) => {
         resetConfig(deviceId).then(() => {
