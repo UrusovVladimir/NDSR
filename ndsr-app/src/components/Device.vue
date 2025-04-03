@@ -160,7 +160,6 @@ import Modal from "@/components/Modal.vue";
 import ModalLan from "@/components/ModalLan.vue";
 import ModalDsl from "./ModalDsl.vue";
 import {toast} from "vue3-toastify";
-import {onMounted} from "vue";
 import Popper from "vue3-popper";
 
 
@@ -195,8 +194,8 @@ const filteredWanTypesIds = computed(()=>{
 
 const wanTypeValue = computed(() => {
   if (displayCheckedWanTypeIds.value.length === 0) {
-    console.log(currentWan.value)
-    return currentWan.value.vlan;
+    //console.log("Текущий WAN type",currentWan.value)
+    return currentWan.value.type || "ISP not configured!";
   } else {
     return displayCheckedWanTypeIds.value.join(', ');
   }
@@ -266,10 +265,11 @@ socket.on('device:checkWan', (deviceId, checkedWanTypeIds) => {
     }
 });
 
-
 socket.on('device:currentWanType', (deviceId, value) => {
     if (deviceId === props.device.id){
-      currentWan.value = getKeyValueByDeviceId(value)
+      console.log("Текущий WAN type",value)
+      // currentWan.value = getKeyValueByDeviceId(value)
+      currentWan.value = value
     }
 });
 
@@ -284,6 +284,7 @@ function getKeyValueByDeviceId(value) {
   for (const key in value) {
     if (value.hasOwnProperty(key) && key === props.device.id) {
       const type = value[key][0];
+      console.log(type);
       const matchedWan = props.wanTypes.find(wan => String(wan.vlanId) === String(type));
       return {
         device: key,
@@ -353,7 +354,7 @@ function saveWanTypes(disconnect) {
   isLoading.value = true  
   socket.timeout(60000).emit('device:wanTypes:save', props.device.id, wanTypesValues.value, (error, response) => {
     if (error || response.status !== 'ok') {
-      toast.error(`Something went wrong!Failed connection to ${props.device.shortName}: ${props.device.hwId}`, {autoClose: false});
+      toast.error(`Something went wrong!Failed to save WAN types for ${props.device.shortName}: ${props.device.hwId}`, {autoClose: false});
     } else {
       wanTypesModal.value.hide()
       toast.success(`WAN type for ${props.device.shortName} ${props.device.hwId} have been changed!`,{autoClose: true});

@@ -4,17 +4,20 @@ import {getDeviceById, getVlanId, wanTypes} from "../devices.js";
 
 
  async function changeWanType(deviceId,checkedWanTypeIds) {
-    console.log('checkedWanTypeIds',checkedWanTypeIds)
     let selectedWanTypes = wanTypes.find(wan => checkedWanTypeIds.includes(String(wan.vlanId)))
     // let selectedWanTypes = wanTypes.filter(wan => checkedWanTypeIds === wan.vlanId)
-    console.log('Выбранный метод:',selectedWanTypes)
     let PVID = wanTypes.find(command => "onVlanPVID" === command.setting)
     let VLAN = wanTypes.find(command => "onVlanFixPort" === command.setting)
     let OFF_VLAN = wanTypes.find(command => "offVlanFixPort" === command.setting)
     let device = getDeviceById(deviceId);
     let wanVlan = getVlanId()
+    
+    const switchAddress = device.switchID === "1" 
+      ? process.env.SWITCH_ID_1 
+      : process.env.SWITCH_ID_2;
+    const connection = new TelnetConnection(switchAddress,process.env.SWITCH_LOGIN,process.env.SWITCH_PASSWORD);
 
-    const connection = new TelnetConnection(process.env.SWITCH,process.env.SWITCH_LOGIN,process.env.SWITCH_PASSWORD);
+
 
     let res;
         await connection.connect();

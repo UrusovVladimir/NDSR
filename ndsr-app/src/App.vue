@@ -26,9 +26,10 @@
                 </span>
                 <span class="text-muted me-2">|</span>
                 <span class="text-dark me-0">
-                  Keenetics Login: admin | Password: <span class="text-primary fw-bold">{{ serverText || 'Loading...' }}</span>
+                  Today, please use the password for <b>admin</b>: <span class="text-primary fw-bold">{{ todayPassword || 'Loading...' }}</span>
                 </span>
                 <span 
+                
                   @click="copyToClipboard"
                   class="copy-icon text-muted ms-2"
                   :class="{ 'text-success': isCopied }"
@@ -80,7 +81,7 @@
         </div>
       </div>
       
-      <section class="text-muted py-5" style="margin-top: -2rem;">
+      <section v-if="devices.length > 3" class="text-muted py-5" style="margin-top: -2rem;">
         <div class="container">
           <p class="float-end mb-1">
             <a class="btn btn-secondary" href="#">^</a>
@@ -97,23 +98,23 @@ import card from "@/components/Device.vue"
 import {socket} from "@/socket";
 import {ref,computed,onMounted} from "vue";
 
-const isPanelExpanded = ref(false);
+const isPanelExpanded = ref(true);
 const togglePanel = () => {
   isPanelExpanded.value = !isPanelExpanded.value;
 };
-const serverText = ref('');
+const todayPassword = ref('');
 const isCopied = ref(false);
 
 onMounted(() => {
   socket.on('DAILY_PASSWORD', (data) => {
-    serverText.value = data.password;
+    todayPassword.value = data.password;
   });
 });
 
 const copyToClipboard = async () => {
-  if (!serverText.value) return;
+  if (!todayPassword.value) return;
   try {
-    await navigator.clipboard.writeText(serverText.value);
+    await navigator.clipboard.writeText(todayPassword.value);
     isCopied.value = true;
     setTimeout(() => (isCopied.value = false), 500);
   } catch (err) {
