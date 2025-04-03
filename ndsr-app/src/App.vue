@@ -25,8 +25,8 @@
                   {{ new Date().toDateString() }}
                 </span>
                 <span class="text-muted me-2">|</span>
-                <span class="text-dark me-2">
-                  Password: <span class="text-primary fw-bold">{{ serverText || 'Loading...' }}</span>
+                <span class="text-dark me-0">
+                  Keenetics Login: admin | Password: <span class="text-primary fw-bold">{{ serverText || 'Loading...' }}</span>
                 </span>
                 <span 
                   @click="copyToClipboard"
@@ -34,25 +34,19 @@
                   :class="{ 'text-success': isCopied }"
                   title="Copy password"
                 >
-                  {{ isCopied ? '✓' : '📋' }}
+                <template v-if="isCopied">
+                  <i class="bi bi-check-square-fill"></i> 
+                </template>
+                <template v-else>
+                  📋
+                </template>
                 </span>
               </div>
             </div>
           </div>
         </div>
         
-        <!-- Кнопка управления панелью -->
-        <div class="d-flex justify-content-end">
-          <div class="toggle-btn-container">
-            <button 
-              @click="togglePanel"
-              class="btn btn-sm toggle-btn"
-              :class="{ 'expanded': isPanelExpanded }"
-            >
-              <i class="bi" :class="isPanelExpanded ? 'bi-chevron-up' : 'bi-chevron-down'"></i>
-            </button>
-          </div>
-        </div>
+
       </div>
     </header>
     <!-- Остальной контент без изменений -->
@@ -64,7 +58,20 @@
     
     <main v-else>      
       <div class="album py-5 bg-light">
+                <!-- Кнопка управления панелью -->
+                <div class="d-flex justify-content-end">
+          <div class="toggle-btn-container">
+            <button 
+              @click="togglePanel"
+              class="btn btn-sm toggle-btn"
+              :class="{ 'expanded': isPanelExpanded }"
+            >
+              <i class="bi" :class="isPanelExpanded ? 'bi-chevron-up' : 'bi-chevron-down'"></i>
+            </button>
+          </div>
+        </div>
         <div class="container">
+          
           <div class="row row-cols-1 row-cols-sm-2 row-cols-md-3 g-3">
             <template v-if="devices">
               <card v-for="device in filteredDevices" :filtered-devices="routerDevices" :device="device" :wan-types="wanTypes"/>
@@ -94,7 +101,6 @@ const isPanelExpanded = ref(false);
 const togglePanel = () => {
   isPanelExpanded.value = !isPanelExpanded.value;
 };
-
 const serverText = ref('');
 const isCopied = ref(false);
 
@@ -180,8 +186,9 @@ socket.on('')
 .toggle-btn-container {
   position: relative;
   z-index: 10;
-  margin-top: -12px;
+  margin-top: -15px;
   margin-right: 20px;
+  transform: translateY(-170%);
 }
 
 .toggle-btn {
@@ -194,6 +201,7 @@ socket.on('')
   align-items: center;
   justify-content: center;
   padding: 0;
+  box-shadow: 0 3px 5px rgba(0,0,0,0.2); 
 }
 
 .toggle-btn:hover {
@@ -207,5 +215,11 @@ socket.on('')
 
 .copy-icon:hover {
   transform: scale(1.1);
+}
+
+.bi-check-square-fill{
+  color: #28a745 !important; /* Яркий зеленый цвет */
+  font-size: 1rem; /* Чуть больше размер */
+
 }
 </style>
