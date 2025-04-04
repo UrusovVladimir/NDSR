@@ -47,19 +47,6 @@ function broadcastDevicesStatus(io) {
 }
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
 function sendInitData(socket) {
     socket.emit('device:list', devices);
     socket.emit('device:wanTypes', wanTypes);
