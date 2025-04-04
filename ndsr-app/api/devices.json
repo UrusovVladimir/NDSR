@@ -47,20 +47,9 @@
         "shortName": "Sprinter SE",
         "checkUrl": "http://10.10.21.2:1011",
         "URL": "http://10.10.21.2:1011",
-        "consolePort": "2023",
+        "consolePort": "4001",
         "resetPort": "13",
         "rebootPort": "10",
         "jeromeID": "1"
-    },
-    {
-        "id": "UsbSwitch",
-        "devices": [
-            "Keenetic DECT",
-            "Linear",
-            "UsbDisk",
-            "UsbModem",
-            "Keenetic PlusDSL"
-        ]
-
     }
 ]

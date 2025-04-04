@@ -50,7 +50,6 @@
 
       </div>
     </header>
-    <!-- Остальной контент без изменений -->
     <div v-if="isLoading" class="d-flex justify-content-center mt-5">
       <div class="spinner-border" role="status">
         <span class="visually-hidden">Loading...</span>
@@ -72,7 +71,6 @@
           </div>
         </div>
         <div class="container">
-          
           <div class="row row-cols-1 row-cols-sm-2 row-cols-md-3 g-3">
             <template v-if="devices">
               <card v-for="device in filteredDevices" :filtered-devices="routerDevices" :device="device" :wan-types="wanTypes"/>
@@ -80,7 +78,6 @@
           </div>
         </div>
       </div>
-      
       <section v-if="devices.length > 3" class="text-muted py-5" style="margin-top: -2rem;">
         <div class="container">
           <p class="float-end mb-1">
@@ -166,14 +163,16 @@ socket.on('')
 }
 
 .password-panel {
-  height: 0;
+  max-height: 0;
   overflow: hidden;
-  transition: height 0.3s ease;
-  border-bottom: 1px solid rgba(0,0,0,0.1);
+  transition: max-height 0.3s ease, padding-bottom 0.3s ease;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.1);
+  padding-bottom: 0;
 }
 
 .password-panel.expanded {
-  height: 50px;
+  max-height: 13vh; 
+  padding-bottom: 15px; 
 }
 
 .password-content {
@@ -183,7 +182,6 @@ socket.on('')
   border-bottom: 1px solid #dee2e6;
   margin-top: -1px;
 }
-
 .toggle-btn-container {
   position: relative;
   z-index: 10;

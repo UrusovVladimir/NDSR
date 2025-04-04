@@ -1,0 +1,13 @@
+[
+    {
+    "id": "UsbSwitch",
+    "devices": [
+        "Keenetic DECT",
+        "Linear",
+        "UsbDisk",
+        "UsbModem",
+        "Keenetic PlusDSL"
+    ]
+
+}
+]
