@@ -55,10 +55,11 @@
     {
         "id": "UsbSwitch",
         "devices": [
-            "Dect",
+            "Keenetic DECT",
             "Linear",
             "UsbDisk",
-            "UsbModem"
+            "UsbModem",
+            "Keenetic PlusDSL"
         ]
 
     }
