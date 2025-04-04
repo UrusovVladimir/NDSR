@@ -9,7 +9,7 @@
         "checkUrl": "http://10.10.21.2:1011",
         "URL": "http://172.16.80.196:1011",
         "consolePort": "4008",
-        "resetPort": "19",
+        "resetPort": "14",
         "rebootPort": "9",
         "sshContainer":"172.16.80.196:2020",
         "vncUrl":"http://172.16.80.196:6801/vnc.html",
@@ -29,7 +29,7 @@
         "checkUrl": "http://10.10.21.3:1121",
         "URL": "http://172.16.80.196:1121",
         "consolePort": "4007",
-        "resetPort": "18",
+        "resetPort": "15",
         "rebootPort": "8",
         "sshContainer":"172.16.80.196:2021",
         "vncUrl":"http://172.16.80.196:6802/vnc.html",
@@ -51,5 +51,16 @@
         "resetPort": "13",
         "rebootPort": "10",
         "jeromeID": "1"
+    },
+    {
+        "id": "UsbSwitch",
+        "devices": [
+            "Keenetic DECT",
+            "Linear",
+            "UsbDisk",
+            "UsbModem",
+            "Keenetic PlusDSL"
+        ]
+
     }
 ]

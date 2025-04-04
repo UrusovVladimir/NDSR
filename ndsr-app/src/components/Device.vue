@@ -195,7 +195,7 @@ const filteredWanTypesIds = computed(()=>{
 const wanTypeValue = computed(() => {
   if (displayCheckedWanTypeIds.value.length === 0) {
     //console.log("Текущий WAN type",currentWan.value)
-    return currentWan.value.type || "ISP not configured!";
+    return currentWan.value.type || "ISP not configured";
   } else {
     return displayCheckedWanTypeIds.value.join(', ');
   }
@@ -279,32 +279,32 @@ socket.on('device:checkMws', (extenderId, routerId) =>{
 })
 
 
-function getKeyValueByDeviceId(value) {
-  // console.log("Значение", value);
-  for (const key in value) {
-    if (value.hasOwnProperty(key) && key === props.device.id) {
-      const type = value[key][0];
-      console.log(type);
-      const matchedWan = props.wanTypes.find(wan => String(wan.vlanId) === String(type));
-      return {
-        device: key,
-        vlan: matchedWan ? matchedWan.type : "None"
-      };
-    }
-  }
-  return { device: null, vlan: "None" };
-}
+// function getKeyValueByDeviceId(value) {
+//   // console.log("Значение", value);
+//   for (const key in value) {
+//     if (value.hasOwnProperty(key) && key === props.device.id) {
+//       const type = value[key][0];
+//       console.log(type);
+//       const matchedWan = props.wanTypes.find(wan => String(wan.vlanId) === String(type));
+//       return {
+//         device: key,
+//         vlan: matchedWan ? matchedWan.type : "None"
+//       };
+//     }
+//   }
+//   return { device: null, vlan: "None" };
+// }
 
 
 function resetConfig() {
-  if (isOffline.value) return
+
   if (!confirm(`Do you really want to reset configuration ${props.device.hwId}?`)) return;
   isLoading.value = true
   socket.timeout(120000).emit('device:resetConfig', props.device.id, (error, response) => {
     if (error || response.status !== 'ok')
-      toast.error(`Something went wrong ${props.device.shortName}: ${props.device.hwId}!`, {autoClose: false});
+      toast.error(`Reset config for ${props.device.shortName}: ${props.device.hwId} done, but something went wrong device is not access!`, {autoClose: false});
     else
-      toast.success(`${props.device.shortName} ${props.device.hwId} successful configuration reset!`);
+      toast.success(`${props.device.shortName} ${props.device.hwId} successful configuration reset!`,{autoClose: 3000,hideProgressBar:false});
 
     isLoading.value = false
   });
@@ -318,7 +318,7 @@ function rebootDevice() {
     if (error || response.status !== 'ok')
       toast.error(`Something went wrong ${props.device.shortName}: ${props.device.hwId}!`, {autoClose: false});
     else
-      toast.success(`${props.device.shortName} ${props.device.hwId} was successfully rebooted!`);
+      toast.success(`${props.device.shortName} ${props.device.hwId} was successfully rebooted!`,{autoClose: 3000,hideProgressBar:false});
 
     isLoading.value = false
   });
@@ -331,7 +331,7 @@ function resetDslLine() {
     if (error || response.status !== 'ok')
       toast.error("Something went wrong!", {autoClose: false});
     else
-      toast.success(`${props.device.shortName} ${props.device.hwId} successful reset DSL line!`);
+      toast.success(`${props.device.shortName} ${props.device.hwId} successful reset DSL line!`,{autoClose: 3000,hideProgressBar:false});
     isLoading.value = false
   });
 }
@@ -357,7 +357,7 @@ function saveWanTypes(disconnect) {
       toast.error(`Something went wrong!Failed to save WAN types for ${props.device.shortName}: ${props.device.hwId}`, {autoClose: false});
     } else {
       wanTypesModal.value.hide()
-      toast.success(`WAN type for ${props.device.shortName} ${props.device.hwId} have been changed!`,{autoClose: true});
+      toast.success(`WAN type for ${props.device.shortName} ${props.device.hwId} have been changed!`,{autoClose: 3000,hideProgressBar:false});
     }
     isLoading.value = false
   });
@@ -372,7 +372,7 @@ function saveMwsDevice(disconnect) {
     }
     else {
       lanMwsModal.value.hide();
-      disconnect ? toast.success(`Disconnection completed from: ${sowHwId}`,{autoClose: true}) : toast.success(`Connection completed to: ${sowHwId}`,{autoClose: true})
+      disconnect ? toast.success(`Disconnection completed from: ${sowHwId}`,{autoClose: true}) : toast.success(`Connection completed to: ${sowHwId}`,{autoClose: 3000,hideProgressBar:false})
     }
     isLoading.value = false
   });
