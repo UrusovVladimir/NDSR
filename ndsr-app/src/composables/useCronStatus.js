@@ -6,13 +6,13 @@ export function useCronStatus() {
 
   const handleCronStatus = (status) => {
     cronEnabled.value = status
-    console.log('Received current cron status:', status)
+    // console.log('Received current cron status:', status)
   }
 
   const toggleCron = (newValue) => {
     cronEnabled.value = newValue
     socket.emit('cron:toggle', newValue)
-    console.log(`Auto-release cron is now ${newValue ? 'ENABLED' : 'DISABLED'}`)
+    // console.log(`Auto-release cron is now ${newValue ? 'ENABLED' : 'DISABLED'}`)
   }
 
   onMounted(() => {

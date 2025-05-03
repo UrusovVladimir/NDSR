@@ -13,12 +13,5 @@ export default defineConfig({
   server: {
     port: 8080,
     host: '0.0.0.0',
-    proxy: {
-      '/rci': {
-        target: 'http://172.16.78.254:2410',
-        changeOrigin: true,
-        rewrite: (path) => path.replace(/^\/rci/, ''),
-      }
-    }
   }
 });

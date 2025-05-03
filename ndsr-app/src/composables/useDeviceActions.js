@@ -65,7 +65,7 @@ export function useDeviceActions(device, isOffline) {
             }
             ]},
             (error,response) => {
-              console.log('Initialization request sent to:',response);
+              // console.log('Initialization request sent to:',response);
               isLoading.value = false;
               
               if (!response) {
@@ -77,14 +77,14 @@ export function useDeviceActions(device, isOffline) {
                 return;
               }
               if (error) {
-                toast.error('Ошибка при обращении к устройству.');
-                console.error('Initialization error:', error);
+                toast.error(`Error connection to device ${device.hwId}.`);
+                // console.error('Initialization error:', error);
                 return;
               }
-              console.log('Full server response:', response);
+              // console.log('Full server response:', response);
               if (response.success) {
                 navigator.clipboard.writeText(password);
-                console.log('Password copied to clipboard');
+                // console.log('Password copied to clipboard');
                 toast.success(`${device.hwId} device initialization complete! The password was copied to your clipboard.` , { autoClose: 3000, hideProgressBar: false });
               } else if (response.error.includes('Unexpected token')) {
                 toast.error(`Device ${device.hwId} initialization failed! Password is set.`, { autoClose:false });
