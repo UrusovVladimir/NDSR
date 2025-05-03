@@ -5,13 +5,16 @@ import {broadcastDevicesStatus, sendInitData, setupEvents,initPasswordSystem} fr
 const io = new Server({
     path: "/ws/",
     cors: {
-        origin: "*"
+        origin: "*",
+        methods: ["GET", "POST"]
     }
+    
 });
 initPasswordSystem(io);
 io.on("connection", (socket) => {
-    setupEvents(socket)
+    setupEvents(socket, io);
     sendInitData(socket)
+
 });
 
 io.listen(process.env.WS_PORT);

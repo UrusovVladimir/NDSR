@@ -24,6 +24,11 @@
         "vlanId": "3007"
     },
     {
+        "type": "Clear WAN type",
+        "vlanId": "4094"
+
+    }, 
+    {
         "setting":"onVlanPVID",
         "commands": [
             "interface port-channel",

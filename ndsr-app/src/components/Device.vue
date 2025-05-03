@@ -1,391 +1,461 @@
 <template>
   <div class="col">
-    <div class="card shadow-sm position-relative h-100 justify-content-between">
-      <div class="led-box">
+    <div class="position-relative"  style="min-height: 1px;" >
+    <TimerPopup 
+            :isVisible="showPopup" 
+            @close="showPopup = false"
+            @confirm="handleTimeConfirm"
+            @reset-toggle="handleResetToggle"
+            />
+    </div>
+      <div class="card shadow-sm position-relative h-100 justify-content-between"
+      :class="[
+              localBookingStatus.isBooked && localBookingStatus.bookedBy !== currentUserId ? 'card-booked' : '',
+              isSelected ? 'custom-highlight' : '',
+              isLoading || isApplyingChanges ? 'opacity-50 pointer-events-none' : ''
+            ]"
+            >
+         
+   <div v-if="isApplyingChanges" class="spinner-border spinner-border-sm position-absolute text-white"  style="top:10px; left:10px"></div>
+   <div v-if="localBookingStatus.isBooked" class="position-absolute top-0 end-0 m-2 d-flex flex-wrap gap-1 align-items-center">
+  <!-- Основной бейдж -->
+    <span class="badge badge-locked-timer text-dark flex-shrink-0">
+      <template  v-if="String(localBookingStatus.bookedBy) === String(props.currentUserId)">
+         Your booking
+      </template>
+      <template  v-else>
+          <span class="lock-icon pe-n1">🔒 Booked by {{ usersNames[localBookingStatus.bookedBy] || localBookingStatus.bookedBy }}</span>
+      </template>
+        <span class="ps-1"> 🕒 {{ formatTime(timerSeconds) }}</span>
+        <button 
+          v-if="String(localBookingStatus.bookedBy) === String(props.currentUserId)" 
+            @click="extendBooking" 
+            class="icon-button ms-2"
+            title="Extend the lease"
+            aria-label="Extend booking time" 
+          >
+          🔄
+        </button>
+   </span>
+</div>
+
+<div 
+  v-if="localBookingStatus.isBooked && localBookingStatus.bookedBy !== currentUserId" 
+  class="card-overlay">
+</div>
+      <!-- Toogle выбора -->
+      <div class="toggle-wrapper form-check position-absolute align-items-start p-2">
+        <vue-toggles
+        v-model="isSelected"
+        @click="handleBookingChange"
+        checkedText="Unbook"
+        uncheckedText="Book"
+        checkedTextColor="#343a40"
+        checkedBg="#ffc107"
+        :height="20"
+        :width="61"
+        :fontSize="9.8"        
+        :dotSize="14"
+        :disabled="shouldDisableToggle"
+        :fontWeight="'bold'"
+      />
+      </div>
+
+      <div class="led-box" >
         <div :class="[!isOffline ? 'led-green' : 'led-red', { 'led-grey': !device.statusCode }]"></div>
       </div>
-      <a :href="device.URL" target="_blank">
-        <svg class="bd-placeholder-img card-img-top" width="100%" height="225" role="button" focusable="false">
-          <title>{{ device.shortName }} {{ device.hwId }}</title>
-          <rect width="100%" height="100%" fill="#55595c"/>
-          <text x="50%" y="50%" fill="#eceeef" dy=".3em">{{ device.shortName }} {{ device.hwId }}</text>
-        </svg>
+
+      <a :href="isOwnedByCurrentUser ? device.URL : undefined"  target="_blank" :class="{ 'cursor-not-allowed': !isOwnedByCurrentUser }" >
+        <svg
+        class="bd-placeholder-img card-img-top"
+        width="100%"
+        height="225"
+        role="button"
+        focusable="false"
+        :class="{ 'svg-disabled': !isOwnedByCurrentUser }"
+      >
+        <title>{{ device.shortName }} {{ device.hwId }}</title>
+        <rect width="100%" height="100%" fill="#55595c"/>
+        <text x="50%" y="50%" fill="#eceeef" dy=".3em">
+          {{ device.shortName }} {{ device.hwId }}
+        </text>
+      </svg>
       </a>
-      <div v-if="isLoading" class="spinner-border spinner-border-sm position-absolute text-white" style="top:10px; left: 10px"></div>
-      
-      
+
+
+      <div v-if="isLoading" class="spinner-border spinner-border-sm position-absolute text-white" style="top:10px; left: 70px"></div>
       <div class="justify-content-between" style="width: auto; height: auto;padding: 1.5%;padding-bottom: 0.5%;">
-              <span v-show="device.type==='router'" class="badge rounded-pill bg-secondary" style="height:auto; width: auto;text-align: center">Connect to SSH: {{ device.sshContainer }}</span>
-                <span v-if="!displayCheckedWanTypeIds.length || displayCheckedWanTypeIds.length === 0" class="badge rounded-pill bg-secondary" style="height:auto; width: auto;"></span>
-                <span v-else class="badge rounded-pill bg-secondary" style="height:auto; width: auto;"></span>
-                <span v-show="device.type==='router'" class="badge rounded-pill bg-secondary" style="height:1.50rem; width: auto;">
-                  WAN Type: {{ wanTypeValue }}
-                  <!-- <Popper style="height: auto; width: auto;"
-                    :offset-distance="offsetDistance + ''"
-                    :content="currentWanType"
-                    :arrow="true"
-                    :hover="true"> <svg style="padding-left:1px;" width="14" height="14"><use xlink:href="/img/info.svg#info-fill"/></svg>
-                  </Popper> -->
-                </span>
-                <span v-show="device.type==='AP'"  class="badge rounded-pill bg-secondary" style="height:auto; width: auto;text-align: center">
-                  AP Connected to MWS Router: {{ currentMwsRouter }}   
-                  <Popper style="height: auto; width: auto;"
-                    :offset-distance="offsetDistance + ''"
-                    :content="'Extender connected to router:' + currentMwsRouter"
-                    :arrow="true"
-                    :hover="true"> <svg style="padding-left:1px;" width="14" height="14"><use xlink:href="/img/info.svg#info-fill"/></svg>
-                  </Popper>
-                </span>
+        <span v-show="device.type==='router'" class="badge rounded-pill bg-secondary" style="height:auto; width: auto;text-align: center">
+          Connect to SSH: {{ device.sshContainer }}
+        </span>
+        <span v-show="device.type==='router'" class="badge rounded-pill bg-secondary" style="height:1.50rem; width: auto;">
+        WAN Type: {{ currentWanTypeDisplay || 'ISP not configured' }}
+       </span>
+        <span v-show="device.type==='AP'" class="badge rounded-pill bg-secondary" style="height:auto; width: auto;text-align: center">
+          AP Connected to MWS Router: {{ currentMwsRouterDisplay }}   
+          <Popper 
+          style="height: auto; width: auto;"
+            :offset-distance="'10'"
+            :content="'Extender connected to router:' + currentMwsRouterDisplay"
+            :arrow="true"
+            :hover="true">
+            <svg style="padding-left:1px;" width="14" height="14"><use xlink:href="/img/info.svg#info-fill"/></svg>
+          </Popper>
+        </span>
       </div> 
-            <div class="d-flex justify-content-between align-items-center">
-           <div class="btn-group flex-wrap flex-item">
-            <button @click="consoleOpen" type="button" class="btn btn-sm btn-outline-secondary">
-              <span>Console</span>
-            </button>
-            <button @click="resetConfig" type="button" class="btn btn-sm btn-outline-secondary">
-              <span>Reset config</span>
-            </button>
-            <button @click="rebootDevice" :disabled="isLoading || isOffline" type="button" class="btn btn-sm btn-outline-secondary">
-              <span>Reboot</span>
-            </button>
-            <button v-if="device.dslPort" @click="resetDslLine" :disabled="isLoading || isOffline" type="button" class="btn btn-sm btn-outline-secondary">
-              <span>Reset DSL line</span>
-            </button>
-            <button v-if="props.device.dslPort === 'yes'" @click="showDslModal" type="button" class="btn btn-sm btn-outline-secondary">
-            <span>Setup DSL</span>
-            </button>
-            <button v-if="device.type === 'router'" @click="showWanTypesModal" :disabled="isLoading || isOffline" type="button" class="btn btn-sm btn-outline-secondary">
-              <span>WAN connection type</span>
-            </button>
-            <button v-if="device.type === 'AP'" @click="showMwsModal" type="button" class="btn btn-sm btn-outline-secondary">
-              <span>Connection to router for MWS</span>
-            </button>
-            <button v-if="device.type === 'router'" @click="vncOpen" :disabled="isLoading || isOffline"  type="button" class="btn btn-sm btn-outline-secondary">
-              <span>Remote Desktop</span>
-            </button>
-           </div>
-          </div>  
-          </div> 
-            </div>
 
-
-    
-
-    <Modal :title="`WAN connection type for ${device.shortName} ${device.hwId}`" ref="wanTypesModal">
-      <template #body>
-        <div v-for="wan in filteredWanTypesIds" class="form-check my-3 fs-5">
-          <label class="form-check-label">
-            <input v-model="wanTypesValues" :value="wan.vlanId" class="form-check-input" type="radio">
-            {{ wan.type }}
-          </label>
-        </div>
-
-        <div v-if="wanTypesValues === '747'" class="alert alert-success d-flex align-items-center" role="alert">
-              <svg class="bi flex-shrink-0 me-2" width="24" height="24"><use xlink:href="/img/info.svg#info-fill"/></svg>
-            <div class="sapcer">
-            Login: <b>support</b>
-            Password: <b>support2019</b>
-          </div>
-            </div>
-        <div v-if="wanTypesValues.length === 0" class="alert alert-success d-flex align-items-center" role="alert">
-            <svg class="bi flex-shrink-0 me-2" width="24" height="24"><use xlink:href="/img/info.svg#info-fill"/></svg>
-          <div style="font-family: Segoe UI, sans-serif;font-size: 0.95rem;">
-            Press apply button without choosing the value to reset the WAN type!
-          </div>
-        </div>
-      </template>
-      <template #footer>
-        <button @click="closeModal()" type="button" class="btn btn-secondary" data-bs-dismiss="modal">
-            Close&Clear
+      <div class="d-flex justify-content-between align-items-center">
+        <div  class="btn-group flex-wrap flex-item">
+          <button @click="consoleOpen" :disabled="!isOwnedByCurrentUser" type="button" class="btn btn-sm btn-outline-secondary">
+            <span>Console</span>
           </button>
-        <button @click="saveWanTypes" class="btn btn-primary" type="button" :disabled="isLoading || isOffline">
-          <span v-if="isLoading" class="spinner-border spinner-border-sm me-2" aria-hidden="true"></span>
-          <span role="status">Apply changes</span>
-        </button>
-      </template>
-    </Modal>
+          <button @click="resetConfig" :disabled="!isOwnedByCurrentUser" type="button" class="btn btn-sm btn-outline-secondary">
+            <span>Reset config</span>
+          </button>
+          <button @click="rebootDevice" :disabled="isLoading || isOffline || !isOwnedByCurrentUser" type="button" class="btn btn-sm btn-outline-secondary">
+            <span>Reboot</span>
+          </button>
+          <button v-if="device.dslPort" @click="resetDslLine" :disabled="isLoading || isOffline || !isOwnedByCurrentUser" type="button" class="btn btn-sm btn-outline-secondary">
+            <span>Reset DSL line</span>
+          </button>
+          <button v-if="device.dslPort === 'yes'" :disabled="!isOwnedByCurrentUser" @click="openModal('dslSettings')" type="button" class="btn btn-sm btn-outline-secondary">
+            <span>Setup DSL</span>
+          </button>
+          <button v-if="device.type === 'router'" @click="openModal('wanTypes')" :disabled="isLoading || isOffline || !isOwnedByCurrentUser" type="button" class="btn btn-sm btn-outline-secondary">
+           <span>WAN connection type</span>
+          </button>
+          <button v-if="device.type === 'AP'" :disabled="!isOwnedByCurrentUser" @click="openModal('mwsConnection')" type="button" class="btn btn-sm btn-outline-secondary">
+            <span>Connection to router for MWS</span>
+          </button>
+          <button v-if="device.type === 'router'" @click="vncOpen" :disabled="isLoading || isOffline || !isOwnedByCurrentUser" type="button" class="btn btn-sm btn-outline-secondary">
+            <span>Remote Desktop</span>
+          </button>
+          <button v-if="device.type === 'router'" @click="initializationDevice(todayPassword)" :disabled="isLoading || isOffline" type="button" class="btn btn-sm btn-outline-secondary">
+            <span>Disable EasyConfig</span>
+          </button>       
+        </div>
+      </div>  
+      <div>
+  </div>
+  </div>
+  </div>
+  
 
 
-  <ModalLan :title="`Connecting the ${device.shortName} ${device.hwId} extender to:`" ref="lanMwsModal">
-    <template #body>
-      <div v-for="dev in filteredDevices" class="form-check" :key="dev.hwId" style="font-family: Segoe UI, sans-serif;font-size: 1.1rem;">
-         <label v-if="dev.type" class="form-check-label">
-          <input  v-model="lanMwsModalValue" :value="dev.id" class="form-check-input" type="radio">
-          {{ dev.hwId }} {{ dev.shortName }}
-        </label>
-      </div>
-    </template>
-    <template #footer>
-    <div class="btn-group" role="group" aria-label="Group Button">
-      <button @click="saveMwsDevice()" class="btn btn-primary" type="button" :disabled="isLoading" >
-        <span v-if="isLoading" class="spinner-border spinner-border-sm me-2" aria-hidden="true"></span>
-        <span role="status">Connect</span>
-      </button>
-      <button @click="saveMwsDevice('disconnect')" type="button" class="btn btn-secondary" :disabled="isLoading || lanMwsModalValue.length === 0">
-        <span role="status" >Disconnect</span>
-      </button>
-    </div>
-    </template>
-  </ModalLan>
+  <!-- Унифицированное модальное окно -->
 
+  <DeviceModal 
+  ref="deviceModal" 
+  :device="device"
+  :wan-types="wanTypes"
+  :filtered-devices="filteredDevices"
+  :current-wan-type="currentWanTypeDisplay"
+  @save="handleModalSave"
+  @saveMws="handleModalSave"
+/>
 
-  <ModalDsl :title="`DSL settings for the ${device.shortName} ${device.hwId}`" ref="dslModal">
-  <template #body>
-    <div v-for="wan in filteredWanTypes" :key="wan.description" class="form-check my-3 fs-5">
-  <label class="form-check-label">
-    <input v-model="dslModalValue" :value="wan.description" class="form-check-input" type="radio">
-    {{ wan.description }}
-  </label>
-</div>
-  </template>
-  <template #footer>
-    <div class="btn-group" role="group" aria-label="Group Button">
-      <button @click="saveDslSettings()" class="btn btn-primary" type="button" :disabled="isLoading">
-        <span v-if="isLoading" class="spinner-border spinner-border-sm me-2" aria-hidden="true"></span>
-        <span role="status">Apply</span>
-      </button>
-      <button @click="saveMwsDevice('disconnect')" type="button" class="btn btn-secondary" :disabled="isLoading || lanMwsModalValue.length === 0">
-        <span role="status">Reset setting</span>
-      </button>
-    </div>
-  </template>
-</ModalDsl>
 
 </template>
 
 <script setup>
-import {socket} from "@/socket.js";
-import {computed, ref,watch} from "vue";
-import Modal from "@/components/Modal.vue";
-import ModalLan from "@/components/ModalLan.vue";
-import ModalDsl from "./ModalDsl.vue";
-import {toast} from "vue3-toastify";
+import { ref, computed, onMounted, onUnmounted, watch,inject } from 'vue';
+import { socket } from '@/socket';
+import { toast } from 'vue3-toastify';
+import DeviceModal from '@/components/DeviceModals.vue';
+import { useDeviceBooking } from '@/composables/useDeviceBooking';
+import { useDeviceActions } from '@/composables/useDeviceActions';
 import Popper from "vue3-popper";
+import VueToggles from 'vue-toggles';
+import TimerPopup from '@/components/TimerPopup.vue';
 
+const emit = defineEmits(['reservationChange'])
+const props = defineProps({
+  device: Object,
+  wanTypes: Array,
+  filteredDevices: Array,
+  currentUserId: [String, Number],
+  users: Array
+});
+const deviceModal = ref(null);
+const currentWanTypeDisplay = ref('ISP not configured');
+const currentMwsRouterDisplay = ref('Device not connected');
+const todayPassword = inject('todayPassword');
+const isOffline = computed(() => props.device.statusCode !== 200);
+const isApplyingChanges = ref(false);
+const usersNames = computed(() => {
+  return props.users.reduce((map, user) => {
+    map[user.ip] = user.name;
+    return map;
+  }, {}); 
+});
+const {
+  showPopup,
+  handleTimeConfirm,
+  localBookingStatus,
+  isSelected: bookingSelected,
+  isLoading: isBookingLoading,
+  handleBookingChange,
+  timerSeconds,
+  extendBooking
+} = useDeviceBooking(
+  props.device.id,
+  computed(() => props.currentUserId),
+  emit
+);
+const {
+  isLoading: isActionLoading,
+  resetConfig,
+  rebootDevice,
+  resetDslLine,
+  initializationDevice
+} = useDeviceActions(props.device, isOffline);
+const isLoading = computed(() => isBookingLoading.value || isActionLoading.value);
+const isSelected = ref(bookingSelected.value)
 
-const props = defineProps(['device','wanTypes','filteredDevices'])
-const isLoading = ref(false)
-const isOffline = computed(() => props.device.statusCode !== 200)
-const wanTypesModal = ref();
-const lanMwsModal = ref();
-const lanMwsModalValue = ref([]);
-const currentWan = ref([]);
-const wanTypesValues = ref([]);
-const displayCheckedWanTypeIds = ref([]);
-const {VITE_WEB_TELNET_IP} = import.meta.env
-const offsetDistance = ref(15);
-const displayCheckMwsRouterId = ref([])
-const dslModal = ref();
-const dslModalValue = ref([]);
-
-function closeModal() {
-  wanTypesValues.value = [];
-}
-
-const filteredWanTypes = computed(() => {
-  const filtered = props.wanTypes.filter(wan => wan.description && wan.description.trim() !== "");
-  return filtered;
+watch(showPopup, (val) => {
+  if (!val && !isSelected.value && bookingSelected.value) {
+    bookingSelected.value = false;
+  }
 });
 
-const filteredWanTypesIds = computed(()=>{ 
-  const filtered = props.wanTypes.filter(wan => wan.vlanId && wan.type.trim() !== "");
-  return filtered;
+watch(bookingSelected, (val) => {
+  isSelected.value = val
 })
 
-const wanTypeValue = computed(() => {
-  if (displayCheckedWanTypeIds.value.length === 0) {
-    //console.log("Текущий WAN type",currentWan.value)
-    return currentWan.value.type || "ISP not configured";
-  } else {
-    return displayCheckedWanTypeIds.value.join(', ');
+watch(isSelected, (val) => {
+  if (val !== bookingSelected.value) {
+    handleBookingChange()
   }
+})
+
+const shouldDisableToggle = computed(() => {
+  return (localBookingStatus.value.isBooked &&
+          localBookingStatus.value.bookedBy !== props.currentUserId) ||
+         showPopup.value || isApplyingChanges.value;
 });
 
-function infoWanType(vlanId) {
-  if(vlanId != null){
-    let info = props.wanTypes.find(wan => String(wan.vlanId) === String(vlanId));
-    return info ? info.type : null;}
-  }
+const isOwnedByCurrentUser = computed(() => {
+  return !localBookingStatus.value.isBooked ||
+         localBookingStatus.value.bookedBy === props.currentUserId;
+});
 
-const currentWanType = computed(() => {
-    return infoWanType(wanTypeValue.value) || "ISP not configured!";
-  });
-
-const saveDslSettings = () => {
-  // isLoading.value = true;
-  // socket.emit("device:saveDslSettings", dslModalValue.value);
-  dslModal.value.hide();
-  // isLoading.value = false;
-  console.log("Настраиваем:", dslModalValue.value)
+const handleResetToggle = () => {
+  isSelected.value = false;
+  bookingSelected.value = false;
+  handleBookingChange(false);
 };
 
 
-function infoMwsRouter(id){
-  if (id === "None" || id === {}){
-    return "None"; 
-  }
-  else{
-  let info = props.filteredDevices.find(device => String(device.id) === String(id));
-    return info ? info.hwId : info.hwId; }
-}
+onMounted(() => {
+  socket.emit('device:getCurrentWan', props.device.id, (response) => {
+    currentWanTypeDisplay.value = !response?.type || response?.type === 'Clear WAN type'
+      ? 'ISP not configured'
+      : response.type;
+  });
 
-
-
-
-const currentMwsRouter = computed(() => {
-  if (displayCheckMwsRouterId.value.length === 0){
-    // console.log("Сейчас ноль!")
-    return displayCheckMwsRouterId.value || "None"
-  }
-  else{
-  return infoMwsRouter(displayCheckMwsRouterId.value) || "None"
-}})
-
-socket.on('device:currentMwsRouter',(currentMwsRouter,connectDisconnectAp) =>{
-  if (connectDisconnectAp === 'None'){
-    displayCheckMwsRouterId.value = currentMwsRouter
-  }
-  else{
-    displayCheckMwsRouterId.value = currentMwsRouter
-  }
-})
- 
-
-socket.on("device:status", (id,URL, status) => {
-  if (props.device.URL === URL)
-    props.device.statusCode = status
-})
-
-
-socket.on('device:checkWan', (deviceId, checkedWanTypeIds) => {
+  socket.on('device:wanTypeUpdated', ({ deviceId, type }) => {
     if (deviceId === props.device.id) {
-        const checkedWan = props.wanTypes.filter(wan => String(wan.vlanId) === String(checkedWanTypeIds));
-        // Если нужно сохранить только типы в displayCheckedWanTypeIds
-        displayCheckedWanTypeIds.value = checkedWan.map(wan => wan.type);
+      currentWanTypeDisplay.value = type === 'Clear WAN type'
+        ? 'ISP not configured'
+        : type || 'ISP not configured';
     }
+  });
 });
 
-socket.on('device:currentWanType', (deviceId, value) => {
-    if (deviceId === props.device.id){
-      console.log("Текущий WAN type",value)
-      // currentWan.value = getKeyValueByDeviceId(value)
-      currentWan.value = value
-    }
+onUnmounted(() => {
+  socket.off('device:wanTypeUpdated');
 });
 
-socket.on('device:checkMws', (extenderId, routerId) =>{
-  displayCheckMwsRouterId.value = routerId
-  console.log(routerId)
-})
+const openModal = (type) => {
+  if (!deviceModal.value) return;
 
+  let initialValue = null;
 
-// function getKeyValueByDeviceId(value) {
-//   // console.log("Значение", value);
-//   for (const key in value) {
-//     if (value.hasOwnProperty(key) && key === props.device.id) {
-//       const type = value[key][0];
-//       console.log(type);
-//       const matchedWan = props.wanTypes.find(wan => String(wan.vlanId) === String(type));
-//       return {
-//         device: key,
-//         vlan: matchedWan ? matchedWan.type : "None"
-//       };
-//     }
-//   }
-//   return { device: null, vlan: "None" };
-// }
+  if (type === 'wanTypes') {
+    const currentWan = props.wanTypes.find(w => w.type === currentWanTypeDisplay.value);
+    initialValue = currentWan?.vlanId || null;
+  }
+  if (type === 'mwsConnection') {
+    initialValue = currentMwsRouterDisplay.value === 'None' ? null : currentMwsRouterDisplay.value;
+  }
+  if (deviceModal.value?.show) {
+    deviceModal.value.show(type, initialValue);
+  }
+};
 
+const handleWanSave = async (vlanId) => {
+  return new Promise((resolve, reject) => {
+    socket.emit('device:wanTypes:save', props.device.id, vlanId, (response) => {
+      if (!response) return reject(new Error('No response from server'));
+      if (response?.status === 'ok') return resolve();
+      reject(new Error(response?.message || 'Save failed'));
+    });
 
-function resetConfig() {
-
-  if (!confirm(`Do you really want to reset configuration ${props.device.hwId}?`)) return;
-  isLoading.value = true
-  socket.timeout(120000).emit('device:resetConfig', props.device.id, (error, response) => {
-    if (error || response.status !== 'ok')
-      toast.error(`Reset config for ${props.device.shortName}: ${props.device.hwId} done, but something went wrong device is not access!`, {autoClose: false});
-    else
-      toast.success(`${props.device.shortName} ${props.device.hwId} successful configuration reset!`,{autoClose: 3000,hideProgressBar:false});
-
-    isLoading.value = false
+    setTimeout(() => reject(new Error('Request timeout')), 10000);
   });
-}
+};
 
-function rebootDevice() {
-  if (isOffline.value) return
-  if (!confirm(`Do you really want to reboot ${props.device.hwId}?`)) return;
-  isLoading.value = true
-  socket.timeout(120000).emit('device:reboot', props.device.id, (error, response) => {
-    if (error || response.status !== 'ok')
-      toast.error(`Something went wrong ${props.device.shortName}: ${props.device.hwId}!`, {autoClose: false});
-    else
-      toast.success(`${props.device.shortName} ${props.device.hwId} was successfully rebooted!`,{autoClose: 3000,hideProgressBar:false});
+const handleMwsSave = async (routerId, action) => {
+  return new Promise((resolve, reject) => {
+    socket.emit('device:mwsConnected', props.device.id, routerId, action, (response) => {
+      if (!response) return reject(new Error('No response from server'));
+      if (response?.status === 'ok') {
+        currentMwsRouterDisplay.value = action === 'disconnect' ? 'None' : routerId;
+        return resolve();
+      }
+      reject(new Error(response?.message || 'Save failed'));
+    });
 
-    isLoading.value = false
+    setTimeout(() => reject(new Error('Request timeout')), 10000);
   });
+};
+
+const handleDslSave = async (settings) => {
+  try {
+    toast.success('DSL settings updated successfully');
+  } catch (error) {
+    toast.error(`Failed to update DSL settings: ${error.message}`);
+  }
+};
+
+const handleModalSave = async ({ value, type, action, callback }) => {
+  isApplyingChanges.value = true;
+  try {
+    if (type === 'wanTypes') await handleWanSave(value);
+    else if (type === 'mwsConnection') await handleMwsSave(value, action);
+    else if (type === 'dslSettings') await handleDslSave(value);
+    callback(true);
+  } catch (error) {
+    console.error('Modal save error:', error);
+    callback(false, error.message);
+  } finally {
+    isApplyingChanges.value = false;
+  }
+};
+
+const consoleOpen = () => {
+  const params = `scrollbars=no,resizable=no,status=no,location=no,toolbar=no,menubar=no,width=900,height=600,left=200,top=100`;
+  window.open(`http://${import.meta.env.VITE_WEB_TELNET_IP}/remote/telnet/telnet/${props.device.consolePort}`, props.device.hwId, params);
+};
+
+const vncOpen = () => {
+  const params = `scrollbars=no,resizable=no,status=no,location=no,toolbar=no,menubar=no,width=900,height=600,left=200,top=100`;
+  window.open(`${props.device.vncUrl}`, props.device.hwId, params);
+};
+
+const formatTime = (seconds) => {
+  const h = String(Math.floor(seconds / 3600)).padStart(2, '0');
+  const m = String(Math.floor((seconds % 3600) / 60)).padStart(2, '0');
+  const s = String(seconds % 60).padStart(2, '0');
+  return `${h}:${m}:${s}`;
+};
+</script>
+
+<style scoped>
+.icon-button {
+  background: none;
+  margin-left: 3px ;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  pointer-events: auto !important;
 }
 
-function resetDslLine() {
-  if (isOffline.value) return
-  isLoading.value = true
-  socket.timeout(60000).emit('device:resetDslLine', props.device.id, (error, response) => {
-    if (error || response.status !== 'ok')
-      toast.error("Something went wrong!", {autoClose: false});
-    else
-      toast.success(`${props.device.shortName} ${props.device.hwId} successful reset DSL line!`,{autoClose: 3000,hideProgressBar:false});
-    isLoading.value = false
-  });
+.form-check-input {
+  cursor: pointer;
 }
 
-function showWanTypesModal() {
-  wanTypesModal.value.show();
+.card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-width: 0; /* Важно! */
+  word-wrap: break-word;
+  overflow: hidden; /* Предотвращает выпадение содержимого */
 }
 
-function showDslModal() {
-  dslModal.value.show();
+.card-body {
+  flex-grow: 1;
 }
 
-function showMwsModal() {
-  lanMwsModal.value.show()
+.card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
 }
 
-function saveWanTypes(disconnect) {
-  if (isOffline.value) return
-  console.log(disconnect)
-  isLoading.value = true  
-  socket.timeout(60000).emit('device:wanTypes:save', props.device.id, wanTypesValues.value, (error, response) => {
-    if (error || response.status !== 'ok') {
-      toast.error(`Something went wrong!Failed to save WAN types for ${props.device.shortName}: ${props.device.hwId}`, {autoClose: false});
-    } else {
-      wanTypesModal.value.hide()
-      toast.success(`WAN type for ${props.device.shortName} ${props.device.hwId} have been changed!`,{autoClose: 3000,hideProgressBar:false});
-    }
-    isLoading.value = false
-  });
+.position-absolute.top-0.start-0 {
+  max-width: calc(100% - 70px);
 }
 
-function saveMwsDevice(disconnect) {
-  isLoading.value = true  
-  socket.timeout(6000).emit('device:mwsConnected',props.device.id,lanMwsModalValue.value, disconnect ? disconnect:null,(error, response) => {
-    let sowHwId = infoMwsRouter(lanMwsModalValue.value)
-    if (error || response.status !== 'ok'){
-      toast.error(`Could not evoke connection for ${sowHwId}`,{autoClose: false});
-    }
-    else {
-      lanMwsModal.value.hide();
-      disconnect ? toast.success(`Disconnection completed from: ${sowHwId}`,{autoClose: true}) : toast.success(`Connection completed to: ${sowHwId}`,{autoClose: 3000,hideProgressBar:false})
-    }
-    isLoading.value = false
-  });
+.position-absolute.top-0.end-0 {
+  right: 5px;
+}
+
+.card-overlay {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 1;
+  background-color: rgba(0, 0, 0, 0.05); 
+}
+
+.card-booked .badge.bg-warning.text-dark {
+  opacity: 1;
+  background-color: #ffc107; 
+  color: #343a40;
+  z-index: 1;
+}
+
+.badge-locked-timer {
+  background-color: #ffc107;
+  color:  #343a40;
+  padding: 0.5rem 0.8rem;
+  font-size: 0.75rem;
+  z-index: 1;
+  border-radius: 1rem;
+  pointer-events: none;
+  box-shadow: 0 0 10px rgba(0, 0, 0, 0.4);
+  transition: all 0.3s ease-in-out;
+  height: 1.5rem;
+  align-items: center;
+}
+.cursor-not-allowed {
+  cursor: not-allowed;
+}
+
+.svg-disabled {
+  opacity: 0.7;
+  filter: grayscale(50%);
+  cursor: not-allowed;
+  transition: all 1s ease-in-out;
+}
+
+.lock-icon {
+  filter: 
+    hue-rotate(-50deg)
+    saturate(220%)
+    brightness(0.8)!important;
+  margin-left: -3.5px;
+  margin-top: -0.5px;
+  padding-right: 1px;
+  }
+
+  .timer-popup-overlay {
+  position: fixed;
+  z-index: 1100; /* выше чем .card (обычно 1000+) */
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+}
+.custom-highlight {
+  border: 2px solid #ffc107;
+  box-shadow: 0 0 10px rgba(255, 193, 7, 0.5);
+  box-sizing: border-box;
+}
+
+.toggle-wrapper {
+  flex-shrink: 0;
+  margin-left: auto;
   
 }
-
-function consoleOpen() {
-  let params = `scrollbars=no,resizable=no,status=no,location=no,toolbar=no,menubar=no,width=900,height=600,left=200,top=100`;
-  window.open(`http://${VITE_WEB_TELNET_IP}/remote/telnet/telnet/${props.device.consolePort}`, props.device.hwId, params);
-}
-
-function vncOpen() {
-  let params = `scrollbars=no,resizable=no,status=no,location=no,toolbar=no,menubar=no,width=900,height=600,left=200,top=100`;
-  window.open(`${props.device.vncUrl}`, props.device.hwId, params);
-}
-</script>
+</style>
