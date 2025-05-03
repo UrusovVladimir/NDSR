@@ -13,7 +13,7 @@ import { resetDslLine } from "../resetDslLine.js";
 import { connectToMws } from "./actions/connectToMws.js";
 import { generatePassword } from "./actions/generatePassword.js";
 
-let isCronEnabled = true; 
+let isCronEnabled = false; 
 let deviceBookings = new Map();
 let currentWanTypes = {};
 let currentMwsRouter = {};
