@@ -86,7 +86,7 @@
       <div v-if="isLoading" class="spinner-border spinner-border-sm position-absolute text-white" style="top:10px; left: 70px"></div>
       <div class="justify-content-between" style="width: auto; height: auto;padding: 1.5%;padding-bottom: 0.5%;">
         <span v-show="device.type==='router'" class="badge rounded-pill bg-secondary" style="height:auto; width: auto;text-align: center">
-          Connect to SSH: {{ device.sshContainer }}
+          LAN Host SSH: {{ device.sshContainer }}
         </span>
         <span v-show="device.type==='router'" class="badge rounded-pill bg-secondary" style="height:1.50rem; width: auto;">
         WAN Type: {{ currentWanTypeDisplay || 'ISP not configured' }}
@@ -128,9 +128,9 @@
             <span>Connection to router for MWS</span>
           </button>
           <button v-if="device.type === 'router'" @click="vncOpen" :disabled="isLoading || isOffline || !isOwnedByCurrentUser" type="button" class="btn btn-sm btn-outline-secondary">
-            <span>Remote Desktop</span>
+            <span>LAN Host VNC</span>
           </button>
-          <button v-if="device.type === 'router'" @click="initializationDevice(todayPassword)" :disabled="isLoading || isOffline" type="button" class="btn btn-sm btn-outline-secondary">
+          <button v-if="device.type === 'router'" @click="initializationDevice(todayPassword)" :disabled="isLoading || isOffline || !isOwnedByCurrentUser" type="button" class="btn btn-sm btn-outline-secondary">
             <span>Disable EasyConfig</span>
           </button>       
         </div>
