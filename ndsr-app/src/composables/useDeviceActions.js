@@ -42,62 +42,10 @@ export function useDeviceActions(device, isOffline) {
         })
     }
 
-
-    const initializationDevice = (password) => {
-        if (isOffline.value) {
-          toast.error(`Device ${device.hwId} is offline. Cannot initialize.`);
-          return;
-        }
-      
-        const host = device.URL;
-        const url = `${host}/rci/`;
-      
-        socket.timeout(30000).emit(
-            'device:init',
-            {
-              url: `${url}`,
-              body: [
-              { "eula": { "accept": {} }},
-              {"dpn": {"accept": {}}},
-              {"easyconfig": {"disable": true}},
-              {"user":{"password":{"plain":{"name":"admin","password":`${password}`}}}},
-              {"system": {"configuration": {"save": true}}
-            }
-            ]},
-            (error,response) => {
-              // console.log('Initialization request sent to:',response);
-              isLoading.value = false;
-              
-              if (!response) {
-                toast.error('Ответ сервера пуст.');
-                console.error('Null response. Possible reasons:', {
-                  socketConnected: socket.connected,
-                  eventRegistered: socket.hasListeners('device:init')
-                });
-                return;
-              }
-              if (error) {
-                toast.error(`Error connection to device ${device.hwId}.`);
-                // console.error('Initialization error:', error);
-                return;
-              }
-              // console.log('Full server response:', response);
-              if (response.success) {
-                navigator.clipboard.writeText(password);
-                // console.log('Password copied to clipboard');
-                toast.success(`${device.hwId} device initialization complete! The password was copied to your clipboard.` , { autoClose: 3000, hideProgressBar: false });
-              } else if (response.error.includes('Unexpected token')) {
-                toast.error(`Device ${device.hwId} initialization failed! Password is set.`, { autoClose:false });
-              }
-            }
-          );
-    }
-    
     return {
         isLoading,
         resetConfig,
         rebootDevice,
-        resetDslLine,
-        initializationDevice
+        resetDslLine
     }
 }

@@ -1,20 +1,19 @@
 <template>
   <div class="col">
-    <div class="position-relative"  style="min-height: 1px;" >
+    <div class="position-relative" >
     <TimerPopup 
             :isVisible="showPopup" 
             @close="showPopup = false"
             @confirm="handleTimeConfirm"
             @reset-toggle="handleResetToggle"
             />
-    </div>
+  </div>
       <div class="card shadow-sm position-relative h-100 justify-content-between"
-      :class="[
-              localBookingStatus.isBooked && localBookingStatus.bookedBy !== currentUserId ? 'card-booked' : '',
-              isSelected ? 'custom-highlight' : '',
-              isLoading || isApplyingChanges ? 'opacity-50 pointer-events-none' : ''
-            ]"
-            >
+         :class="{
+           'card-booked': localBookingStatus.isBooked && localBookingStatus.bookedBy !== currentUserId,
+           'border border-warning border-3': isSelected,
+           'opacity-50 pointer-events-none': isLoading || isApplyingChanges
+         }">
          
    <div v-if="isApplyingChanges" class="spinner-border spinner-border-sm position-absolute text-white"  style="top:10px; left:10px"></div>
    <div v-if="localBookingStatus.isBooked" class="position-absolute top-0 end-0 m-2 d-flex flex-wrap gap-1 align-items-center">
@@ -24,7 +23,7 @@
          Your booking
       </template>
       <template  v-else>
-          <span class="lock-icon pe-n1">🔒 Booked by {{ usersNames[localBookingStatus.bookedBy] || localBookingStatus.bookedBy }}</span>
+          <span class="lock-icon pe-n1">🔒 Booked by {{ localBookingStatus.bookedBy }}</span>
       </template>
         <span class="ps-1"> 🕒 {{ formatTime(timerSeconds) }}</span>
         <button 
@@ -44,7 +43,7 @@
   class="card-overlay">
 </div>
       <!-- Toogle выбора -->
-      <div class="toggle-wrapper form-check position-absolute align-items-start p-2">
+      <div class="form-check position-absolute align-items-start p-2">
         <vue-toggles
         v-model="isSelected"
         @click="handleBookingChange"
@@ -86,7 +85,7 @@
       <div v-if="isLoading" class="spinner-border spinner-border-sm position-absolute text-white" style="top:10px; left: 70px"></div>
       <div class="justify-content-between" style="width: auto; height: auto;padding: 1.5%;padding-bottom: 0.5%;">
         <span v-show="device.type==='router'" class="badge rounded-pill bg-secondary" style="height:auto; width: auto;text-align: center">
-          LAN Host SSH: {{ device.sshContainer }}
+          Connect to SSH: {{ device.sshContainer }}
         </span>
         <span v-show="device.type==='router'" class="badge rounded-pill bg-secondary" style="height:1.50rem; width: auto;">
         WAN Type: {{ currentWanTypeDisplay || 'ISP not configured' }}
@@ -128,10 +127,7 @@
             <span>Connection to router for MWS</span>
           </button>
           <button v-if="device.type === 'router'" @click="vncOpen" :disabled="isLoading || isOffline || !isOwnedByCurrentUser" type="button" class="btn btn-sm btn-outline-secondary">
-            <span>LAN Host VNC</span>
-          </button>
-          <button v-if="device.type === 'router'" @click="initializationDevice(todayPassword)" :disabled="isLoading || isOffline || !isOwnedByCurrentUser" type="button" class="btn btn-sm btn-outline-secondary">
-            <span>Disable EasyConfig</span>
+            <span>Remote Desktop</span>
           </button>       
         </div>
       </div>  
@@ -158,7 +154,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onUnmounted, watch,inject } from 'vue';
+import { ref, computed, onMounted, onUnmounted, watch } from 'vue';
 import { socket } from '@/socket';
 import { toast } from 'vue3-toastify';
 import DeviceModal from '@/components/DeviceModals.vue';
@@ -173,21 +169,17 @@ const props = defineProps({
   device: Object,
   wanTypes: Array,
   filteredDevices: Array,
-  currentUserId: [String, Number],
-  users: Array
+  currentUserId: [String, Number]
 });
+
 const deviceModal = ref(null);
 const currentWanTypeDisplay = ref('ISP not configured');
 const currentMwsRouterDisplay = ref('Device not connected');
-const todayPassword = inject('todayPassword');
+
 const isOffline = computed(() => props.device.statusCode !== 200);
+
 const isApplyingChanges = ref(false);
-const usersNames = computed(() => {
-  return props.users.reduce((map, user) => {
-    map[user.ip] = user.name;
-    return map;
-  }, {}); 
-});
+
 const {
   showPopup,
   handleTimeConfirm,
@@ -202,14 +194,18 @@ const {
   computed(() => props.currentUserId),
   emit
 );
+
+
 const {
   isLoading: isActionLoading,
   resetConfig,
   rebootDevice,
-  resetDslLine,
-  initializationDevice
+  resetDslLine
 } = useDeviceActions(props.device, isOffline);
+
 const isLoading = computed(() => isBookingLoading.value || isActionLoading.value);
+
+
 const isSelected = ref(bookingSelected.value)
 
 watch(showPopup, (val) => {
@@ -217,6 +213,7 @@ watch(showPopup, (val) => {
     bookingSelected.value = false;
   }
 });
+
 
 watch(bookingSelected, (val) => {
   isSelected.value = val
@@ -229,9 +226,8 @@ watch(isSelected, (val) => {
 })
 
 const shouldDisableToggle = computed(() => {
-  return (localBookingStatus.value.isBooked &&
-          localBookingStatus.value.bookedBy !== props.currentUserId) ||
-         showPopup.value || isApplyingChanges.value;
+  return localBookingStatus.value.isBooked &&
+         localBookingStatus.value.bookedBy !== props.currentUserId;
 });
 
 const isOwnedByCurrentUser = computed(() => {
@@ -275,9 +271,11 @@ const openModal = (type) => {
     const currentWan = props.wanTypes.find(w => w.type === currentWanTypeDisplay.value);
     initialValue = currentWan?.vlanId || null;
   }
+
   if (type === 'mwsConnection') {
     initialValue = currentMwsRouterDisplay.value === 'None' ? null : currentMwsRouterDisplay.value;
   }
+
   if (deviceModal.value?.show) {
     deviceModal.value.show(type, initialValue);
   }
@@ -366,16 +364,14 @@ const formatTime = (seconds) => {
 }
 
 .card {
+  transition: all 0.2s ease;
   position: relative;
-  display: flex;
-  flex-direction: column;
-  min-width: 0; /* Важно! */
-  word-wrap: break-word;
-  overflow: hidden; /* Предотвращает выпадение содержимого */
-}
-
-.card-body {
-  flex-grow: 1;
+  max-width: 100%; /* Добавьте это */
+  overflow: visible;
+  min-width: 210px; /* Минимальная ширина карточки */
+  box-sizing: border-box; /* Важно! */
+  margin: 0 auto; /* Центрирование */
+  
 }
 
 .card:hover {
@@ -446,16 +442,5 @@ const formatTime = (seconds) => {
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%);
-}
-.custom-highlight {
-  border: 2px solid #ffc107;
-  box-shadow: 0 0 10px rgba(255, 193, 7, 0.5);
-  box-sizing: border-box;
-}
-
-.toggle-wrapper {
-  flex-shrink: 0;
-  margin-left: auto;
-  
 }
 </style>

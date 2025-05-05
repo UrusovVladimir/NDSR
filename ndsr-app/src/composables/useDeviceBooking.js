@@ -15,57 +15,30 @@ export function useDeviceBooking(deviceId, currentUserId, emit) {
   const popupConfirmed = ref(null)
   const timerSeconds = ref(0)
   const hasWarned = ref(false)
-  const initialLoadComplete = ref(false)
   let countdownInterval = null
   let lastExtendAttempt = 0
-  let currentBookingSessionId = null
-
-  function getWarnedKey() {
-    return `warned_${deviceId}`
-  }
 
   const updateTimer = () => {
     if (countdownInterval) clearInterval(countdownInterval)
-
+  
     countdownInterval = setInterval(() => {
       if (timerSeconds.value > 0) {
         timerSeconds.value--
-      } else {
-        clearInterval(countdownInterval)
-        countdownInterval = null
-
-        if (
-          localBookingStatus.value.isBooked &&
-          localBookingStatus.value.bookedBy === currentUserId.value
-        ) {
-          releaseDevice()
-          sessionStorage.setItem(getWarnedKey(), '0')
-          
-        }
+      } else if (
+        localBookingStatus.value.isBooked &&
+        localBookingStatus.value.bookedBy === currentUserId.value
+      ) {
+        // Независимо от того, открылось ли ElMessageBox или нет — освобождаем
+        releaseDevice()
       }
     }, 1000)
   }
+  
 
   const updateBookingStatus = (data) => {
     const secondsLeft = Math.max(0, data.expiresAt
       ? data.expiresAt - Math.floor(Date.now() / 1000)
       : 0)
-
-    const sessionId = `${data.bookedBy}_${data.expiresAt}`
-
-    if (sessionId !== currentBookingSessionId) {
-      currentBookingSessionId = sessionId
-    
-      const alreadyWarned = sessionStorage.getItem(getWarnedKey())
-      if (alreadyWarned === null) {
-        // Только если вообще не было взаимодействия — устанавливаем в '0'
-        sessionStorage.setItem(getWarnedKey(), '0')
-        hasWarned.value = false
-      } else {
-        hasWarned.value = alreadyWarned === '1'
-      }
-    }
-    
 
     localBookingStatus.value = {
       isBooked: data.isBooked ?? true,
@@ -75,19 +48,14 @@ export function useDeviceBooking(deviceId, currentUserId, emit) {
 
     timerSeconds.value = secondsLeft
     isSelected.value = data.bookedBy === currentUserId.value
-
+    hasWarned.value = false
     updateTimer()
     emit('reservationChange', localBookingStatus.value)
   }
 
   const loadBookingStatus = () => {
     socket.emit('device:get-booking-status', deviceId, (response) => {
-      if (response) {
-        const warnedFromSession = sessionStorage.getItem(getWarnedKey()) === '1'
-        hasWarned.value = warnedFromSession
-        updateBookingStatus(response)
-        initialLoadComplete.value = true
-      }
+      if (response) updateBookingStatus(response)
     })
   }
 
@@ -108,10 +76,7 @@ export function useDeviceBooking(deviceId, currentUserId, emit) {
   onUnmounted(() => {
     socket.off('device:booked')
     socket.off('device:released')
-    if (countdownInterval) {
-      clearInterval(countdownInterval)
-      countdownInterval = null
-    }
+    clearInterval(countdownInterval)
   })
 
   const bookDevice = (durationSeconds) => {
@@ -145,91 +110,91 @@ export function useDeviceBooking(deviceId, currentUserId, emit) {
   }
 
   const handleTimeConfirm = (seconds) => {
+      console.log('[Popup] Confirmed with seconds:', seconds);
     popupConfirmed.value = seconds
     showPopup.value = false
   }
 
   const handleBookingChange = async () => {
-    if (isLoading.value) return
-    isLoading.value = true
+    if (isLoading.value) return;
+    isLoading.value = true;
+  
     const isCurrentlyBookedByUser =
       localBookingStatus.value.isBooked &&
-      localBookingStatus.value.bookedBy === currentUserId.value
-
+      localBookingStatus.value.bookedBy === currentUserId.value;
+  
     try {
       if (!isCurrentlyBookedByUser) {
-        popupConfirmed.value = null
-        showPopup.value = true
-
-        const confirmedSeconds = await waitForPopupConfirm()
-        if (confirmedSeconds !== null) {
-          await bookDevice(confirmedSeconds)
+        popupConfirmed.value = null;
+        showPopup.value = true;
+  
+        const confirmedSeconds = await waitForPopupConfirm();
+        if (confirmedSeconds !== null) { // Добавляем проверку на null
+          await bookDevice(confirmedSeconds);
         }
       } else {
-        await releaseDevice()
-        sessionStorage.setItem(getWarnedKey(), '0')
+        await releaseDevice();
       }
     } catch (error) {
-      console.warn('Booking error:', error.message)
-      isSelected.value = isCurrentlyBookedByUser
+      console.warn('Booking error:', error.message);
+      isSelected.value = isCurrentlyBookedByUser;
     } finally {
-      isLoading.value = false
-      showPopup.value = false
+      isLoading.value = false;
+      showPopup.value = false;
     }
-  }
+  };
 
   const extendBooking = async () => {
-    const now = Date.now()
-    if (now - lastExtendAttempt < 2000) return
-    lastExtendAttempt = now
-
+    const now = Date.now();
+    if (now - lastExtendAttempt < 2000) return;
+    lastExtendAttempt = now;
+  
     const isCurrentlyBookedByUser =
       localBookingStatus.value.isBooked &&
-      localBookingStatus.value.bookedBy === currentUserId.value
-
-    if (!isCurrentlyBookedByUser) return
-    if (isLoading.value) return
-
-    isLoading.value = true
+      localBookingStatus.value.bookedBy === currentUserId.value;
+  
+    if (!isCurrentlyBookedByUser) {
+      console.warn('❌ Нельзя продлить бронирование — устройство принадлежит другому пользователю.');
+      return;
+    }
+  
+    if (isLoading.value) return;
+    isLoading.value = true;
+  
     try {
-      popupConfirmed.value = null
-      showPopup.value = true
-
-      const confirmedSeconds = await waitForPopupConfirm()
-      if (confirmedSeconds !== null) {
-        await bookDevice(confirmedSeconds)
-
-        hasWarned.value = false
-        sessionStorage.removeItem(getWarnedKey())
+      popupConfirmed.value = null;
+      showPopup.value = true;
+  
+      const confirmedSeconds = await waitForPopupConfirm();
+      if (confirmedSeconds !== null) { // Добавляем проверку на null
+        await bookDevice(confirmedSeconds);
       }
     } catch (error) {
-      console.warn('Extend booking error:', error.message)
+      console.warn('Extend booking error:', error.message);
     } finally {
-      isLoading.value = false
-      showPopup.value = false
+      isLoading.value = false;
+      showPopup.value = false;
+      isSelected.value = isCurrentlyBookedByUser;
+      
       if (countdownInterval) {
-        clearInterval(countdownInterval)
-        updateTimer()
+        clearInterval(countdownInterval);
+        updateTimer();
       }
     }
-  }
+  };
 
   watch(timerSeconds, (newVal) => {
-    if (!initialLoadComplete.value) return
-
-    const alreadyWarned = hasWarned.value || sessionStorage.getItem(getWarnedKey()) === '1'
-
     if (
       newVal <= 300 &&
       newVal > 0 &&
       localBookingStatus.value.bookedBy === currentUserId.value &&
-      !alreadyWarned
+      !hasWarned.value
     ) {
       hasWarned.value = true
-      sessionStorage.setItem(getWarnedKey(), '1')
-
+  
+      // Показать предупреждение
       ElMessageBox.confirm(
-        `🚨 The device  ${deviceId} reservation expires in 5 minutes!\nDon't forget to renew if you need to continue.`,
+        "🚨 The device reservation expires in 5 minutes!\nDon't forget to renew if you need to continue.",
         'Booking Warning',
         {
           confirmButtonText: 'Extend',
@@ -239,49 +204,63 @@ export function useDeviceBooking(deviceId, currentUserId, emit) {
         }
       )
         .then(() => {
+          // Пользователь нажал "Extend"
           extendBooking()
         })
-        .catch((action) => {
-          if (action === 'cancel' || action === 'close') {
-            sessionStorage.setItem(getWarnedKey(), '1')
-          }
+        .catch(() => {
+          // Пользователь проигнорировал или закрыл
+          // ничего не делаем тут — отпуск произойдёт по таймеру
         })
+  
+      // Важно: продолжаем отсчёт до 0 — release произойдет в updateTimer
     }
   })
+  
 
   const waitForPopupConfirm = () => {
-    return new Promise((resolve) => {
+    return new Promise((resolve, reject) => {
+      // Если попап уже закрыт, сразу возвращаем null
       if (!showPopup.value) {
-        resolve(null)
-        return
+        resolve(null);
+        return;
       }
-
+  
       const stopPopupWatcher = watch(() => popupConfirmed.value, (val) => {
         if (val !== null) {
-          stopPopupWatcher()
-          stopCloseWatcher()
-          resolve(val)
+          stopPopupWatcher();
+          stopCloseWatcher();
+          resolve(val); // Возвращаем выбранное время
         }
-      })
-
+      });
+  
       const stopCloseWatcher = watch(() => showPopup.value, (val) => {
         if (!val) {
-          stopPopupWatcher()
-          stopCloseWatcher()
-          resolve(null)
+          stopPopupWatcher();
+          stopCloseWatcher();
+          resolve(null); // Возвращаем null при закрытии
         }
-      })
-    })
-  }
+      });
+  
+    });
+  };
 
   watch(
     () => localBookingStatus.value,
     (newVal) => {
       isSelected.value = newVal.isBooked && newVal.bookedBy === currentUserId.value
     },
-    { deep: true }
+    { deep: true }  // Добавьте deep: true для отслеживания вложенных изменений
   )
 
+
+  console.log('[extendBooking] Start', { 
+    isSelected: isSelected.value,
+    lastExtendAttempt 
+  })
+  watch(() => isSelected.value, (val) => {
+    console.log('[extendBooking] isSelected changed', val)
+})
+  
   return {
     localBookingStatus,
     isSelected,

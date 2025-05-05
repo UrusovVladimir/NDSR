@@ -59,14 +59,14 @@
   
   function close() {
   if (!props.isBookedByCurrentUser) {
-    emit('reset-toggle'); 
+    emit('reset-toggle'); // Теперь событие объявлено
   }
   emit('close');
 }
   
   function confirmTime() {
     const totalSeconds = sliderValue.value * 30 * 60;
-    // console.log('Total seconds:', totalSeconds);
+    console.log('Total seconds:', totalSeconds);
     emit('confirm', totalSeconds);
     // close();
   }
@@ -156,12 +156,9 @@
   }
   
   .popup-actions {
-  display: flex;
-  justify-content: center; /* центрирование по горизонтали */
-  align-items: center; /* центрирование по вертикали (если нужно) */
-  gap: 10px; /* отступ между кнопками */
-  padding: 10px; /* отступ внутри контейнера (опционально) */
-}
+    flex-direction: column;
+    align-items: stretch;
+  }
   
   .cancel-btn,
   .confirm-btn {
@@ -169,17 +166,18 @@
   min-width: 120px;
   padding: 10px 18px;
   border-radius: 8px;
-  font-weight: 200;
+  font-weight: 500;
   font-size: 14px;
   cursor: pointer;
   transition: 0.2s;
+  box-sizing: border-box;
+  width: 100%;
 }
   
   .cancel-btn {
     background: transparent;
     border: 1px solid #ccc;
     color: #555;
-    
   }
   
   .cancel-btn:hover {
@@ -190,7 +188,6 @@
     background: #ffc107;
     border: none;
     color: white;
-    
   }
   
   .confirm-btn:hover {

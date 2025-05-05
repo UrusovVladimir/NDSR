@@ -3,8 +3,7 @@ import {
   getDeviceById,
   getDevicesStatus,
   getDeviceStatusCode,
-  wanTypes,
-  users
+  wanTypes
 } from "./devices.js";
 import { changeWanType } from "./actions/changeWanType.js";
 import { resetConfig } from "./actions/resetConfig.js";
@@ -13,8 +12,8 @@ import { resetDslLine } from "../resetDslLine.js";
 import { connectToMws } from "./actions/connectToMws.js";
 import { generatePassword } from "./actions/generatePassword.js";
 
-let isCronEnabled = false; 
 let deviceBookings = new Map();
+let bookingHistory = [];
 let currentWanTypes = {};
 let currentMwsRouter = {};
 let connectDisconnectAp = {};
@@ -24,10 +23,6 @@ let dailyPassword = {
   lastUpdated: null
 };
 const universalPromptRegex = /MGS3520.*[# ]/i;
-
-function getCronStatus() {
-  return isCronEnabled;
-}
 
 function autoReleaseOldBookings(io) {
   const now = Math.floor(Date.now() / 1000); // в секундах
@@ -65,8 +60,6 @@ function broadcastDevicesStatus(io) {
 }
 
 function sendInitData(socket) {
-  socket.emit('device:users', users);
-  socket.emit('cron:status', isCronEnabled);
   socket.emit('device:list', devices);
   socket.emit('device:wanTypes', wanTypes);
   socket.emit('DAILY_PASSWORD', { password: dailyPassword.value });
@@ -92,17 +85,93 @@ function setupEvents(socket, io) {
   socket.clientIp = socket.handshake.address?.replace(/^::ffff:/, '') || 'unknown';
   console.log(`New connection from IP: ${socket.clientIp}`);
   socket.emit('CLIENT_IP', socket.clientIp);
-  socket.on('cron:toggle', (newStatus) => {
-    isCronEnabled = newStatus;
-    console.log(`Auto-release cron is now ${isCronEnabled ? 'ENABLED' : 'DISABLED'}`);
-    io.emit('cron:status', isCronEnabled);
-  });
+  // socket.on('device:book', (deviceId, callback) => {
+  //   if (!deviceId || !devices.some(d => d.id === deviceId)) {
+  //     return callback?.({ status: 'error', message: 'Invalid device ID' });
+  //   }
+
+  //   const userIp = socket.clientIp;
+  //   if (!deviceBookings.has(deviceId)) {
+  //     const bookingInfo = { userIp, timestamp: Date.now() };
+  //     deviceBookings.set(deviceId, bookingInfo);
+  //     bookingHistory.push({ deviceId, userIp, bookedAt: new Date() });
+
+  //     io.emit('device:booked', { deviceId, userIp });
+  //     setTimeout(() => {
+  //       if (deviceBookings.get(deviceId)?.userIp === userIp) {
+  //         deviceBookings.delete(deviceId);
+  //         io.emit('device:released', { deviceId });
+  //       }
+  //     }, 60 * 60 * 1000);
+
+  //     return callback?.({ status: 'ok' });
+  //   } else {
+  //     return callback?.({ status: 'error', message: 'Устройство уже забронировано' });
+  //   }
+  // });
+
+
+  // socket.on('device:book', ({ deviceId, duration }, callback) => {
+  //   try {
+  //     // 1. Валидация входных данных
+  //     if (!deviceId || typeof deviceId !== 'string') {
+  //       throw new Error('Device ID must be a non-empty string');
+  //     }
   
-  socket.on('cron:get-status', () => {
-    socket.emit('cron:status', isCronEnabled);
-  });
+  //     if (!duration || isNaN(duration)) {
+  //       throw new Error('Duration must be a number');
+  //     }
+
+  //     // 3. Поиск устройства
+  //     const device = devices.find(d => d.id === deviceId);
+  //     if (!device) {
+  //       throw new Error(Device with ID ${deviceId} not found);
+  //     }
+
+  //     // 4. Проверка доступности устройства
+  //     if (device.isBooked && device.bookedBy !== socket.clientIp) {
+  //       throw new Error('Device is already booked by another user');
+  //     }
   
+  //     // 5. Бронирование
+  //     const expiresAt = Math.floor(Date.now() / 1000) + parseInt(duration);
+  //     device.isBooked = true;
+  //     device.bookedBy = socket.clientIp;
+  //     device.expiresAt = expiresAt;
   
+  //     // 6. Уведомление всех клиентов
+  //     io.emit('device:booked', {
+  //       deviceId: deviceId,
+  //       bookedBy: socket.clientIp,
+  //       expiresAt
+  //     });
+  //     console.log("socket.clientIp",socket.clientIp, "А это socket.userId", socket.userId)
+      
+  //     bookingHistory.push({
+  //       deviceId,
+  //       bookedBy: socket.clientIp,
+  //       bookedAt: new Date()
+  //   });
+  //   deviceBookings.set(deviceId, {
+  //     bookedBy: socket.clientIp,
+  //     expiresAt
+  //   });
+  // console.log("bookingHistory",bookingHistory)
+  //     // 7. Успешный ответ
+  //     callback({ 
+  //       success: true,
+  //       expiresAt
+  //     });
+  
+  //   } catch (error) {
+  //     console.error('Booking error:', error);
+  //     callback({ 
+  //       success: false,
+  //       message: error.message
+  //     });
+  //   }
+  // });
+
   socket.on('device:book', ({ deviceId, duration }, callback) => {
     const device = deviceBookings.get(deviceId)
     const bookedBy = socket.clientIp
@@ -248,46 +317,6 @@ function setupEvents(socket, io) {
       callback({ status: 'error' });
     });
   });
-
-  socket.on('device:init', async ({ url, body }, callback) => {
-    console.log('Start processing:', url);
-    
-    try {
-      const response = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body)
-      });
-  
-      // Читаем ответ даже при ошибке HTTP
-      const data = await response.json(); 
-      console.log('Device raw response:', data);
-  
-      if (!response.ok) {
-        console.error('Device error:', data);
-        // Важно: вызываем callback с ошибкой!
-        return callback({ 
-          success: false, 
-          error: `HTTP ${response.status}: ${data.message || 'No details'}` 
-        });
-      }
-  
-      // Успешный ответ
-      callback({ 
-        success: true, 
-        data: data // Передаём всё тело ответа
-      });
-  
-    } catch (err) {
-      console.error('Critical fetch error:', err);
-      // Всегда вызываем callback при ошибках!
-      callback({ 
-        success: false, 
-        error: err.message 
-      });
-    }
-  });
- 
 }
 
 
@@ -299,11 +328,9 @@ setInterval(() => console.log('Current bookings:', Array.from(deviceBookings.ent
 setInterval(() => autoReleaseOldBookings(globalIO), 60 * 1000);
 
 
-
-
 export {
   sendInitData,
   setupEvents,
   broadcastDevicesStatus,
-  initPasswordSystem,
-  getCronStatus }
+  initPasswordSystem
+};
