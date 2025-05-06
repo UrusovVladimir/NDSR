@@ -21,19 +21,7 @@ html, body {
   background: none;
   border-radius: 50%;
 }
-.alert-link{
-  border-left: 3px solid rgba(145, 101, 101, 0.5) ;
-  border-bottom: 3px solid rgba(145, 101, 101, 0.5) ;
-  padding: 7px 10px;
-  border-radius: 15px;
-  background-color: #0D6EFD;  
-  font-size: 1.25rem;
-  font-family: "Segoe UI", sans-serif;
-  font-weight: normal;
-  font-display: "auto";
-  color: #FFFFFF;
-  width: 22rem;
-}
+
 
 .led-red {
   margin: 0 auto;
@@ -56,7 +44,7 @@ html, body {
 .led-grey {
     background-color: #CCC;
     box-shadow: rgba(0.8, 0, 0, 10.2) 0 -1px 7px 1px, inset #181818 0 -1px 9px, #929391 0 2px 12px;
-    animation: no;
+    animation: none;
 }
 
 .bd-placeholder-img {
@@ -90,7 +78,6 @@ html, body {
   height: 4.6rem;
   
 }
-
 .badge {
   display: inline-flex;
   width: auto; /* Автоматически подстраивается под содержимое */
@@ -111,8 +98,7 @@ html, body {
   margin-left: 0.2rem; /* Расстояние между span */
   margin-right: 0.3rem; /* Расстояние между span */
   margin-top: 0rem;
- }
-
+ }  
 
  .popper {
   --popper-theme-background-color: #333333;
@@ -121,11 +107,6 @@ html, body {
   --popper-theme-border-width: 0px;
   --popper-theme-border-radius: 10px;
   --popper-theme-padding: 1.05rem;
-  --popper-theme-box-shadow: 0 6px 30px -6px rgba(0, 0, 0, 0.25);
+  --popper-theme-box-shadow: 0 6px 30px -6px rgba(0, 0, 0, 0.25); 
 }
 
- .card {
-height: auto;
-display: flex;
-height: 1rem;
-}

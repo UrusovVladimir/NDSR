@@ -1,21 +1,32 @@
 <template>
   <div class="col">
-    <div class="position-relative" >
+    <div class="position-relative"  style="min-height: 1px;" >
     <TimerPopup 
             :isVisible="showPopup" 
             @close="showPopup = false"
             @confirm="handleTimeConfirm"
             @reset-toggle="handleResetToggle"
             />
-  </div>
+    </div>
       <div class="card shadow-sm position-relative h-100 justify-content-between"
-         :class="{
-           'card-booked': localBookingStatus.isBooked && localBookingStatus.bookedBy !== currentUserId,
-           'border border-warning border-3': isSelected,
-           'opacity-50 pointer-events-none': isLoading || isApplyingChanges
-         }">
-         
-   <div v-if="isApplyingChanges" class="spinner-border spinner-border-sm position-absolute text-white"  style="top:10px; left:10px"></div>
+      :class="[
+              localBookingStatus.isBooked && localBookingStatus.bookedBy !== currentUserId ? 'card-booked' : '',
+              isSelected ? 'custom-highlight' : '',
+              isLoading || isApplyingChanges ? 'opacity-50 pointer-events-none' : ''
+            ]">
+      <div v-if="device.modem || device.phone" class="position-absolute start-0 mt-1" style="padding-left: 75px;">
+        <Popper :arrow="true" :hover="true" :offset-distance="'10'" style="z-index: 9999;">
+          <template #content>
+            <div style="font-size: 12px; color: white; width: 148px;">
+              <strong>Extensions connected:</strong> {{ connectedExtensions }}
+            </div>
+          </template>
+          <svg style="padding-left:1px;" width="20" height="20">
+            <use xlink:href="/img/info.svg#info-fill" color="#4a994d" />
+          </svg>
+        </Popper>
+        </div>
+   <div v-if="isApplyingChanges" class="spinner-border spinner-border-sm position-absolute text-white"  style="top:35px; left:10px"></div>
    <div v-if="localBookingStatus.isBooked" class="position-absolute top-0 end-0 m-2 d-flex flex-wrap gap-1 align-items-center">
   <!-- Основной бейдж -->
     <span class="badge badge-locked-timer text-dark flex-shrink-0">
@@ -23,7 +34,7 @@
          Your booking
       </template>
       <template  v-else>
-          <span class="lock-icon pe-n1">🔒 Booked by {{ localBookingStatus.bookedBy }}</span>
+          <span class="lock-icon pe-n1">🔒 Booked by {{ usersNames[localBookingStatus.bookedBy] || localBookingStatus.bookedBy }}</span>
       </template>
         <span class="ps-1"> 🕒 {{ formatTime(timerSeconds) }}</span>
         <button 
@@ -43,7 +54,7 @@
   class="card-overlay">
 </div>
       <!-- Toogle выбора -->
-      <div class="form-check position-absolute align-items-start p-2">
+      <div class="toggle-wrapper form-check position-absolute align-items-start p-2">
         <vue-toggles
         v-model="isSelected"
         @click="handleBookingChange"
@@ -82,10 +93,10 @@
       </a>
 
 
-      <div v-if="isLoading" class="spinner-border spinner-border-sm position-absolute text-white" style="top:10px; left: 70px"></div>
+      <div v-if="isLoading" class="spinner-border spinner-border-sm end-0 position-absolute text-white mt-1 me-1"></div>
       <div class="justify-content-between" style="width: auto; height: auto;padding: 1.5%;padding-bottom: 0.5%;">
         <span v-show="device.type==='router'" class="badge rounded-pill bg-secondary" style="height:auto; width: auto;text-align: center">
-          Connect to SSH: {{ device.sshContainer }}
+          LAN Host SSH: {{ device.sshContainer }}
         </span>
         <span v-show="device.type==='router'" class="badge rounded-pill bg-secondary" style="height:1.50rem; width: auto;">
         WAN Type: {{ currentWanTypeDisplay || 'ISP not configured' }}
@@ -127,7 +138,10 @@
             <span>Connection to router for MWS</span>
           </button>
           <button v-if="device.type === 'router'" @click="vncOpen" :disabled="isLoading || isOffline || !isOwnedByCurrentUser" type="button" class="btn btn-sm btn-outline-secondary">
-            <span>Remote Desktop</span>
+            <span>LAN Host VNC</span>
+          </button>
+          <button v-if="device.type === 'router'" @click="initializationDevice(todayPassword)" :disabled="isLoading || isOffline || !isOwnedByCurrentUser" type="button" class="btn btn-sm btn-outline-secondary">
+            <span>Disable EasyConfig</span>
           </button>       
         </div>
       </div>  
@@ -154,7 +168,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onUnmounted, watch } from 'vue';
+import { ref, computed, onMounted, onUnmounted, watch,inject } from 'vue';
 import { socket } from '@/socket';
 import { toast } from 'vue3-toastify';
 import DeviceModal from '@/components/DeviceModals.vue';
@@ -169,17 +183,27 @@ const props = defineProps({
   device: Object,
   wanTypes: Array,
   filteredDevices: Array,
-  currentUserId: [String, Number]
+  currentUserId: [String, Number],
+  users: Array
 });
-
 const deviceModal = ref(null);
 const currentWanTypeDisplay = ref('ISP not configured');
 const currentMwsRouterDisplay = ref('Device not connected');
-
+const todayPassword = inject('todayPassword');
 const isOffline = computed(() => props.device.statusCode !== 200);
-
 const isApplyingChanges = ref(false);
-
+const usersNames = computed(() => {
+  return props.users.reduce((map, user) => {
+    map[user.ip] = user.name;
+    return map;
+  }, {}); 
+});
+const connectedExtensions = computed(() => {
+  const parts = []
+  if (props.device.modem) parts.push(props.device.modem)
+  if (props.device.phone) parts.push(props.device.phone)
+  return parts.length ? parts.join(', ') : 'None'
+})
 const {
   showPopup,
   handleTimeConfirm,
@@ -194,18 +218,14 @@ const {
   computed(() => props.currentUserId),
   emit
 );
-
-
 const {
   isLoading: isActionLoading,
   resetConfig,
   rebootDevice,
-  resetDslLine
+  resetDslLine,
+  initializationDevice
 } = useDeviceActions(props.device, isOffline);
-
 const isLoading = computed(() => isBookingLoading.value || isActionLoading.value);
-
-
 const isSelected = ref(bookingSelected.value)
 
 watch(showPopup, (val) => {
@@ -213,7 +233,6 @@ watch(showPopup, (val) => {
     bookingSelected.value = false;
   }
 });
-
 
 watch(bookingSelected, (val) => {
   isSelected.value = val
@@ -226,8 +245,9 @@ watch(isSelected, (val) => {
 })
 
 const shouldDisableToggle = computed(() => {
-  return localBookingStatus.value.isBooked &&
-         localBookingStatus.value.bookedBy !== props.currentUserId;
+  return (localBookingStatus.value.isBooked &&
+          localBookingStatus.value.bookedBy !== props.currentUserId) ||
+         showPopup.value || isApplyingChanges.value;
 });
 
 const isOwnedByCurrentUser = computed(() => {
@@ -271,11 +291,9 @@ const openModal = (type) => {
     const currentWan = props.wanTypes.find(w => w.type === currentWanTypeDisplay.value);
     initialValue = currentWan?.vlanId || null;
   }
-
   if (type === 'mwsConnection') {
     initialValue = currentMwsRouterDisplay.value === 'None' ? null : currentMwsRouterDisplay.value;
   }
-
   if (deviceModal.value?.show) {
     deviceModal.value.show(type, initialValue);
   }
@@ -310,9 +328,9 @@ const handleMwsSave = async (routerId, action) => {
 
 const handleDslSave = async (settings) => {
   try {
-    toast.success('DSL settings updated successfully');
+    toast.success('DSL settings updated successfully',{ autoClose: 4000, hideProgressBar: false });
   } catch (error) {
-    toast.error(`Failed to update DSL settings: ${error.message}`);
+    toast.error(`Failed to update DSL settings: ${error.message}`,{ autoClose: 4000, hideProgressBar: false });;
   }
 };
 
@@ -363,15 +381,18 @@ const formatTime = (seconds) => {
   cursor: pointer;
 }
 
-.card {
-  transition: all 0.2s ease;
+.card
+ {
   position: relative;
-  max-width: 100%; /* Добавьте это */
-  overflow: visible;
-  min-width: 210px; /* Минимальная ширина карточки */
-  box-sizing: border-box; /* Важно! */
-  margin: 0 auto; /* Центрирование */
-  
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  word-wrap: break-word;
+  overflow: hidden; 
+}
+
+.card-body {
+  flex-grow: 1;
 }
 
 .card:hover {
@@ -442,5 +463,20 @@ const formatTime = (seconds) => {
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%);
+}
+.custom-highlight {
+  border: 2px solid #ffc107;
+  box-shadow: 0 0 10px #ffc10780;
+  box-sizing: border-box;
+}
+
+.toggle-wrapper {
+  flex-shrink: 0;
+  margin-left: auto;
+  
+}
+.custom-tooltip {
+  z-index: 9999 !important;
+  font-size: 16px;
 }
 </style>

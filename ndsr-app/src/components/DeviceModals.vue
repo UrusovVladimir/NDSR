@@ -15,14 +15,12 @@
             {{ wan.type }}
           </label>
         </div>
-
         <div v-if="showPPPoECredentials" class="alert alert-success d-flex align-items-center mt-3" role="alert">
           <svg class="bi flex-shrink-0 me-2" width="24" height="24"><use xlink:href="/img/info.svg#info-fill"/></svg>
           <div>
             Login: <b>support</b> Password: <b>support2019</b>
           </div>
         </div>
-
         <div v-if="showResetHint" class="alert alert-success d-flex align-items-center mt-3" role="alert">
           <svg class="bi flex-shrink-0 me-2" width="24" height="24"><use xlink:href="/img/info.svg#info-fill"/></svg>
           <div style="font-family: Segoe UI, sans-serif;font-size: 0.95rem;">
@@ -30,7 +28,6 @@
           </div>
         </div>
       </div>
-  
       <!-- MWS Connection Modal -->
       <div v-if="modalType === 'mwsConnection'">
         <div v-for="dev in filteredDevices" class="form-check" :key="dev.hwId" style="font-family: Segoe UI, sans-serif;font-size: 1.1rem;">
@@ -40,7 +37,6 @@
         </label>
         </div>
       </div>
-
       <!-- DSL Settings Modal -->
       <div v-if="modalType === 'dslSettings'">
         <div v-for="wan in filteredWanTypes" :key="wan.description" class="form-check my-3 fs-5">

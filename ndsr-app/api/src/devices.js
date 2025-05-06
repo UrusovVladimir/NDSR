@@ -4,8 +4,8 @@ import axios from "axios";
 const STATUS_CHECK_TIMEOUT = process.env.STATUS_CHECK_TIMEOUT * 1000
 const devices = readConfig(process.env.DEVICES_CONFIG_PATH);
 const wanTypes = readConfig(process.env.WAN_TYPES_CONFIG_PATH);
+const users = readConfig(process.env.USER_CONFIG_PATH);
 
-// Response: [{device.URL: status-code}, ...]
 async function getDevicesStatus(devices) {
     let urls = devices.map(device => device.checkUrl)
     const requests = urls.map(url => axios.get(url, {
@@ -79,6 +79,7 @@ function getVlanId(){
 export {
     devices,
     wanTypes,
+    users,
     getDevicesStatus,
     getDeviceStatusCode,
     getDeviceById,
