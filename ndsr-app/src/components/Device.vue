@@ -8,24 +8,32 @@
             @reset-toggle="handleResetToggle"
             />
     </div>
-      <div class="card shadow-sm position-relative h-100 justify-content-between"
-      :class="[
-              localBookingStatus.isBooked && localBookingStatus.bookedBy !== currentUserId ? 'card-booked' : '',
-              isSelected ? 'custom-highlight' : '',
-              isLoading || isApplyingChanges ? 'opacity-50 pointer-events-none' : ''
-            ]">
-      <div v-if="device.modem || device.phone" class="position-absolute start-0 mt-1" style="padding-left: 75px;">
-        <Popper :arrow="true" :hover="true" :offset-distance="'10'" style="z-index: 9999;">
-          <template #content>
-            <div style="font-size: 12px; color: white; width: 148px;">
-              <strong>Extensions connected:</strong> {{ connectedExtensions }}
-            </div>
-          </template>
-          <svg style="padding-left:1px;" width="20" height="20">
-            <use xlink:href="/img/info.svg#info-fill" color="#4a994d" />
-          </svg>
-        </Popper>
-        </div>
+    
+    <div class="card shadow-sm position-relative h-100 justify-content-between"
+  :class="[
+    localBookingStatus.isBooked && localBookingStatus.bookedBy !== currentUserId ? 'card-booked' : '',
+    isSelected ? 'custom-highlight' : '',
+    isLoading || isApplyingChanges ? 'opacity-50 pointer-events-none' : ''
+  ]">
+  
+  <!-- Блок с тоглом и бейджем -->
+  <div class="position-absolute start-0 mt-1 d-flex flex-column" style="padding-left: 75px; gap: 0.5rem;">
+    <!-- Тогл/инфо-иконка -->
+    <div>
+      <Popper :arrow="true" :hover="true" :offset-distance="'10'" style="z-index: 9999;">
+        <template #content>
+          <div style="font-size: 12px; color: white; width: 148px;">
+            <strong>Extensions connected:</strong> {{ connectedExtensions }}
+          </div>
+        </template>
+        <svg style="padding-left:1px;" width="20" height="20">
+          <use xlink:href="/img/info.svg#info-fill" color="#4a994d" />
+        </svg>
+      </Popper>
+    </div>
+  </div>
+  
+        
    <div v-if="isApplyingChanges" class="spinner-border spinner-border-sm position-absolute text-white"  style="top:35px; left:10px"></div>
    <div v-if="localBookingStatus.isBooked" class="position-absolute top-0 end-0 m-2 d-flex flex-wrap gap-1 align-items-center">
   <!-- Основной бейдж -->
@@ -94,62 +102,76 @@
 
 
       <div v-if="isLoading" class="spinner-border spinner-border-sm end-0 position-absolute text-white mt-1 me-1"></div>
-      <div class="justify-content-between" style="width: auto; height: auto;padding: 1.5%;padding-bottom: 0.5%;">
-        <span v-show="device.type==='router'" class="badge rounded-pill bg-secondary" style="height:auto; width: auto;text-align: center">
-          LAN Host SSH: {{ device.sshContainer }}
-        </span>
-        <span v-show="device.type==='router'" class="badge rounded-pill bg-secondary" style="height:1.50rem; width: auto;">
-        WAN Type: {{ currentWanTypeDisplay || 'ISP not configured' }}
-       </span>
-        <span v-show="device.type==='AP'" class="badge rounded-pill bg-secondary" style="height:auto; width: auto;text-align: center">
-          AP Connected to MWS Router: {{ currentMwsRouterDisplay }}   
-          <Popper 
-          style="height: auto; width: auto;"
-            :offset-distance="'10'"
-            :content="'Extender connected to router:' + currentMwsRouterDisplay"
-            :arrow="true"
-            :hover="true">
-            <svg style="padding-left:1px;" width="14" height="14"><use xlink:href="/img/info.svg#info-fill"/></svg>
-          </Popper>
-        </span>
-      </div> 
-
-      <div class="d-flex justify-content-between align-items-center">
-        <div  class="btn-group flex-wrap flex-item">
-          <button @click="consoleOpen" :disabled="!isOwnedByCurrentUser" type="button" class="btn btn-sm btn-outline-secondary">
-            <span>Console</span>
-          </button>
-          <button @click="resetConfig" :disabled="!isOwnedByCurrentUser" type="button" class="btn btn-sm btn-outline-secondary">
-            <span>Reset config</span>
-          </button>
-          <button @click="rebootDevice" :disabled="isLoading || isOffline || !isOwnedByCurrentUser" type="button" class="btn btn-sm btn-outline-secondary">
-            <span>Reboot</span>
-          </button>
-          <button v-if="device.dslPort" @click="resetDslLine" :disabled="isLoading || isOffline || !isOwnedByCurrentUser" type="button" class="btn btn-sm btn-outline-secondary">
-            <span>Reset DSL line</span>
-          </button>
-          <button v-if="device.dslPort === 'yes'" :disabled="!isOwnedByCurrentUser" @click="openModal('dslSettings')" type="button" class="btn btn-sm btn-outline-secondary">
-            <span>Setup DSL</span>
-          </button>
-          <button v-if="device.type === 'router'" @click="openModal('wanTypes')" :disabled="isLoading || isOffline || !isOwnedByCurrentUser" type="button" class="btn btn-sm btn-outline-secondary">
-           <span>WAN connection type</span>
-          </button>
-          <button v-if="device.type === 'AP'" :disabled="!isOwnedByCurrentUser" @click="openModal('mwsConnection')" type="button" class="btn btn-sm btn-outline-secondary">
-            <span>Connection to router for MWS</span>
-          </button>
-          <button v-if="device.type === 'router'" @click="vncOpen" :disabled="isLoading || isOffline || !isOwnedByCurrentUser" type="button" class="btn btn-sm btn-outline-secondary">
-            <span>LAN Host VNC</span>
-          </button>
-          <button v-if="device.type === 'router'" @click="initializationDevice(todayPassword)" :disabled="isLoading || isOffline || !isOwnedByCurrentUser" type="button" class="btn btn-sm btn-outline-secondary">
-            <span>Disable EasyConfig</span>
-          </button>       
-        </div>
-      </div>  
-      <div>
-  </div>
-  </div>
-  </div>
+      <div class="d-flex flex-column gap-1 p-2">
+    <div class="d-flex flex-wrap gap-1 align-items-center">
   
+      <button
+  v-if="device.type === 'router'" 
+  @click="openModal('wanTypes')" 
+  :disabled="isLoading || isOffline || !isOwnedByCurrentUser" 
+  type="button" 
+  class="btn btn-outline-primary d-flex align-items-center high-100 gap-2"
+  style="height: 35px;"
+>  <i class="bi bi-hand-index-thumb"></i>
+  Select WAN Type
+  <span class="badge bg-dark mt-2 bg-opacity-10 text-dark d-flex align-items-baseline">
+    <i class="bi bi-globe me-2"></i>
+    {{ currentWanTypeDisplay || 'ISP not configured' }}
+  </span>
+
+</button>
+
+  
+    <span  v-if="device.type === 'AP'" class="badge rounded-pill bg-dark bg-opacity-10 text-dark p-2 d-flex align-items-center">
+      <i class="bi bi-router me-1"></i> AP Connected: {{ currentMwsRouterDisplay }}
+      <Popper :offset-distance="'10'" :content="'Extender connected to router:' + currentMwsRouterDisplay" :arrow="true" :hover="true">
+        <i class="bi bi-info-circle ms-1"></i>
+      </Popper>
+    </span>
+  </div>
+
+  <!-- Основные кнопки -->
+  <div class="d-flex flex-wrap gap-2">
+    <button @click="consoleOpen" :disabled="!isOwnedByCurrentUser" type="button" class="btn btn-sm btn-outline-secondary flex-grow-1">
+      <i class="bi bi-terminal me-1"></i> Console
+    </button>
+    
+    <button @click="resetConfig" :disabled="!isOwnedByCurrentUser" type="button" class="btn btn-sm btn-outline-danger flex-grow-1">
+      <i class="bi bi-arrow-counterclockwise me-1"></i> Reset config
+    </button>
+    
+    <button @click="rebootDevice" :disabled="isLoading || isOffline || !isOwnedByCurrentUser" type="button" class="btn btn-sm btn-outline-warning flex-grow-1">
+      <i class="bi bi-power me-1"></i> Reboot
+    </button>
+    
+    <button v-if="device.dslPort" @click="resetDslLine" :disabled="isLoading || isOffline || !isOwnedByCurrentUser" type="button" class="btn btn-sm btn-outline-secondary flex-grow-1">
+      <i class="bi bi-phone me-1"></i> Reset DSL line
+    </button>
+  </div>
+
+  <!-- Специальные кнопки -->
+  <div class="d-flex flex-wrap gap-2">
+    <button v-if="device.dslPort === 'yes'" :disabled="!isOwnedByCurrentUser" @click="openModal('dslSettings')" type="button" class="btn btn-sm btn-outline-info flex-grow-1">
+      <i class="bi bi-gear me-1"></i> Setup DSL
+    </button>
+    
+    <button v-if="device.type === 'AP'" :disabled="!isOwnedByCurrentUser" @click="openModal('mwsConnection')" type="button" class="btn btn-sm btn-outline-success flex-grow-1">
+      <i class="bi bi-router me-1"></i> MWS Connection
+    </button>
+    
+
+    
+    <button v-if="device.type === 'router'" @click="vncOpen" :disabled="isLoading || isOffline || !isOwnedByCurrentUser" type="button" class="btn btn-sm btn-outline-secondary flex-grow-1">
+      <i class="bi bi-display me-1"></i> LAN VNC
+    </button>
+    
+    <button v-if="device.type === 'router'" @click="initializationDevice(todayPassword)" :disabled="isLoading || isOffline || !isOwnedByCurrentUser" type="button" class="btn btn-sm btn-outline-warning flex-grow-1">
+      <i class="bi bi-toggle-off me-1"></i> Disable EasyConfig
+    </button>
+  </div>
+</div>
+</div>
+    </div>
 
 
   <!-- Унифицированное модальное окно -->
@@ -479,4 +501,5 @@ const formatTime = (seconds) => {
   z-index: 9999 !important;
   font-size: 16px;
 }
-</style>
+
+</style>%
