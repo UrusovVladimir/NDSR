@@ -2,7 +2,8 @@
   <div class="col">
     <div class="position-relative"  style="min-height: 1px;" >
     <TimerPopup 
-            :isVisible="showPopup" 
+            :isVisible="showPopup"
+            :isBookedByCurrentUser="localBookingStatus.bookedBy === currentUserId"
             @close="showPopup = false"
             @confirm="handleTimeConfirm"
             @reset-toggle="handleResetToggle"
@@ -101,25 +102,24 @@
       </a>
 
 
-      <div v-if="isLoading" class="spinner-border spinner-border-sm end-0 position-absolute text-white mt-1 me-1"></div>
-      <div class="d-flex flex-column gap-1 p-2">
-    <div class="d-flex flex-wrap gap-1 align-items-center">
+    <div v-if="isLoading" class="spinner-border spinner-border-sm end-0 position-absolute text-white mt-1 me-1"></div>
+       <div class="d-flex flex-column gap-1 p-2">
+          <div class="d-flex flex-wrap gap-1 align-items-center">
   
       <button
-  v-if="device.type === 'router'" 
-  @click="openModal('wanTypes')" 
-  :disabled="isLoading || isOffline || !isOwnedByCurrentUser" 
-  type="button" 
-  class="btn btn-outline-primary d-flex align-items-center high-100 gap-2"
-  style="height: 35px;"
->  <i class="bi bi-hand-index-thumb"></i>
-  Select WAN Type
-  <span class="badge bg-dark mt-2 bg-opacity-10 text-dark d-flex align-items-baseline">
-    <i class="bi bi-globe me-2"></i>
-    {{ currentWanTypeDisplay || 'ISP not configured' }}
-  </span>
-
-</button>
+      v-if="device.type === 'router'" 
+      @click="openModal('wanTypes')" 
+      :disabled="isLoading || isOffline || !isOwnedByCurrentUser" 
+      type="button" 
+      class="btn btn-outline-primary d-flex align-items-center high-100 gap-2"
+      style="height: 35px; white-space: nowrap;"> 
+      <i class="bi bi-hand-index-thumb"></i>
+      Select WAN Type
+      <span class="badge bg-dark mt-2 bg-opacity-10 text-dark d-flex align-items-center" style=" white-space: wrap; height: 26px;">
+        <i class="bi bi-globe me-2"></i>
+        {{ currentWanTypeDisplay || 'ISP not configured' }}
+      </span>
+     </button>
 
   
     <span  v-if="device.type === 'AP'" class="badge rounded-pill bg-dark bg-opacity-10 text-dark p-2 d-flex align-items-center">
@@ -140,7 +140,7 @@
       <i class="bi bi-arrow-counterclockwise me-1"></i> Reset config
     </button>
     
-    <button @click="rebootDevice" :disabled="isLoading || isOffline || !isOwnedByCurrentUser" type="button" class="btn btn-sm btn-outline-warning flex-grow-1">
+    <button @click="rebootDevice" :disabled="isLoading || !isOwnedByCurrentUser" type="button" class="btn btn-sm btn-outline-warning flex-grow-1">
       <i class="bi bi-power me-1"></i> Reboot
     </button>
     
@@ -387,6 +387,8 @@ const formatTime = (seconds) => {
   const s = String(seconds % 60).padStart(2, '0');
   return `${h}:${m}:${s}`;
 };
+
+
 </script>
 
 <style scoped>
@@ -411,6 +413,10 @@ const formatTime = (seconds) => {
   min-width: 0;
   word-wrap: break-word;
   overflow: hidden; 
+  transition: all 0.2s ease;
+  filter: drop-shadow(0 2px 4px rgba(0,0,0,0.1));
+  
+  
 }
 
 .card-body {
@@ -418,8 +424,7 @@ const formatTime = (seconds) => {
 }
 
 .card:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+  filter: drop-shadow(0 8px 16px rgba(0,0,0,0.15));
 }
 
 .position-absolute.top-0.start-0 {
@@ -502,4 +507,4 @@ const formatTime = (seconds) => {
   font-size: 16px;
 }
 
-</style>%
+</style>

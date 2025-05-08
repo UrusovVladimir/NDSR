@@ -2,15 +2,22 @@
 @import 'vue3-toastify/dist/index.css';
 @import 'bootstrap';
 html, body {
-  overflow-x: hidden; 
+  height: 100%;
   width: 100%;
-  min-width: 300px; /* Минимальная ширина окна браузера */
- }
+  min-width: 372px;
+  position: relative; 
+}
+
+body {
+  max-width: 100vw;
+  overflow-x: clip; 
+}
 
 :root {
     --toastify-font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
     --toastify-toast-width: 435px;
 }
+
 
 .led-box {
   height: 13px;

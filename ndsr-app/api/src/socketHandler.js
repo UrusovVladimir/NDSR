@@ -251,7 +251,7 @@ function setupEvents(socket, io) {
 
   socket.on('device:init', async ({ url, body }, callback) => {
     console.log('Start processing:', url);
-    
+  
     try {
       const response = await fetch(url, {
         method: 'POST',
@@ -259,34 +259,36 @@ function setupEvents(socket, io) {
         body: JSON.stringify(body)
       });
   
-      // Читаем ответ даже при ошибке HTTP
-      const data = await response.json(); 
-      console.log('Device raw response:', data);
+      let data = null;
+      try {
+        data = await response.json();
+      } catch (e) {
+        console.warn('Response is not JSON or empty');
+      }
   
       if (!response.ok) {
-        console.error('Device error:', data);
-        // Важно: вызываем callback с ошибкой!
-        return callback({ 
+        console.error('Device responded with error:', data);
+        return callback?.({ 
           success: false, 
-          error: `HTTP ${response.status}: ${data.message || 'No details'}` 
+          error: `HTTP ${response.status}: ${data?.message || 'No details'}` 
         });
       }
   
       // Успешный ответ
-      callback({ 
+      callback?.({ 
         success: true, 
-        data: data // Передаём всё тело ответа
+        data: data || {} 
       });
   
     } catch (err) {
-      console.error('Critical fetch error:', err);
-      // Всегда вызываем callback при ошибках!
-      callback({ 
+      console.error('Fetch error:', err);
+      callback?.({ 
         success: false, 
         error: err.message 
       });
     }
   });
+  
  
 }
 

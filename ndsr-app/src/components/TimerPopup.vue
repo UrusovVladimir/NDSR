@@ -35,9 +35,10 @@
   <script setup>
   import { ref } from 'vue';
   
+
   const props = defineProps({
     isVisible: Boolean,
-    isBookedByCurrentUser: Boolean
+    isBookedByCurrentUser: Boolean,
   });
   const emit = defineEmits(['close', 'confirm','reset-toggle']);
   
@@ -46,7 +47,6 @@
   const minutesUntilMidnight = (24 * 60) - (now.getHours() * 60 + now.getMinutes());
   const maxSteps = Math.floor(minutesUntilMidnight / 30);
   const totalMinutes = maxSteps * 30;
-  
   const sliderValue = ref(1); // 30 минут по умолчанию
   
   const formatMinutes = (minutes) => {
@@ -58,6 +58,8 @@
   };
   
   function close() {
+    console.log('Popup closed', props.isBookedByCurrentUser);
+  // Закрытие попапа
   if (!props.isBookedByCurrentUser) {
     emit('reset-toggle'); 
   }

@@ -43,55 +43,87 @@ export function useDeviceActions(device, isOffline) {
     }
 
 
-    const initializationDevice = (password) => {
-        if (isOffline.value) {
-          toast.error(`Device ${device.hwId} is offline. Cannot initialize.`,{ autoClose: 4000, hideProgressBar: false });
-          return;
-        }
+    const initializationDevice = async (password) => {
+      if (isOffline.value) {
+        toast.error(`Device ${device.hwId} is offline. Cannot initialize.`, { autoClose: 4000, hideProgressBar: false });
+        return;
+      }
+    
+      const host = device.checkUrl;
+      const url = `${host}/rci/`;
       
-        const host = device.URL;
-        const url = `${host}/rci/`;
-      
-        socket.timeout(30000).emit(
+      try {
+        isLoading.value = true;
+        
+        const response = await new Promise((resolve, reject) => {
+          socket.timeout(30000).emit(
             'device:init',
             {
               url: `${url}`,
               body: [
-              { "eula": { "accept": {} }},
-              {"dpn": {"accept": {}}},
-              {"easyconfig": {"disable": true}},
-              {"user":{"password":{"plain":{"name":"admin","password":`${password}`}}}},
-              {"user":{"password":{"name":"admin","password":`${password}`}}},
-              {"system": {"configuration": {"save": true}}
-            }
-            ]},
-            (error,response) => {
-              console.log('Initialization request sent to:',response);
-              isLoading.value = false;
-              
-              if (!response) {
-                toast.error('Answer from server is empty.',{ autoClose: 4000, hideProgressBar: false });
-                console.error('Null response. Possible reasons:', {
-                  socketConnected: socket.connected,
-                  eventRegistered: socket.hasListeners('device:init')
-                });
-                return;
-              }
-              if (error) {
-                toast.error('Error device connected.',{ autoClose: 4000, hideProgressBar: false });
-                console.error('Initialization error:', error);
-                return;
-              }
-              console.log('Full server response:', response);
-              if (response.success) {
-                navigator.clipboard.writeText(password);
-                console.log('Password copied to clipboard');
-                toast.success(`${device.hwId} device initialization complete! The password was copied to your clipboard.` , { autoClose: 3000, hideProgressBar: false });
-              } else if (response.error.includes('Unexpected token')) {
-                toast.error(`Device ${device.hwId} initialization failed! Password is set.`, { autoClose: 4000, hideProgressBar: false });
-              }
+                { "eula": { "accept": {} }},
+                {"dpn": {"accept": {}}},
+                {"easyconfig": {"disable": true}},
+                {"user":{"password":{"plain":{"name":"admin","password":`${password}`}}}},
+                {"user":{"password":{"name":"admin","password":`${password}`}}},
+                {"system": {"configuration": {"save": true}}}
+              ]
+            },
+            (error, response) => {
+              if (error) reject(error);
+              else resolve(response);
             }
           );
+        });
+    
+        // console.log('Initialization response:', response);
+    
+        if (!response) {
+          toast.error('Answer from server is empty.', { autoClose: 4000, hideProgressBar: false });
+          return;
+        }
+    
+        if (response.success) {
+          try {
+            // Безопасное копирование в буфер обмена
+            if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
+              await navigator.clipboard.writeText(password);
+              toast.success(`${device.hwId} initialized! Password copied to clipboard.`, { autoClose: 3000 });
+            } else {
+              // Альтернативный метод для старых браузеров
+              copyToClipboardFallback(password);
+              toast.success(`${device.hwId} initialized! Password: ${password}`, { autoClose: 3000 });
+            }
+          } catch (clipboardError) {
+            // console.warn('Clipboard copy failed:', clipboardError);
+            toast.success(`${device.hwId} initialized! Password: ${password}`, { autoClose: 3000 });
+          }
+        } else if ((response.error?.includes('Unexpected token')) || (!response.success)) {
+          toast.error(`Initialization failed! Password was set.`, { autoClose: 4000 });
+        }
+      } catch (error) {
+        // console.error('Initialization error:', error);
+        toast.error(`Initialization failed: ${error.message}`, { autoClose: 4000 });
+      } finally {
+        isLoading.value = false;
+      }
+    };
+    
+    // Фолбэк для копирования в буфер
+    function copyToClipboardFallback(text) {
+      const textarea = document.createElement('textarea');
+      textarea.value = text;
+      textarea.style.position = 'fixed';
+      document.body.appendChild(textarea);
+      textarea.select();
+      
+      try {
+        document.execCommand('copy');
+      } catch (err) {
+        console.error('Fallback copy failed:', err);
+      } finally {
+        document.body.removeChild(textarea);
+      }
     }
     
     return {

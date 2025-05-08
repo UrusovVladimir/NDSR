@@ -279,10 +279,18 @@ const handleReservation = (deviceId, isReserved) => {
 onUnmounted(() => {
   clearTimeout(timer)
 })
+
+
 </script>
 
 <style scoped>
-
+.navbar {
+  position: sticky;
+  top: 0;
+  width: 100%;
+  padding-right: var(--scrollbar-width);
+  background-color: #343a40; /* Цвет вашей шапки */
+}
 .spinner-border {
   width: 6rem;
   height: 6rem;

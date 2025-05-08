@@ -186,7 +186,6 @@ export function useDeviceBooking(deviceId, currentUserId, emit) {
     const isCurrentlyBookedByUser =
       localBookingStatus.value.isBooked &&
       localBookingStatus.value.bookedBy === currentUserId.value
-
     if (!isCurrentlyBookedByUser) return
     if (isLoading.value) return
 
