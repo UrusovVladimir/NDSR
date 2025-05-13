@@ -1,6 +1,6 @@
 <template>
   <div>
-    <header>
+    <header class="header">
       <div class="collapse bg-dark" id="navbarHeader">
       </div>
       <div class="navbar navbar-dark bg-dark shadow-sm">
@@ -18,7 +18,7 @@
         
         <div class="password-panel" :class="{ 'expanded': isPanelExpanded }">
           
-          <div class="container d-flex justify-content-end">
+          <div class="d-flex justify-content-center">
             <div class="password-content bg-white rounded-bottom shadow-sm px-3 py-2">
               <div class="d-flex align-items-center">
                 <span class=" me-2  date-time">
@@ -67,6 +67,16 @@
         </div>
       </div>
       </div>
+      <!-- Кнопка управления панелью -->
+      <div class="toggle-btn-container">
+        <button
+          @click="togglePanel"
+          class="btn btn-sm toggle-btn"
+          :class="{ 'expanded': isPanelExpanded }"
+        >
+          <i class="bi" :class="isPanelExpanded ? 'bi-chevron-up' : 'bi-chevron-down'"></i>
+        </button>
+      </div>
     </header>
 
     <div v-if="isLoading" class="d-flex justify-content-center mt-5">
@@ -77,18 +87,6 @@
     
     <main v-else>      
       <div class="album py-5 bg-light">
-        <!-- Кнопка управления панелью -->
-        <div class="d-flex justify-content-end">
-          <div class="toggle-btn-container">
-            <button 
-              @click="togglePanel"
-              class="btn btn-sm toggle-btn"
-              :class="{ 'expanded': isPanelExpanded }"
-            >
-              <i class="bi" :class="isPanelExpanded ? 'bi-chevron-up' : 'bi-chevron-down'"></i>
-            </button>
-          </div>
-        </div>
         
         <div class="container-fluid px-xxl-5">
           <div class="row row-cols-1 row-cols-sm-2 row-cols-lg-3 g-3 justify-content-start">
@@ -284,6 +282,12 @@ onUnmounted(() => {
 </script>
 
 <style scoped>
+.header {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+
 .navbar {
   position: sticky;
   top: 0;
@@ -314,6 +318,7 @@ onUnmounted(() => {
   opacity: 1;
   height: auto;          /* Автовысота */
   padding-bottom: 15px;
+  background-color: white;
 }
 
 .password-content {
@@ -341,6 +346,7 @@ onUnmounted(() => {
   .date-time {
     min-width: 100%;
   }
+  
 }
 
 .password-group {
@@ -357,11 +363,10 @@ onUnmounted(() => {
 }
 
 .toggle-btn-container {
-  position: relative;
+  position: absolute;
   z-index: 10;
-  margin-top: -15px;
-  margin-right: 20px;
-  transform: translateY(-170%);
+  bottom: -10px;
+  right: 20px;
 }
 
 .toggle-btn {

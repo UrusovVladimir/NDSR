@@ -9,17 +9,13 @@
             @reset-toggle="handleResetToggle"
             />
     </div>
-    
     <div class="card shadow-sm position-relative h-100 justify-content-between"
   :class="[
     localBookingStatus.isBooked && localBookingStatus.bookedBy !== currentUserId ? 'card-booked' : '',
     isSelected ? 'custom-highlight' : '',
     isLoading || isApplyingChanges ? 'opacity-50 pointer-events-none' : ''
   ]">
-  
-  <!-- Блок с тоглом и бейджем -->
   <div class="position-absolute start-0 mt-1 d-flex flex-column" style="padding-left: 75px; gap: 0.5rem;">
-    <!-- Тогл/инфо-иконка -->
     <div>
       <Popper :arrow="true" :hover="true" :offset-distance="'10'" style="z-index: 9999;">
         <template #content>
@@ -33,8 +29,6 @@
       </Popper>
     </div>
   </div>
-  
-        
    <div v-if="isApplyingChanges" class="spinner-border spinner-border-sm position-absolute text-white"  style="top:35px; left:10px"></div>
    <div v-if="localBookingStatus.isBooked" class="position-absolute top-0 end-0 m-2 d-flex flex-wrap gap-1 align-items-center">
   <!-- Основной бейдж -->
@@ -57,7 +51,6 @@
         </button>
    </span>
 </div>
-
 <div 
   v-if="localBookingStatus.isBooked && localBookingStatus.bookedBy !== currentUserId" 
   class="card-overlay">
@@ -79,11 +72,9 @@
         :fontWeight="'bold'"
       />
       </div>
-
       <div class="led-box" >
         <div :class="[!isOffline ? 'led-green' : 'led-red', { 'led-grey': !device.statusCode }]"></div>
       </div>
-
       <a :href="isOwnedByCurrentUser ? device.URL : undefined"  target="_blank" :class="{ 'cursor-not-allowed': !isOwnedByCurrentUser }" >
         <svg
         class="bd-placeholder-img card-img-top"
@@ -100,9 +91,7 @@
         </text>
       </svg>
       </a>
-
-
-    <div v-if="isLoading" class="spinner-border spinner-border-sm end-0 position-absolute text-white mt-1 me-1"></div>
+    <div v-if="isLoading" class="spinner-border spinner-border-sm position-absolute text-white" style="top:10px; left:100px"></div>
        <div class="d-flex flex-column gap-1 p-2">
           <div class="d-flex flex-wrap gap-1 align-items-center">
   
@@ -132,11 +121,13 @@
 
   <!-- Основные кнопки -->
   <div class="d-flex flex-wrap gap-2">
-    <button @click="consoleOpen" :disabled="!isOwnedByCurrentUser" type="button" class="btn btn-sm btn-outline-secondary flex-grow-1">
-      <i class="bi bi-terminal me-1"></i> Console
+    <button @click="consoleOpen" :disabled="!isOwnedByCurrentUser || isLoading || consoleTimer > 0 || isConsoleOpen" type="button" class="btn btn-sm btn-outline-secondary flex-grow-1">
+      <i class="bi bi-terminal me-1"></i> 
+      <template v-if="consoleTimer === 0">Console</template>
+      <template v-else>{{ consoleTimer }}s</template>
     </button>
     
-    <button @click="resetConfig" :disabled="!isOwnedByCurrentUser" type="button" class="btn btn-sm btn-outline-danger flex-grow-1">
+    <button @click="resetConfig" :disabled="!isOwnedByCurrentUser || isLoading" type="button" class="btn btn-sm btn-outline-danger flex-grow-1">
       <i class="bi bi-arrow-counterclockwise me-1"></i> Reset config
     </button>
     
@@ -214,6 +205,14 @@ const currentMwsRouterDisplay = ref('Device not connected');
 const todayPassword = inject('todayPassword');
 const isOffline = computed(() => props.device.statusCode !== 200);
 const isApplyingChanges = ref(false);
+const consoleTimer = ref(0);
+const consoleInterval = ref(null);
+const isConsoleOpen = ref(localStorage.getItem(`consoleOpen_${props.device.id}`) === 'true');
+
+
+
+
+console.log("Status console Window:", props.device.id, isConsoleOpen.value);
 const usersNames = computed(() => {
   return props.users.reduce((map, user) => {
     map[user.ip] = user.name;
@@ -283,27 +282,6 @@ const handleResetToggle = () => {
   handleBookingChange(false);
 };
 
-
-onMounted(() => {
-  socket.emit('device:getCurrentWan', props.device.id, (response) => {
-    currentWanTypeDisplay.value = !response?.type || response?.type === 'Clear WAN type'
-      ? 'ISP not configured'
-      : response.type;
-  });
-
-  socket.on('device:wanTypeUpdated', ({ deviceId, type }) => {
-    if (deviceId === props.device.id) {
-      currentWanTypeDisplay.value = type === 'Clear WAN type'
-        ? 'ISP not configured'
-        : type || 'ISP not configured';
-    }
-  });
-});
-
-onUnmounted(() => {
-  socket.off('device:wanTypeUpdated');
-});
-
 const openModal = (type) => {
   if (!deviceModal.value) return;
 
@@ -371,14 +349,36 @@ const handleModalSave = async ({ value, type, action, callback }) => {
   }
 };
 
+const closeConsoleWindow = () => {
+
+
+    
+};
 const consoleOpen = () => {
   const params = `scrollbars=no,resizable=no,status=no,location=no,toolbar=no,menubar=no,width=900,height=600,left=200,top=100`;
-  window.open(`http://${import.meta.env.VITE_WEB_TELNET_IP}/remote/telnet/telnet/${props.device.consolePort}`, props.device.hwId, params);
+  const openWindow = window.open(`http://${import.meta.env.VITE_WEB_TELNET_IP}/remote/telnet/telnet/${props.device.consolePort}`, props.device.hwId, params);
+  localStorage.setItem(`consoleOpen_${props.device.id}`, 'true');
+  isConsoleOpen.value = true;
+  const interval = setInterval(() => {
+  if (!openWindow || openWindow.closed) {
+    startConsoleTimer(openWindow);
+    localStorage.setItem(`consoleOpen_${props.device.id}`, 'false');
+    isConsoleOpen.value = false;
+    clearInterval(interval);
+  }
+  }, 500);
 };
 
 const vncOpen = () => {
   const params = `scrollbars=no,resizable=no,status=no,location=no,toolbar=no,menubar=no,width=900,height=600,left=200,top=100`;
   window.open(`${props.device.vncUrl}`, props.device.hwId, params);
+  const debian = 'debian';
+  toast.info(`VNC connection established. Connection password: ${debian}. It's copied to your clipboard.`, {
+   autoClose: 5000,
+   hideProgressBar: false,
+   enableHtml: true
+  });
+   navigator.clipboard.writeText(debian);
 };
 
 const formatTime = (seconds) => {
@@ -388,6 +388,82 @@ const formatTime = (seconds) => {
   return `${h}:${m}:${s}`;
 };
 
+
+const startConsoleTimer = (openWindow) => {
+  if (!isOwnedByCurrentUser.value || consoleTimer.value > 0) return;
+
+  // Начать таймер
+  consoleTimer.value = import.meta.env.VITE_CONSOLE_TIMER;
+  console.log('Console timer started:', consoleTimer.value);
+  consoleInterval.value = setInterval(() => {
+    if (consoleTimer.value > 0) {
+      consoleTimer.value--;
+      sessionStorage.setItem(`consoleTimer_${props.device.id}`, JSON.stringify({
+        timestamp: Date.now(),
+        secondsLeft: consoleTimer.value
+      }));
+    } else {
+      clearInterval(consoleInterval.value);
+      sessionStorage.removeItem(`consoleTimer_${props.device.id}`);
+    }
+  }, 1000);
+};
+
+
+onMounted(() => {
+  socket.emit('device:getCurrentWan', props.device.id, (response) => {
+    currentWanTypeDisplay.value = !response?.type || response?.type === 'Clear WAN type'
+      ? 'ISP not configured'
+      : response.type;
+  });
+
+  socket.on('device:wanTypeUpdated', ({ deviceId, type }) => {
+    if (deviceId === props.device.id) {
+      currentWanTypeDisplay.value = type === 'Clear WAN type'
+        ? 'ISP not configured'
+        : type || 'ISP not configured';
+    }
+  });
+  const savedTimer = sessionStorage.getItem(`consoleTimer_${props.device.id}`);
+  if (savedTimer) {
+    const { timestamp, secondsLeft } = JSON.parse(savedTimer);
+    const elapsed = Math.floor((Date.now() - timestamp) / 1000);
+    const remaining = secondsLeft - elapsed;
+
+    if (remaining > 0) {
+      consoleTimer.value = remaining;
+      consoleInterval.value = setInterval(() => {
+        if (consoleTimer.value > 0) {
+          consoleTimer.value--;
+          sessionStorage.setItem(`consoleTimer_${props.device.id}`, JSON.stringify({
+            timestamp: Date.now(),
+            secondsLeft: consoleTimer.value
+          }));
+        } else {
+          clearInterval(consoleInterval.value);
+          sessionStorage.removeItem(`consoleTimer_${props.device.id}`);
+        }
+      }, 1000);
+    } else {
+      sessionStorage.removeItem(`consoleTimer_${props.device.id}`);
+    }
+  }
+});
+
+onUnmounted(() => {
+  socket.off('device:wanTypeUpdated');
+  if (consoleInterval.value) {
+    clearInterval(consoleInterval.value);
+  }
+  sessionStorage.removeItem(`consoleTimer_${props.device.id}`);
+  localStorage.removeItem(`consoleOpen_${props.device.id}`);
+  isConsoleOpen.value = false;
+  consoleTimer.value = 0;
+});
+
+watch(isConsoleOpen, (val) => {
+    localStorage.setItem(`consoleOpen_${props.device.id}`,val ? 'true' : 'false');
+  });
 
 </script>
 
@@ -405,27 +481,25 @@ const formatTime = (seconds) => {
   cursor: pointer;
 }
 
-.card
- {
+.card {
   position: relative;
   display: flex;
   flex-direction: column;
   min-width: 0;
   word-wrap: break-word;
-  overflow: hidden; 
-  transition: all 0.2s ease;
-  filter: drop-shadow(0 2px 4px rgba(0,0,0,0.1));
-  
-  
-}
-
-.card-body {
-  flex-grow: 1;
+  overflow: hidden;
+  transition: box-shadow 0.3s ease;
 }
 
 .card:hover {
-  filter: drop-shadow(0 8px 16px rgba(0,0,0,0.15));
+  box-shadow: 0 2px 8px rgba(0, 151, 220, 1), 
+              0 2px 8px rgba(0, 151, 220, 1) !important;
 }
+
+  .card-body {
+  flex-grow: 1;
+}
+
 
 .position-absolute.top-0.start-0 {
   max-width: calc(100% - 70px);
@@ -506,5 +580,4 @@ const formatTime = (seconds) => {
   z-index: 9999 !important;
   font-size: 16px;
 }
-
 </style>

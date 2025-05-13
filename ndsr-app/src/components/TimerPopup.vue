@@ -58,8 +58,6 @@
   };
   
   function close() {
-    console.log('Popup closed', props.isBookedByCurrentUser);
-  // Закрытие попапа
   if (!props.isBookedByCurrentUser) {
     emit('reset-toggle'); 
   }
