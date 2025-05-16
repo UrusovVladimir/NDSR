@@ -1,5 +1,6 @@
 <template>
   <div>
+    <DeviceModal ref="deviceModal" />
     <header class="header">
       <div class="collapse bg-dark" id="navbarHeader">
       </div>
@@ -15,12 +16,11 @@
         </div>
       </div>
       <div class="password-panel-container">
-        
-        <div class="password-panel" :class="{ 'expanded': isPanelExpanded }">
-          
+        <div class="password-panel" :class="{ 'expanded': isPanelExpanded }">    
           <div class="d-flex justify-content-center">
             <div class="password-content bg-white rounded-bottom shadow-sm px-3 py-2">
               <div class="d-flex align-items-center">
+
                 <span class=" me-2  date-time">
                   {{ formattedDateTime }} UTC+3
                 </span>
@@ -46,7 +46,6 @@
                 </span>
                 <div class="cron-group">
                 <span class="text-dark me-1 ">| Automatically reset devices at <a style="color: #c09207;font-family: monospace;">03:00 UTC+3</a></span>
-                <!-- <div class="d-flex align-items-center mt-0"> -->
                 <vue-toggles
                   v-model="cronEnabled"
                   @update:modelValue="toggleCron"
@@ -60,8 +59,13 @@
                   :dotSize="14"
                   :fontWeight="'bold'"
                 />
-              <!-- </div> -->
               </div>
+              <span class="text-muted me-2">|</span>
+              <span 
+               class="me-2 info"
+               title="FAQ"
+               @click="openFaqModal"
+               >💡</span>
             </div>
           </div>
         </div>
@@ -123,6 +127,7 @@ import { socket } from '@/socket'
 import card from "@/components/Device.vue"
 import { useCronStatus } from '@/composables/useCronStatus'
 import VueToggles from 'vue-toggles';
+import DeviceModal from "@/components/DeviceModals.vue"
 
 
 
@@ -139,6 +144,30 @@ const devices = ref([])
 const wanTypes = ref([])
 const users = ref([])
 const currentUserId = ref(null)
+const deviceModal = ref(null)
+
+const openFaqModal = () => {
+  if (!deviceModal.value) {
+    console.error('DeviceModal ref is not available')
+    return
+  }
+  if (typeof deviceModal.value.show !== 'function') {
+    console.error('show method is not available on DeviceModal')
+    return
+  }
+  deviceModal.value.show('faq')
+}
+
+const filteredFaqItems = computed(() => {
+  if (!faqSearchQuery.value.trim()) return props.faqItems
+  
+  const query = faqSearchQuery.value.toLowerCase().trim()
+  return props.faqItems.filter(item => 
+    item.question.toLowerCase().includes(query) || 
+    item.answer.toLowerCase().includes(query) ||
+    (item.additionalInfo && item.additionalInfo.toLowerCase().includes(query))
+  )
+})
 
 provide('todayPassword', todayPassword);
 
@@ -285,7 +314,7 @@ onUnmounted(() => {
 .header {
   position: sticky;
   top: 0;
-  z-index: 1;
+  z-index: 1000;
 }
 
 .navbar {
@@ -425,6 +454,15 @@ onUnmounted(() => {
 
 .container-fluid {
   max-width: 1400px; /* Ограничиваем максимальную ширину */
+}
+
+.info {
+  font-size: 1.2rem;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.info:hover {
+  transform: scale(1.1);
 }
 
 @media (min-width: 1200px) {

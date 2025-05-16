@@ -165,7 +165,7 @@
     </div>
 
 
-  <!-- Унифицированное модальное окно -->
+  <!-- Универсальное модальное окно -->
 
   <DeviceModal 
   ref="deviceModal" 
@@ -293,6 +293,9 @@ const openModal = (type) => {
   }
   if (type === 'mwsConnection') {
     initialValue = currentMwsRouterDisplay.value === 'None' ? null : currentMwsRouterDisplay.value;
+  }
+  if (type === 'dslSettings') {
+    initialValue = props.wanTypes.find(w => w.description === currentWanTypeDisplay.value)?.vlanId || null;
   }
   if (deviceModal.value?.show) {
     deviceModal.value.show(type, initialValue);
@@ -521,7 +524,6 @@ watch(isConsoleOpen, (val) => {
   opacity: 1;
   background-color: #ffc107; 
   color: #343a40;
-  z-index: 1;
 }
 
 .badge-locked-timer {
@@ -536,6 +538,7 @@ watch(isConsoleOpen, (val) => {
   transition: all 0.3s ease-in-out;
   height: 1.5rem;
   align-items: center;
+  z-index: 10;
 }
 .cursor-not-allowed {
   cursor: not-allowed;
