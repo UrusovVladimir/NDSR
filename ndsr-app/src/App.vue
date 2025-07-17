@@ -26,12 +26,12 @@
                 </span>
                 <span class="text-muted me-2">|</span>
                 <span class="text-dark me-0">
-                  Today, please use the password for <b>admin</b>: 
+                  <b class="copy-icon" @click="toggleDay" style="color: green;">{{ passwordOfDays[currentDay].label }}</b>, please use the password for <b>admin</b>: 
                   <span class="password-group">
-                    <span class="text-primary fw-bold">{{ todayPassword || 'Loading...' }}</span>
+                    <span class="text-primary fw-bold">{{ passwordOfDays[currentDay].password || 'Loading...' }}</span>
                     <span 
                       tabindex="-1"
-                      @click.prevent="copyToClipboard"
+                      @click.prevent="copyToClipboard(passwordOfDays[currentDay].password)"
                       class="copy-icon text-muted ms-1"
                       :class="{ 'text-success': isCopied }"
                       title="Copy password">
@@ -145,6 +145,15 @@ const wanTypes = ref([])
 const users = ref([])
 const currentUserId = ref(null)
 const deviceModal = ref(null)
+const currentDay = ref(0);
+const passwordOfDays = ref([
+  { label: 'Today', password: '' },
+  { label: 'Yesterday', password: '' }
+])
+
+const toggleDay = () => {
+  currentDay.value = (currentDay.value + 1) % passwordOfDays.value.length;
+};
 
 const openFaqModal = () => {
   if (!deviceModal.value) {
@@ -158,16 +167,7 @@ const openFaqModal = () => {
   deviceModal.value.show('faq')
 }
 
-const filteredFaqItems = computed(() => {
-  if (!faqSearchQuery.value.trim()) return props.faqItems
-  
-  const query = faqSearchQuery.value.toLowerCase().trim()
-  return props.faqItems.filter(item => 
-    item.question.toLowerCase().includes(query) || 
-    item.answer.toLowerCase().includes(query) ||
-    (item.additionalInfo && item.additionalInfo.toLowerCase().includes(query))
-  )
-})
+
 
 provide('todayPassword', todayPassword);
 
@@ -203,8 +203,14 @@ onMounted(() => {
     updateTime();
   }, 1000 - (Date.now() % 1000));
   
-  socket.on('DAILY_PASSWORD', (data) => {
-    todayPassword.value = data.password
+  socket.on('DAILY_PASSWORDS', (data) => {
+    console.log('Received daily passwords:', data);
+    todayPassword.value = data.today.value
+    
+    passwordOfDays.value = [
+      { label: 'Today', password: data.today.value },
+      { label: 'Yesterday', password: data.yesterday.value }
+    ];
   });
   
   socket.on('CLIENT_IP', (ip) => {
@@ -251,48 +257,30 @@ const togglePanel = () => {
   isPanelExpanded.value = !isPanelExpanded.value
 }
 
-const copyToClipboard = async () => {
-  if (!todayPassword.value) return
 
-  const scrollY = window.scrollY
+
+const copyToClipboard = async (text) => {
+  if (!text) return
 
   try {
-    await navigator.clipboard.writeText(todayPassword.value)
+    await navigator.clipboard.writeText(text)
     isCopied.value = true
-    if (document.activeElement) {
-      document.activeElement.blur()
-    }
-    setTimeout(() => (isCopied.value = false), 500)
+    setTimeout(() => isCopied.value = false, 1000)
   } catch (err) {
-    // Fallback для Safari/iOS
-    // Fallback для Safari/iOS
-  const textarea = document.createElement('textarea')
-  textarea.value = todayPassword.value
-  textarea.setAttribute('readonly', '')
-  textarea.style.position = 'absolute'
-  textarea.style.top = `${window.scrollY}px`
-  textarea.style.left = '-9999px'
-  textarea.style.opacity = '0'
-  document.body.appendChild(textarea)
-  textarea.select()
-
-try {
-  const successful = document.execCommand('copy')
-  if (successful) {
-    isCopied.value = true
-    setTimeout(() => (isCopied.value = false), 500)
-  } else {
-    console.error('execCommand failed')
+    // Fallback для старых браузеров
+    const textarea = document.createElement('textarea')
+    textarea.value = text
+    textarea.style.position = 'fixed'
+    document.body.appendChild(textarea)
+    textarea.select()
+    try {
+      document.execCommand('copy')
+      isCopied.value = true
+      setTimeout(() => isCopied.value = false, 1000)
+    } finally {
+      document.body.removeChild(textarea)
+    }
   }
-} catch (fallbackErr) {
-  console.error('Fallback error:', fallbackErr)
-} finally {
-  document.body.removeChild(textarea)
-}
-  }
-
-  // Всегда восстанавливаем scroll
-  window.scrollTo({ top: scrollY })
 }
 
 const handleReservation = (deviceId, isReserved) => {
@@ -471,5 +459,4 @@ onUnmounted(() => {
     padding-right: 3rem;
   }
 }
-
 </style>

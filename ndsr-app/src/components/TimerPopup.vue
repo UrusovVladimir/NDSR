@@ -20,7 +20,8 @@
   
           <div class="selected-time">
             Select:
-            <strong>{{ sliderValue * 30 }} {{ formatMinutes(sliderValue * 30) }}</strong>
+            <!-- <strong>{{ selectFormat(60,30)}} {{ formatMinutes(sliderValue * 30) }}</strong> -->
+             <strong>{{ selectFormat(sliderValue,30)}}</strong>
           </div>
         </div>
   
@@ -35,6 +36,33 @@
   <script setup>
   import { ref } from 'vue';
   
+const selectFormat = (sliderValue, stepMinutes) => {
+  const totalMinutes = sliderValue * stepMinutes;
+  if (totalMinutes === 0) return '0 минут';
+
+  const days = Math.floor(totalMinutes / 1440);
+  const remainingHours = Math.floor((totalMinutes % 1440) / 60);
+  const minutes = totalMinutes % 60;
+
+  const parts = [];
+  
+  if (days > 0) {
+    const daysText = days === 1 ? 'день' : days % 10 >= 2 && days % 10 <= 4 && (days < 10 || days > 20) ? 'дня' : 'дней';
+    parts.push(`${days} ${daysText}`);
+  }
+
+  if (remainingHours > 0) {
+    const hoursText = remainingHours === 1 ? 'час' : remainingHours % 10 >= 2 && remainingHours % 10 <= 4 && (remainingHours < 10 || remainingHours > 20) ? 'часа' : 'часов';
+    parts.push(`${remainingHours} ${hoursText}`);
+  }
+
+  if (minutes > 0 || (days === 0 && remainingHours === 0)) {
+    const minutesText = minutes === 1 ? 'минута' : minutes % 10 >= 2 && minutes % 10 <= 4 && (minutes < 10 || minutes > 20) ? 'минуты' : 'минут';
+    parts.push(`${minutes} ${minutesText}`);
+  }
+
+  return parts.join(' ');
+};
 
   const props = defineProps({
     isVisible: Boolean,
@@ -42,20 +70,12 @@
   });
   const emit = defineEmits(['close', 'confirm','reset-toggle']);
   
-  // Вычисляем максимально допустимое количество шагов по 30 минут до полуночи
-  const now = new Date();
-  const minutesUntilMidnight = (24 * 60) - (now.getHours() * 60 + now.getMinutes());
-  const maxSteps = Math.floor(minutesUntilMidnight / 30);
+  const minutesUntilMidnight = 168 * 60; // 1440 минут в сутках
+  const maxSteps = Math.floor(minutesUntilMidnight / 30); // 48 шагов
   const totalMinutes = maxSteps * 30;
   const sliderValue = ref(1); // 30 минут по умолчанию
   
-  const formatMinutes = (minutes) => {
-    const lastDigit = minutes % 10;
-    if (minutes >= 11 && minutes <= 19) return 'минут';
-    if (lastDigit === 1) return 'минута';
-    if (lastDigit >= 2 && lastDigit <= 4) return 'минуты';
-    return 'минут';
-  };
+
   
   function close() {
   if (!props.isBookedByCurrentUser) {

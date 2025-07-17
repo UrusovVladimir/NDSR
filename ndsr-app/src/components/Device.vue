@@ -17,15 +17,27 @@
   ]">
   <div class="position-absolute start-0 mt-1 d-flex flex-column" style="padding-left: 75px; gap: 0.5rem;">
     <div>
-      <Popper :arrow="true" :hover="true" :offset-distance="'10'" style="z-index: 9999;">
-        <template #content>
+      <Popper  :arrow="true" :hover="true" :offset-distance="'10'" style="z-index: 9999;">
+        <template v-if="!isOffline" #content>
           <div style="font-size: 12px; color: white; width: 148px;">
             <strong>Extensions connected:</strong> {{ connectedExtensions }}
+            <br>
+            <strong>Device Password:</strong> {{ localBookingStatus.accessPassword || 'Not set' }}
           </div>
         </template>
-        <svg style="padding-left:1px;" width="20" height="20">
-          <use xlink:href="/img/info.svg#info-fill" color="#4a994d" />
-        </svg>
+        <template v-else #content>
+          <div style="font-size: 12px; color: white; width: 148px;">
+            <strong>Device is not reachable</strong>
+          </div>
+        </template>
+        <template v-if="!localBookingStatus.isBooked || String(localBookingStatus.bookedBy) === String(props.currentUserId)">
+          <svg v-if="!isOffline" class="bi bi-check-circle-fill text-success" width="20" height="20">
+            <use href="http://192.168.5.150:8080/img/info.svg#info-fill" crossorigin="anonymous" color="#4a994d"/>
+          </svg>
+          <svg v-else class="bi bi-exclamation-triangle-fill text-danger" width="20" height="20">
+            <use href="http://192.168.5.150:8080/img/info.svg#exclamation-triangle-fill" crossorigin="anonymous"/>
+          </svg>
+        </template>
       </Popper>
     </div>
   </div>
@@ -352,11 +364,6 @@ const handleModalSave = async ({ value, type, action, callback }) => {
   }
 };
 
-const closeConsoleWindow = () => {
-
-
-    
-};
 const consoleOpen = () => {
   const params = `scrollbars=no,resizable=no,status=no,location=no,toolbar=no,menubar=no,width=900,height=600,left=200,top=100`;
   const openWindow = window.open(`http://${import.meta.env.VITE_WEB_TELNET_IP}/remote/telnet/telnet/${props.device.consolePort}`, props.device.hwId, params);
@@ -385,10 +392,12 @@ const vncOpen = () => {
 };
 
 const formatTime = (seconds) => {
-  const h = String(Math.floor(seconds / 3600)).padStart(2, '0');
+  const d = Math.floor(seconds / 86400);
+  const h = String(Math.floor((seconds % 86400) / 3600)).padStart(2, '0');
   const m = String(Math.floor((seconds % 3600) / 60)).padStart(2, '0');
   const s = String(seconds % 60).padStart(2, '0');
-  return `${h}:${m}:${s}`;
+  const dayText = d === 1 ? 'day' : 'days';
+  return `${d} ${dayText} ${h}:${m}:${s}`;
 };
 
 
@@ -467,6 +476,13 @@ onUnmounted(() => {
 watch(isConsoleOpen, (val) => {
     localStorage.setItem(`consoleOpen_${props.device.id}`,val ? 'true' : 'false');
   });
+
+  watch(
+  () => localBookingStatus.value.accessPassword,
+  (newPassword) => {
+    console.log('Password changed:', newPassword);
+  }
+);
 
 </script>
 

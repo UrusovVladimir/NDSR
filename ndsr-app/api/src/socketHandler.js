@@ -19,10 +19,18 @@ let currentWanTypes = {};
 let currentMwsRouter = {};
 let connectDisconnectAp = {};
 let globalIO = null;
-let dailyPassword = {
-  value: '',
-  lastUpdated: null
+
+let dailyPasswords = {
+  today:{
+     value: '',
+     date: ''
+  },
+  yesterday: {
+     value: '',
+     date: ''
+  }
 };
+
 const universalPromptRegex = /MGS3520.*[# ]/i;
 
 function getCronStatus() {
@@ -42,20 +50,41 @@ function autoReleaseOldBookings(io) {
 }
 
 
-function updateDailyPassword() {
+function updateDailyPasswords() {
   const today = new Date().toDateString();
-  if (dailyPassword.lastUpdated !== today) {
-    dailyPassword.value = generatePassword();
-    dailyPassword.lastUpdated = today;
-    console.log('Новый пароль:', dailyPassword.value);
-    globalIO?.emit('DAILY_PASSWORD', { password: dailyPassword.value });
+  
+  if (dailyPasswords.today.date !== today) {
+    dailyPasswords.yesterday = {
+      // value: dailyPasswords.today.value || generatePassword(),
+      // date: dailyPasswords.today.date || getYesterdayDate()
+      value: dailyPasswords.today.value,
+      date: dailyPasswords.today.date
+    };
+    
+    dailyPasswords.today = {
+      value: generatePassword(),
+      date: today
+    };
+    
+    console.log('Обновлены пароли:', {
+      today: dailyPasswords.today.value,
+      yesterday: dailyPasswords.yesterday.value
+    });
+    
+    globalIO?.emit('DAILY_PASSWORDS', dailyPasswords);
   }
 }
 
+// function getYesterdayDate() {
+//   const date = new Date();
+//   date.setDate(date.getDate() - 1);
+//   return date.toDateString();
+// }
+
 function initPasswordSystem(io) {
   globalIO = io;
-  updateDailyPassword();
-  setInterval(updateDailyPassword, 5 * 60 * 1000);
+  updateDailyPasswords();
+  setInterval(updateDailyPasswords, 5 * 60 * 1000);
 }
 
 function broadcastDevicesStatus(io) {
@@ -69,7 +98,7 @@ function sendInitData(socket) {
   socket.emit('cron:status', isCronEnabled);
   socket.emit('device:list', devices);
   socket.emit('device:wanTypes', wanTypes);
-  socket.emit('DAILY_PASSWORD', { password: dailyPassword.value });
+  socket.emit('DAILY_PASSWORDS', dailyPasswords);
   socket.emit('device:bookings-list', Object.fromEntries(deviceBookings));
 
   devices.forEach(device => {
@@ -114,7 +143,8 @@ function setupEvents(socket, io) {
     const expiresAt = Math.floor(Date.now() / 1000) + duration
     deviceBookings.set(deviceId, {
       bookedBy: bookedBy,
-      expiresAt
+      expiresAt,
+      accessPassword: dailyPasswords.today.value // Используем пароль на сегодня
     })
   
     io.emit('device:booked', {
@@ -123,7 +153,7 @@ function setupEvents(socket, io) {
       expiresAt
     })
   
-    callback({ success: true, expiresAt })
+    callback({ success: true, expiresAt, accessPassword: dailyPasswords.today.value })
   })
   
 
@@ -134,7 +164,8 @@ function setupEvents(socket, io) {
     callback({
       isBooked: !!booking,
       bookedBy: booking?.bookedBy || null,
-      expiresAt: booking?.expiresAt || null
+      expiresAt: booking?.expiresAt || null,
+      accessPassword: booking?.accessPassword || null // Добавьте эту строку
     });
   });
 
@@ -308,4 +339,5 @@ export {
   setupEvents,
   broadcastDevicesStatus,
   initPasswordSystem,
-  getCronStatus }
+  getCronStatus,
+  deviceBookings}

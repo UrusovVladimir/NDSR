@@ -4,8 +4,8 @@ import {getDeviceById, getVlanId, wanTypes} from "../devices.js";
 
 
  async function changeWanType(deviceId,checkedWanTypeIds,universalPromptRegex) {
-    let selectedWanTypes = wanTypes.find(wan => checkedWanTypeIds.includes(String(wan.vlanId)))
-    // let selectedWanTypes = wanTypes.filter(wan => checkedWanTypeIds === wan.vlanId)
+    // let selectedWanTypes = wanTypes.find(wan => checkedWanTypeIds.includes(String(wan.vlanId)))
+    let selectedWanTypes = wanTypes.filter(wan => checkedWanTypeIds === String(wan.vlanId))
     let PVID = wanTypes.find(command => "onVlanPVID" === command.setting)
     let VLAN = wanTypes.find(command => "onVlanFixPort" === command.setting)
     let OFF_VLAN = wanTypes.find(command => "offVlanFixPort" === command.setting)
@@ -28,13 +28,12 @@ import {getDeviceById, getVlanId, wanTypes} from "../devices.js";
             
             for (let cmd of OFF_VLAN.commands){
                 for (let wan of wanVlan){
-                    console.log("vlan",+ wan)
                     await connection.executeCommand("vlan", wan, universalPromptRegex);
                     await connection.executeCommand(cmd, device.switchPortWan, universalPromptRegex);
                     await connection.executeCommand("exit",null,universalPromptRegex);
                 }}
-                
-                    let vlan = selectedWanTypes.vlanId;
+                    let vlan = selectedWanTypes[0].vlanId;
+                    console.log("vlan выбран",+ vlan)
                     for (let cmd of PVID.commands) {
                         await connection.executeCommand( cmd, cmd === 'interface port-channel' ? device.switchPortWan : (cmd === 'pvid' ? vlan : null),universalPromptRegex);
                         }

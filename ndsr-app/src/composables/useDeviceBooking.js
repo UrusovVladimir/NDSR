@@ -6,7 +6,8 @@ export function useDeviceBooking(deviceId, currentUserId, emit) {
   const localBookingStatus = ref({
     isBooked: false,
     bookedBy: null,
-    timerSeconds: 0
+    timerSeconds: 0,
+    accessPassword: null
   })
 
   const isSelected = ref(false)
@@ -70,7 +71,8 @@ export function useDeviceBooking(deviceId, currentUserId, emit) {
     localBookingStatus.value = {
       isBooked: data.isBooked ?? true,
       bookedBy: data.bookedBy,
-      timerSeconds: secondsLeft
+      timerSeconds: secondsLeft,
+      accessPassword: data.accessPassword
     }
 
     timerSeconds.value = secondsLeft
@@ -80,17 +82,20 @@ export function useDeviceBooking(deviceId, currentUserId, emit) {
     emit('reservationChange', localBookingStatus.value)
   }
 
-  const loadBookingStatus = () => {
-    socket.emit('device:get-booking-status', deviceId, (response) => {
-      if (response) {
-        const warnedFromSession = sessionStorage.getItem(getWarnedKey()) === '1'
-        hasWarned.value = warnedFromSession
-        updateBookingStatus(response)
-        initialLoadComplete.value = true
-      }
-    })
-  }
-
+const loadBookingStatus = () => {
+  socket.emit('device:get-booking-status', deviceId, (response) => {
+    if (response) {
+      console.log('Status response:', response); // Добавьте лог
+      updateBookingStatus({
+        isBooked: response.isBooked,
+        bookedBy: response.bookedBy,
+        expiresAt: response.expiresAt,
+        accessPassword: response.accessPassword || null // Явно передаём пароль
+      });
+      initialLoadComplete.value = true;
+    }
+  });
+};
   onMounted(() => {
     loadBookingStatus()
 
@@ -114,20 +119,24 @@ export function useDeviceBooking(deviceId, currentUserId, emit) {
     }
   })
 
-  const bookDevice = (durationSeconds) => {
-    return new Promise((resolve, reject) => {
-      socket.emit('device:book', {
-        deviceId: deviceId.trim(),
-        duration: durationSeconds
-      }, (response) => {
-        if (response?.success) {
-          resolve(response.expiresAt)
-        } else {
-          reject(response?.message || 'Booking failed')
-        }
-      })
+const bookDevice = (durationSeconds) => {
+  return new Promise((resolve, reject) => {
+    socket.emit('device:book', {
+      deviceId: deviceId.trim(),
+      duration: durationSeconds
+    }, (response) => {
+      console.log('Booking response:', response); // Добавьте это
+      if (response?.success) {
+        resolve({
+          expiresAt: response.expiresAt,
+          accessPassword: response.accessPassword // Уже есть в вашем коде
+        })
+      } else {
+        reject(response?.message || 'Booking failed')
+      }
     })
-  }
+  })
+}
 
   const releaseDevice = () => {
     return new Promise((resolve, reject) => {
@@ -149,34 +158,33 @@ export function useDeviceBooking(deviceId, currentUserId, emit) {
     showPopup.value = false
   }
 
-  const handleBookingChange = async () => {
-    if (isLoading.value) return
-    isLoading.value = true
-    const isCurrentlyBookedByUser =
-      localBookingStatus.value.isBooked &&
-      localBookingStatus.value.bookedBy === currentUserId.value
+const handleBookingChange = async () => {
+  if (isLoading.value) return;
+  isLoading.value = true;
+  
+  try {
+    if (!localBookingStatus.value.isBooked) {
+      popupConfirmed.value = null;
+      showPopup.value = true;
 
-    try {
-      if (!isCurrentlyBookedByUser) {
-        popupConfirmed.value = null
-        showPopup.value = true
-
-        const confirmedSeconds = await waitForPopupConfirm()
-        if (confirmedSeconds !== null) {
-          await bookDevice(confirmedSeconds)
-        }
-      } else {
-        await releaseDevice()
-        sessionStorage.setItem(getWarnedKey(), '0')
+      const confirmedSeconds = await waitForPopupConfirm();
+      if (confirmedSeconds !== null) {
+        const result = await bookDevice(confirmedSeconds);
+        console.log('Booking result:', result);
+        
+        // Принудительно обновляем локальное состояние
+        localBookingStatus.value.accessPassword = result.accessPassword;
       }
-    } catch (error) {
-      console.warn('Booking error:', error.message)
-      isSelected.value = isCurrentlyBookedByUser
-    } finally {
-      isLoading.value = false
-      showPopup.value = false
+    } else {
+      await releaseDevice();
     }
+  } catch (error) {
+    console.error('Booking error:', error);
+  } finally {
+    isLoading.value = false;
+    showPopup.value = false;
   }
+};
 
   const extendBooking = async () => {
     const now = Date.now()
@@ -212,6 +220,7 @@ export function useDeviceBooking(deviceId, currentUserId, emit) {
       }
     }
   }
+
 
   watch(timerSeconds, (newVal) => {
     if (!initialLoadComplete.value) return

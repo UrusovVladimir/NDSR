@@ -9,7 +9,7 @@ export function useDeviceActions(device, isOffline) {
       if (!confirm(`Do you really want to reset configuration ${device.hwId}?`)) return;
       
       isLoading.value = true;
-      socket.timeout(80000).emit('device:resetConfig', device.id, (error, response) => {
+      socket.timeout(120000).emit('device:resetConfig', device.id, (error, response) => {
           isLoading.value = false;
           
           if (error) {
@@ -226,21 +226,22 @@ export function useDeviceActions(device, isOffline) {
     };
     
     // Фолбэк для копирования в буфер
-    function copyToClipboardFallback(text) {
-      const textarea = document.createElement('textarea');
-      textarea.value = text;
-      textarea.style.position = 'fixed';
-      document.body.appendChild(textarea);
-      textarea.select();
-      
-      try {
-        document.execCommand('copy');
-      } catch (err) {
-        console.error('Fallback copy failed:', err);
-      } finally {
-        document.body.removeChild(textarea);
+    async function copyToClipboardFallback(text) {
+        try {
+          // Пробуем современный API (работает в 95% браузеров)
+          await navigator.clipboard.writeText(text);
+        } catch {
+          // Fallback для старых браузеров (IE/Safari < 10)
+          const area = document.createElement('textarea');
+          area.value = text;
+          area.style.position = 'fixed';
+          area.style.opacity = 0;
+          document.body.appendChild(area);
+          area.select();
+          document.execCommand('copy');
+          document.body.removeChild(area);
+        }
       }
-    }
     
     return {
         isLoading,

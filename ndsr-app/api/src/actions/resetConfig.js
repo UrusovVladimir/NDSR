@@ -2,6 +2,14 @@ import { getCronStatus } from '../socketHandler.js';
 import { Telnet } from "telnet-client";
 import { getDeviceById, devices } from "../devices.js";
 import cron from "node-cron";
+import { deviceBookings } from '../socketHandler.js';
+
+function isDeviceBookedNow(deviceId) {
+  if (!deviceBookings.has(deviceId)) return false;
+  const booking = deviceBookings.get(deviceId);
+  const now = Math.floor(Date.now() / 1000);
+  return now < booking.expiresAt;
+}
 
 export async function resetConfig(deviceId) {
   const device = getDeviceById(deviceId);
@@ -41,14 +49,19 @@ export async function resetConfig(deviceId) {
 // ----------------------------------
 
 async function resetAllDevices() {
-    if (!getCronStatus()) {
-      console.log("Cron is disabled — skipping auto reset.");
-      return;
-    }
+  if (!getCronStatus()) {
+    console.log("Cron is disabled — skipping auto reset.");
+    return;
+  }
 
   console.log("Starting automatic device reset...");
 
   for (const device of devices) {
+    if (isDeviceBookedNow(device.id)) {
+      console.log(`Skipping ${device.hwId} — booked until ${new Date(deviceBookings.get(device.id).expiresAt * 1000)}`);
+      continue;
+    }
+
     try {
       await resetConfig(device.id);
       console.log(`Successfully reset device: ${device.hwId}`);
@@ -61,7 +74,7 @@ async function resetAllDevices() {
 }
 
 // CRON запуск
-cron.schedule("00 3 * * *", () => {
+cron.schedule("47 22 * * *", () => {
   console.log(`[${new Date().toLocaleString()}] Auto-reset triggered by cron`);
   resetAllDevices();
 },
