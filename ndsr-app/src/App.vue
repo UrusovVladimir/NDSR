@@ -26,8 +26,11 @@
                 </span>
                 <span class="text-muted me-2">|</span>
                 <span class="text-dark me-0">
-                  <b class="copy-icon" @click="toggleDay" style="color: green;">{{ passwordOfDays[currentDay].label }}</b>, please use the password for <b>admin</b>: 
-                  <span class="password-group">
+                <span class="day-toggle" @click="toggleDay">
+                    <span :class="{ 'active-day': currentDay === 0 }">Today</span> / 
+                    <span :class="{ 'active-day': currentDay === 1 }">Yesterday</span>
+                  </span>, please use the password for <b>admin</b>:
+                  <span class="password-group" :class="{ 'switching': isSwitching }">
                     <span class="text-primary fw-bold">{{ passwordOfDays[currentDay].password || 'Loading...' }}</span>
                     <span 
                       tabindex="-1"
@@ -137,9 +140,10 @@ const isCopied = ref(false)
 const isLoading = ref(true)
 const searchQuery = ref("")
 const { cronEnabled, toggleCron } = useCronStatus()
-
+const isSwitching = ref(false)
 // Данные приложения
 const todayPassword = ref('')
+provide('todayPassword', todayPassword)
 const devices = ref([])
 const wanTypes = ref([])
 const users = ref([])
@@ -152,7 +156,11 @@ const passwordOfDays = ref([
 ])
 
 const toggleDay = () => {
-  currentDay.value = (currentDay.value + 1) % passwordOfDays.value.length;
+  isSwitching.value = true;
+  setTimeout(() => {
+    currentDay.value = (currentDay.value + 1) % passwordOfDays.value.length;
+    isSwitching.value = false;
+  }, 200);
 };
 
 const openFaqModal = () => {
@@ -169,10 +177,11 @@ const openFaqModal = () => {
 
 
 
-provide('todayPassword', todayPassword);
+
 
 const currentDateTime = ref(new Date());
 let timer = null;
+
 const formattedDateTime = computed(() => {
   return currentDateTime.value?.toLocaleString('en-US', {
     timeZone: 'Europe/Moscow',
@@ -188,20 +197,17 @@ const formattedDateTime = computed(() => {
 });
 const updateTime = () => {
   const now = new Date();
-  // Обновляем только если секунда изменилась
-  if (now.getSeconds() !== currentDateTime.value.getSeconds()) {
+  if (!currentDateTime.value || now.getSeconds() !== currentDateTime.value.getSeconds()) {
     currentDateTime.value = now;
   }
-  timer = setTimeout(updateTime, 1000 - now.getMilliseconds());
 }
 
 // Получение данных
 
 onMounted(() => {
   currentDateTime.value = new Date();
-  setTimeout(() => {
-    updateTime();
-  }, 1000 - (Date.now() % 1000));
+  timer = setInterval(updateTime, 1000);
+
   
   socket.on('DAILY_PASSWORDS', (data) => {
     console.log('Received daily passwords:', data);
@@ -290,10 +296,19 @@ const handleReservation = (deviceId, isReserved) => {
     socket.emit('device:release', deviceId)
   }
 }
+const cleanupSocketListeners = () => {
+  socket.off('DAILY_PASSWORDS');
+  socket.off('CLIENT_IP');
+  socket.off('device:list');
+  socket.off('device:statuses');
+  socket.off('device:wanTypes');
+  socket.off('device:users');
+}
 
 onUnmounted(() => {
-  clearTimeout(timer)
-})
+  if (timer) clearInterval(timer);
+  cleanupSocketListeners();
+});
 
 
 </script>
@@ -324,7 +339,7 @@ onUnmounted(() => {
     transform 0.3s ease-out,
     padding-bottom 0.1s ease-out;
   transform: scaleY(0);  /* Изначально скрыта */
-  transform-origin:bottom;  /* Точка трансформации - верх */
+  transform-origin: top;  /* Точка трансформации - верх */
   opacity: 0;
   height: 0;             /* Полное скрытие */
   padding-bottom: 0;
@@ -371,12 +386,17 @@ onUnmounted(() => {
   align-items: center;
   white-space: nowrap; /* Запрещаем перенос внутри группы */
   margin-right: 8px; /* Отступ от следующего элемента */
+  transition: opacity 0.2s ease;
 }
 
 
 
 .copy-icon {
-  flex-shrink: 0; /* Запрещаем сжатие иконки */
+  display: inline-block;
+  width: 20px;
+  text-align: center;
+  cursor: pointer;
+  transition: all 0.2s;
 }
 
 .toggle-btn-container {
@@ -402,10 +422,7 @@ onUnmounted(() => {
 .toggle-btn:hover {
   background: #f8f9fa;
 }
-.copy-icon {
-  cursor: pointer;
-  transition: all 0.2s;
-}
+
 .copy-icon:hover {
   transform: scale(1.1);
 }
@@ -458,5 +475,29 @@ onUnmounted(() => {
     padding-left: 3rem;
     padding-right: 3rem;
   }
+}
+
+.day-toggle {
+  cursor: pointer;
+  user-select: none;
+  position: relative;
+  display: inline-block;
+  margin: 0 4px;
+}
+
+.day-toggle span {
+  padding: 2px 4px;
+  border-radius: 3px;
+  transition: all 0.2s;
+}
+
+.active-day {
+  background-color: #e9f7ef;
+  color: #28a745;
+  font-weight: bold;
+}
+
+.password-group.switching {
+  opacity: 0.5;
 }
 </style>

@@ -15,7 +15,7 @@
   
           <div class="slider-labels">
             <span>30 min</span>
-            <span>{{ totalMinutes }} min</span>
+            <span>{{ fullTime(totalMinutes) }}</span>
           </div>
   
           <div class="selected-time">
@@ -47,17 +47,17 @@ const selectFormat = (sliderValue, stepMinutes) => {
   const parts = [];
   
   if (days > 0) {
-    const daysText = days === 1 ? 'день' : days % 10 >= 2 && days % 10 <= 4 && (days < 10 || days > 20) ? 'дня' : 'дней';
+    const daysText = days === 1 ? 'day' : days % 10 >= 2  ? 'days' : 'days';
     parts.push(`${days} ${daysText}`);
   }
 
   if (remainingHours > 0) {
-    const hoursText = remainingHours === 1 ? 'час' : remainingHours % 10 >= 2 && remainingHours % 10 <= 4 && (remainingHours < 10 || remainingHours > 20) ? 'часа' : 'часов';
+    const hoursText = remainingHours === 1 ? 'hour' : remainingHours % 10 >= 2 ? 'hours' : 'hours';
     parts.push(`${remainingHours} ${hoursText}`);
   }
 
   if (minutes > 0 || (days === 0 && remainingHours === 0)) {
-    const minutesText = minutes === 1 ? 'минута' : minutes % 10 >= 2 && minutes % 10 <= 4 && (minutes < 10 || minutes > 20) ? 'минуты' : 'минут';
+    const minutesText = minutes === 1 ? 'minute' : minutes % 10 >= 2 ? 'minutes' : 'minutes';
     parts.push(`${minutes} ${minutesText}`);
   }
 
@@ -76,7 +76,13 @@ const selectFormat = (sliderValue, stepMinutes) => {
   const sliderValue = ref(1); // 30 минут по умолчанию
   
 
-  
+  const fullTime =  (totalMinutes) =>{
+    if (totalMinutes > 0) {
+      const days = Math.floor(totalMinutes / 1440);
+      return `${days} days`;
+    }
+    return '0 minutes';
+  }
   function close() {
   if (!props.isBookedByCurrentUser) {
     emit('reset-toggle'); 
