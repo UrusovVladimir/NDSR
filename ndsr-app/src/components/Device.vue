@@ -32,10 +32,10 @@
         </template>
         <template v-if="!localBookingStatus.isBooked || String(localBookingStatus.bookedBy) === String(props.currentUserId)">
           <svg v-if="!isOffline" class="bi bi-check-circle-fill text-success" width="20" height="20">
-            <use href="http://192.168.5.150:8080/img/info.svg#info-fill" crossorigin="anonymous" color="#4a994d"/>
+            <use :href="`http://${baseUrl}/img/info.svg#info-fill`"  crossorigin="anonymous" color="#4a994d"/>
           </svg>
           <svg v-else class="bi bi-exclamation-triangle-fill text-danger" width="20" height="20">
-            <use href="http://192.168.5.150:8080/img/info.svg#exclamation-triangle-fill" crossorigin="anonymous"/>
+            <use :href="`http://${baseUrl}/img/info.svg#exclamation-triangle-fill`" crossorigin="anonymous"/>
           </svg>
         </template>
       </Popper>
@@ -211,6 +211,7 @@ const props = defineProps({
   currentUserId: [String, Number],
   users: Array
 });
+const baseUrl = import.meta.env.VITE_WS_IP;
 const deviceModal = ref(null);
 const currentWanTypeDisplay = ref('ISP not configured');
 const currentMwsRouterDisplay = ref('Device not connected');

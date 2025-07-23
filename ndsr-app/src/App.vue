@@ -33,18 +33,18 @@
                   <span class="password-group" :class="{ 'switching': isSwitching }">
                     <span class="text-primary fw-bold">{{ passwordOfDays[currentDay].password || 'Loading...' }}</span>
                     <span 
-                      tabindex="-1"
-                      @click.prevent="copyToClipboard(passwordOfDays[currentDay].password)"
-                      class="copy-icon text-muted ms-1"
-                      :class="{ 'text-success': isCopied }"
-                      title="Copy password">
-                      <template v-if="isCopied">
-                        <i class="bi bi-check-square-fill"></i> 
-                      </template>
-                      <template v-else>
-                        📋
-                      </template>
-                    </span>
+                        tabindex="-1"
+                        @click.prevent="copyToClipboard(passwordOfDays[currentDay].password)"
+                        class="copy-icon text-muted ms-1"
+                        :class="{ 'text-success': isCopied }"
+                        title="Copy password">
+                        <template v-if="isCopied">
+                          <i class="bi bi-check-square-fill"></i> 
+                        </template>
+                        <template v-else>
+                          📋
+                        </template>
+                      </span>
                   </span>
                 </span>
                 <div class="cron-group">
@@ -175,10 +175,6 @@ const openFaqModal = () => {
   deviceModal.value.show('faq')
 }
 
-
-
-
-
 const currentDateTime = ref(new Date());
 let timer = null;
 
@@ -264,30 +260,68 @@ const togglePanel = () => {
 }
 
 
-
 const copyToClipboard = async (text) => {
-  if (!text) return
+  if (!text) return;
+
+  // Пытаемся современный API
+  try {
+    await navigator.clipboard.writeText(text);
+    onCopied();
+    return;
+  } catch (err) {
+    // падаем в fallback
+  }
+
+  // --- Fallback без скролла ---
+  const scrollX = window.scrollX;
+  const scrollY = window.scrollY;
+  const activeEl = document.activeElement;
+
+  const textarea = document.createElement('textarea');
+  textarea.value = text;
+
+  // не даём браузеру прыгнуть к элементу
+  textarea.setAttribute('readonly', '');
+  textarea.setAttribute('aria-hidden', 'true');
+  textarea.style.position = 'fixed';
+  textarea.style.top = '0';          // фиксированно вверху
+  textarea.style.left = '-9999px';   // вне экрана
+  textarea.style.opacity = '0';
+  textarea.style.pointerEvents = 'none';
+
+  document.body.appendChild(textarea);
+
+  // Некоторые мобильные браузеры требуют focus, но попробуем с preventScroll
+  textarea.focus({ preventScroll: true });
+  textarea.select();
+  textarea.setSelectionRange(0, textarea.value.length);
 
   try {
-    await navigator.clipboard.writeText(text)
-    isCopied.value = true
-    setTimeout(() => isCopied.value = false, 1000)
+    document.execCommand('copy');
   } catch (err) {
-    // Fallback для старых браузеров
-    const textarea = document.createElement('textarea')
-    textarea.value = text
-    textarea.style.position = 'fixed'
-    document.body.appendChild(textarea)
-    textarea.select()
-    try {
-      document.execCommand('copy')
-      isCopied.value = true
-      setTimeout(() => isCopied.value = false, 1000)
-    } finally {
-      document.body.removeChild(textarea)
-    }
+    console.warn('Fallback copy failed', err);
   }
+
+  // Чистка
+  document.body.removeChild(textarea);
+
+  // Возвращаем фокус
+  if (activeEl && typeof activeEl.focus === 'function') {
+    try { activeEl.focus({ preventScroll: true }); } catch(_) {}
+  }
+
+  // Возвращаем scroll, если сдвинуло
+  window.scrollTo(scrollX, scrollY);
+
+  onCopied();
+};
+
+function onCopied() {
+  isCopied.value = true;
+  setTimeout(() => (isCopied.value = false), 1000);
 }
+
+
 
 const handleReservation = (deviceId, isReserved) => {
   if (isReserved) {
@@ -389,7 +423,10 @@ onUnmounted(() => {
   transition: opacity 0.2s ease;
 }
 
-
+.password-group .fw-bold {
+  font-family: monospace;
+  display: inline-block;
+}
 
 .copy-icon {
   display: inline-block;

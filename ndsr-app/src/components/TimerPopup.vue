@@ -107,7 +107,7 @@ const selectFormat = (sliderValue, stepMinutes) => {
   align-items: baseline;
   margin-top: 30px;
   justify-content: center;
-  z-index: 9999;
+  z-index: 1;
   
 }
 .popup-content {

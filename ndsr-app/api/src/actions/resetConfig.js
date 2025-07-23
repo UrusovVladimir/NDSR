@@ -3,6 +3,7 @@ import { Telnet } from "telnet-client";
 import { getDeviceById, devices } from "../devices.js";
 import cron from "node-cron";
 import { deviceBookings } from '../socketHandler.js';
+import { changeWanType } from './changeWanType.js';
 
 function isDeviceBookedNow(deviceId) {
   if (!deviceBookings.has(deviceId)) return false;
@@ -53,7 +54,8 @@ async function resetAllDevices() {
     console.log("Cron is disabled — skipping auto reset.");
     return;
   }
-
+  const universalPromptRegex = /MGS3520.*[# ]/i;
+  const wan = "Clear WAN typr"
   console.log("Starting automatic device reset...");
 
   for (const device of devices) {
@@ -64,6 +66,7 @@ async function resetAllDevices() {
 
     try {
       await resetConfig(device.id);
+      await changeWanType(device.id,wan, universalPromptRegex)
       console.log(`Successfully reset device: ${device.hwId}`);
     } catch (err) {
       console.error(`Failed to reset device ${device?.hwId}:`, err.message || err);
