@@ -22,7 +22,7 @@
           <div style="font-size: 12px; color: white; width: 148px;">
             <strong>Extensions connected:</strong> {{ connectedExtensions }}
             <br>
-            <strong>Device Password:</strong> {{ localBookingStatus.accessPassword || 'Not set' }}
+            <strong>Device Password:</strong> <span style="cursor:pointer;" @click="copy(localBookingStatus.accessPassword)">{{ localBookingStatus.accessPassword || 'Not set' }}</span>
           </div>
         </template>
         <template v-else #content>
@@ -30,7 +30,7 @@
             <strong>Device is not reachable</strong>
           </div>
         </template>
-        <template v-if="!localBookingStatus.isBooked || String(localBookingStatus.bookedBy) === String(props.currentUserId)">
+        <template v-if="!localBookingStatus.isBooked && device.type === 'router'|| String(localBookingStatus.bookedBy) === String(props.currentUserId) && device.type === 'router'">
           <svg v-if="!isOffline" class="bi bi-check-circle-fill text-success" width="20" height="20">
             <use :href="`http://${baseUrl}/img/info.svg#info-fill`"  crossorigin="anonymous" color="#4a994d"/>
           </svg>
@@ -84,9 +84,16 @@
         :fontWeight="'bold'"
       />
       </div>
-      <div class="led-box" >
-        <div :class="[!isOffline ? 'led-green' : 'led-red', { 'led-grey': !device.statusCode }]"></div>
-      </div>
+        <div class="led-box" >
+         <div v-if="device.type === 'AP'"
+             :class="{
+                 'led-grey': !device.statusCode,
+                 'led-blue': device.statusCode && (currentMwsRouterDisplay === 'None' || currentMwsRouterDisplay === 'Device not connected'),
+                 'led-green': device.statusCode && !(currentMwsRouterDisplay === 'None' || currentMwsRouterDisplay === 'Device not connected')
+        }">
+        </div>
+          <div v-else :class="[!isOffline ? 'led-green' : 'led-red', { 'led-grey': !device.statusCode }]"></div>
+        </div>
       <a :href="isOwnedByCurrentUser ? device.URL : undefined"  target="_blank" :class="{ 'cursor-not-allowed': !isOwnedByCurrentUser }" >
         <svg
         class="bd-placeholder-img card-img-top"
@@ -422,6 +429,31 @@ const startConsoleTimer = (openWindow) => {
   }, 1000);
 };
 
+const copy = (text) => {
+  if (navigator.clipboard) {
+    navigator.clipboard.writeText(text)
+      .then(() => toast.success('The password was copied to your clipboard!', { autoClose: 2000, hideProgressBar: false }))
+      .catch(() => fallbackCopy(text));
+  } else {
+    fallbackCopy(text);
+  }
+};
+
+const fallbackCopy = (text) => {
+  const textarea = document.createElement('textarea');
+  textarea.value = text;
+  document.body.appendChild(textarea);
+  textarea.select();
+  
+  try {
+    document.execCommand('copy');
+    toast.success('The password was copied to your clipboard.', { autoClose: 2000, hideProgressBar: false });
+  } catch (err) {
+    toast.error('Failed to copy', { autoClose: 2000, hideProgressBar: false });
+  } finally {
+    document.body.removeChild(textarea);
+  }
+};
 
 onMounted(() => {
   socket.emit('device:getCurrentWan', props.device.id, (response) => {

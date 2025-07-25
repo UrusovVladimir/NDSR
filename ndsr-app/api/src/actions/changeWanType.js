@@ -4,7 +4,6 @@ import {getDeviceById, getVlanId, wanTypes} from "../devices.js";
 
 
  async function changeWanType(deviceId,checkedWanTypeIds,universalPromptRegex) {
-    // let selectedWanTypes = wanTypes.find(wan => checkedWanTypeIds.includes(String(wan.vlanId)))
     let selectedWanTypes = wanTypes.filter(wan => checkedWanTypeIds === String(wan.vlanId))
     let PVID = wanTypes.find(command => "onVlanPVID" === command.setting)
     let VLAN = wanTypes.find(command => "onVlanFixPort" === command.setting)
@@ -65,9 +64,9 @@ import {getDeviceById, getVlanId, wanTypes} from "../devices.js";
 
         }
     
-    
-
-        await connection.end(); // Не забудьте закрыть соединение
+        console.log("Завршаем соединение с коммутатором");
+        await connection.executeCommand("exit",null,universalPromptRegex);
+        await connection.end(); 
  }
 
 

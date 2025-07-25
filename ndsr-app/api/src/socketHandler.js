@@ -340,4 +340,5 @@ export {
   broadcastDevicesStatus,
   initPasswordSystem,
   getCronStatus,
-  deviceBookings}
+  deviceBookings,
+  currentWanTypes}

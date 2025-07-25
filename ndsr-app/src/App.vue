@@ -25,14 +25,16 @@
                   {{ formattedDateTime }} UTC+3
                 </span>
                 <span class="text-muted me-2">|</span>
-                <span class="text-dark me-0">
-                <span class="day-toggle" @click="toggleDay">
-                    <span :class="{ 'active-day': currentDay === 0 }">Today</span> / 
-                    <span :class="{ 'active-day': currentDay === 1 }">Yesterday</span>
-                  </span>, please use the password for <b>admin</b>:
+                <span class="text-dark me-0 day-switcher-container">
+                  <span class="day-toggle" @click="toggleDay">
+                    <span class="day-option" :class="{ 'active': currentDay === 0 }">Today</span>
+                    <span class="day-separator">/</span> 
+                    <span class="day-option" :class="{ 'active': currentDay === 1 }">Yesterday</span>
+                  </span>, please use the password for 
+                </span><b>admin</b>:
                   <span class="password-group" :class="{ 'switching': isSwitching }">
-                    <span class="text-primary fw-bold">{{ passwordOfDays[currentDay].password || 'Loading...' }}</span>
-                    <span 
+                    <span class="text-primary fw-bold">{{ passwordOfDays[currentDay].password || 'Loading.' }}</span>
+                      <span 
                         tabindex="-1"
                         @click.prevent="copyToClipboard(passwordOfDays[currentDay].password)"
                         class="copy-icon text-muted ms-1"
@@ -45,8 +47,8 @@
                           📋
                         </template>
                       </span>
-                  </span>
                 </span>
+
                 <div class="cron-group">
                 <span class="text-dark me-1 ">| Automatically reset devices at <a style="color: #c09207;font-family: monospace;">03:00 UTC+3</a></span>
                 <vue-toggles
@@ -291,7 +293,6 @@ const copyToClipboard = async (text) => {
 
   document.body.appendChild(textarea);
 
-  // Некоторые мобильные браузеры требуют focus, но попробуем с preventScroll
   textarea.focus({ preventScroll: true });
   textarea.select();
   textarea.setSelectionRange(0, textarea.value.length);
@@ -415,19 +416,6 @@ onUnmounted(() => {
   
 }
 
-.password-group {
-  display: inline-flex;
-  align-items: center;
-  white-space: nowrap; /* Запрещаем перенос внутри группы */
-  margin-right: 8px; /* Отступ от следующего элемента */
-  transition: opacity 0.2s ease;
-}
-
-.password-group .fw-bold {
-  font-family: monospace;
-  display: inline-block;
-}
-
 .copy-icon {
   display: inline-block;
   width: 20px;
@@ -514,27 +502,60 @@ onUnmounted(() => {
   }
 }
 
+.day-switcher-container {
+  display: inline-flex;
+  align-items: center;
+}
+
 .day-toggle {
   cursor: pointer;
   user-select: none;
+  display: flex;
   position: relative;
-  display: inline-block;
-  margin: 0 4px;
+  min-width: 180px; /* Фиксированная ширина для стабильности */
 }
 
-.day-toggle span {
-  padding: 2px 4px;
+.day-option {
+  padding: 2px 8px;
   border-radius: 3px;
-  transition: all 0.2s;
+  transition: all 0.2s cubic-bezier(0.25, 1.8, 0.25, 2);
+  text-align: center;
+  margin-left: 3px;
 }
 
-.active-day {
+.day-option.active {
   background-color: #e9f7ef;
   color: #28a745;
   font-weight: bold;
+  opacity: 1;
+  transform: scale(1.05);
+}
+
+.day-separator {
+  padding: 0 4px;
+  color: #6c757d;
+}
+
+.password-group {
+  display: inline-flex;
+  align-items: center;
+  position: relative;
+  transition: opacity 0.3s ease;
 }
 
 .password-group.switching {
   opacity: 0.5;
+}
+
+.password-group .fw-bold {
+  font-family: monospace;
+  display: inline-block;
+}
+.copy-icon {
+  display: inline-block;
+  width: 20px;
+  text-align: center;
+  cursor: pointer;
+  transition: all 0.2s;
 }
 </style>

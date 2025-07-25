@@ -4,6 +4,7 @@ import { getDeviceById, devices } from "../devices.js";
 import cron from "node-cron";
 import { deviceBookings } from '../socketHandler.js';
 import { changeWanType } from './changeWanType.js';
+import { currentWanTypes } from '../socketHandler.js';
 
 function isDeviceBookedNow(deviceId) {
   if (!deviceBookings.has(deviceId)) return false;
@@ -55,7 +56,7 @@ async function resetAllDevices() {
     return;
   }
   const universalPromptRegex = /MGS3520.*[# ]/i;
-  const wan = "Clear WAN typr"
+  const wan = "Clear WAN type";
   console.log("Starting automatic device reset...");
 
   for (const device of devices) {
@@ -66,7 +67,7 @@ async function resetAllDevices() {
 
     try {
       await resetConfig(device.id);
-      await changeWanType(device.id,wan, universalPromptRegex)
+      
       console.log(`Successfully reset device: ${device.hwId}`);
     } catch (err) {
       console.error(`Failed to reset device ${device?.hwId}:`, err.message || err);
@@ -76,11 +77,53 @@ async function resetAllDevices() {
   console.log("All devices processed for reset.");
 }
 
+function sleep(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+async function resetAllWanDevice() {
+  if (!getCronStatus()) {
+    console.log("Cron is disabled — skipping WAN type reset.");
+    return;
+  }
+  console.log("Starting automatic WAN type reset...");
+  const universalPromptRegex = /MGS3520.*[# ]/i;
+  
+  for (const device of devices) {
+    if (isDeviceBookedNow(device.id)) {
+      console.log(`Skipping ${device.hwId} — booked until ${new Date(deviceBookings.get(device.id).expiresAt * 1000)}`);
+      continue;
+    }
+
+    try {
+      console.log("Сейчас выполняется сброс WAN типа устройства:", device.id);
+      console.log("Текущий WAN тип:", currentWanTypes[device.id] || "неизвестно");
+      
+      // Очищаем текущий WAN тип перед изменением
+      if (currentWanTypes[device.id]) {
+        delete currentWanTypes[device.id];
+        console.log(`Очищен WAN тип для устройства ${device.hwId}`);
+      }
+      
+      await changeWanType(device.id, "4094", universalPromptRegex);
+      await sleep(1000); // Задержка для предотвращения перегрузки устройства
+      console.log(`Successfully reset WAN type for device: ${device.hwId}`);
+    } catch (err) {
+      console.error(`Failed to reset WAN type for device ${device?.hwId}:`, err.message || err);
+    }
+  }
+
+  console.log("All devices processed for WAN type reset.");
+}
+
 // CRON запуск
-cron.schedule("47 22 * * *", () => {
+cron.schedule("0 3 * * *", () => {
   console.log(`[${new Date().toLocaleString()}] Auto-reset triggered by cron`);
   resetAllDevices();
+}, { timezone: "Europe/Moscow" });
+
+cron.schedule("50 2 * * *", () => {
+  console.log(`[${new Date().toLocaleString()}] Auto-WAN type reset triggered by cron`);
+  resetAllWanDevice();
 },
-{timezone: "Europe/Moscow"
-},
-);
+{timezone: "Europe/Moscow"});
