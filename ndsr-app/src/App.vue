@@ -32,23 +32,29 @@
                     <span class="day-option" :class="{ 'active': currentDay === 1 }">Yesterday</span>
                   </span>, please use the password for 
                 </span><b>admin</b>:
-                  <span class="password-group" :class="{ 'switching': isSwitching }">
-                    <span class="text-primary fw-bold">{{ passwordOfDays[currentDay].password || 'Loading.' }}</span>
-                      <span 
-                        tabindex="-1"
-                        @click.prevent="copyToClipboard(passwordOfDays[currentDay].password)"
-                        class="copy-icon text-muted ms-1"
-                        :class="{ 'text-success': isCopied }"
-                        title="Copy password">
-                        <template v-if="isCopied">
-                          <i class="bi bi-check-square-fill"></i> 
-                        </template>
-                        <template v-else>
-                          📋
-                        </template>
-                      </span>
+                <span 
+                  class="password-group clickable" 
+                  :class="{ 'switching': isSwitching }"
+                  @click.prevent="copyToClipboard(passwordOfDays[currentDay].password)"
+                  role="button"
+                  tabindex="0"
+                  aria-label="Copy password"
+                >
+                  <span class="text-primary fw-bold">
+                    {{ passwordOfDays[currentDay].password || 'Loading.' }}
+                  </span>
+                  <span 
+                    class="copy-icon text-muted ms-1"
+                    :class="{ 'text-success': isCopied }"
+                  >
+                    <template v-if="isCopied">
+                      <i class="bi bi-check-square-fill"></i> 
+                    </template>
+                    <template v-else>
+                      📋
+                    </template>
+                  </span>
                 </span>
-
                 <div class="cron-group">
                 <span class="text-dark me-1 ">| Automatically reset devices at <a style="color: #c09207;font-family: monospace;">03:00 UTC+3</a></span>
                 <vue-toggles
@@ -76,7 +82,6 @@
         </div>
       </div>
       </div>
-      <!-- Кнопка управления панелью -->
       <div class="toggle-btn-container">
         <button
           @click="togglePanel"
@@ -208,7 +213,7 @@ onMounted(() => {
 
   
   socket.on('DAILY_PASSWORDS', (data) => {
-    console.log('Received daily passwords:', data);
+    // console.log('Received daily passwords:', data);
     todayPassword.value = data.today.value
     
     passwordOfDays.value = [
@@ -516,20 +521,32 @@ onUnmounted(() => {
 }
 
 .day-option {
-  padding: 2px 8px;
-  border-radius: 3px;
-  transition: all 0.2s cubic-bezier(0.25, 1.8, 0.25, 2);
+  --active-bg: #e9f7ef;
+  --active-text: #28a745;
+  
+  padding: 0.125rem 0.5rem; /* 2px 8px в rem */
+  border-radius: 1.1875rem; /* 3px */
+  transition: 
+    transform 0.2s cubic-bezier(0.25, 2.8, 0.25, 0.95),
+    background-color 0.2s ease,
+    opacity 0.2s ease;
   text-align: center;
-  margin-left: 3px;
+  margin-left: 0.1875rem; 
+  cursor: pointer; 
 }
-
 .day-option.active {
-  background-color: #e9f7ef;
-  color: #28a745;
+  background-color: var(--active-bg);
+  color: var(--active-text);
   font-weight: bold;
   opacity: 1;
   transform: scale(1.05);
 }
+
+.day-option:focus-visible {
+  outline: 2px solid var(--active-text);
+  outline-offset: 2px;
+}
+
 
 .day-separator {
   padding: 0 4px;

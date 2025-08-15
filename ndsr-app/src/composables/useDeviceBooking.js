@@ -10,11 +10,10 @@ import { ElMessageBox } from 'element-plus'
  * @param {Function} emit            - emit из компонента-карточки (`@reservation-change`).
  */
 export function useDeviceBooking(deviceId, currentUserId, emit) {
-  // --- Реактивные состояния ---
   const localBookingStatus = ref({
     isBooked: false,
     bookedBy: null,
-    expiresAt: 0,        // unix sec
+    expiresAt: 0,       
     timerSeconds: 0,
     accessPassword: null
   })
@@ -30,7 +29,6 @@ export function useDeviceBooking(deviceId, currentUserId, emit) {
   let currentSessionId = null            // bookedBy_expiresAt
   let lastExtendAttempt = 0              // антидребезг
 
-  // --- helpers --------------------------------------------------------------
 
   const sessionStorageKey = () => `warned_${deviceId}_${currentSessionId || ''}`
 

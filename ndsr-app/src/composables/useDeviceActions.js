@@ -4,12 +4,15 @@ import { toast } from 'vue3-toastify'
 
 export function useDeviceActions(device, isOffline) {
     const isLoading = ref(false)
+    const isFirmwareLoading = ref(false); 
+    const firmwareVersion = ref('Unknown version');
+
     
     const resetConfig = () => {
       if (!confirm(`Do you really want to reset configuration ${device.hwId}?`)) return;
       
       isLoading.value = true;
-      socket.timeout(120000).emit('device:resetConfig', device.id, (error, response) => {
+      socket.timeout(130000).emit('device:resetConfig', device.id, (error, response) => {
           isLoading.value = false;
           
           if (error) {
@@ -50,7 +53,7 @@ export function useDeviceActions(device, isOffline) {
     
     isLoading.value = true;
     
-    socket.timeout(120000).emit('device:reboot', device.id, (error, response) => {
+    socket.timeout(130000).emit('device:reboot', device.id, (error, response) => {
       isLoading.value = false;
       
       if (error) {
@@ -243,11 +246,44 @@ export function useDeviceActions(device, isOffline) {
         }
       }
     
+    const authTodevice = async (password) => {
+    // console.log("Starting authentication for device:", device.hwId,password);
+    isFirmwareLoading.value = true;
+  
+      socket.timeout(30000).emit('device:getCurrentFW', {
+        deviceId: device.id, // Явно передаем ID устройства
+        login: 'admin',
+        password: password
+      }, (error, response) => {
+        isFirmwareLoading.value = false;
+        // console.log(`Requesting firmware version for device ${device.hwId}...`)
+        if (error) {
+          // Обработка ошибок
+          if (error.code === 'ETIMEDOUT') {
+            toast.error(`Timeout: ${device.shortName} не отвечает`);
+          } else {
+            toast.error(`Ошибка: ${error.message}`);
+          }
+          return;
+        }
+        // console.log('Response from device:', response);
+        if (response?.success) {
+          firmwareVersion.value = response.sessionCookie?.release || 'Unknown';
+          // if (response.cached) {
+          //   console.log('Использована кэшированная версия');
+          // }
+        }
+  });
+}
+
     return {
         isLoading,
         resetConfig,
         rebootDevice,
         resetDslLine,
-        initializationDevice
+        initializationDevice,
+        authTodevice,
+        isFirmwareLoading,
+        firmwareVersion
     }
 }

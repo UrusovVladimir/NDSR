@@ -12,6 +12,7 @@ import { rebootDevice } from "./actions/rebootDevice.js";
 import { resetDslLine } from "../resetDslLine.js";
 import { connectToMws } from "./actions/connectToMws.js";
 import { generatePassword } from "./actions/generatePassword.js";
+import { keeneticAuth } from "./actions/athentication.js";
 
 let isCronEnabled = false; 
 let deviceBookings = new Map();
@@ -19,6 +20,7 @@ let currentWanTypes = {};
 let currentMwsRouter = {};
 let connectDisconnectAp = {};
 let globalIO = null;
+let currentFirmwareVersion = new Map();
 
 let dailyPasswords = {
   today:{
@@ -116,6 +118,11 @@ function sendInitData(socket) {
     });
   });
 }
+  currentFirmwareVersion.forEach((fw, deviceId) => {
+      socket.emit('device:currentFW', deviceId, {
+        FW: fw || 'Unknown version'
+      });
+    });
 
 function setupEvents(socket, io) {
   socket.clientIp = socket.handshake.address?.replace(/^::ffff:/, '') || 'unknown';
@@ -320,7 +327,77 @@ function setupEvents(socket, io) {
     }
   });
   
- 
+socket.on('device:getCurrentFW', async ({ deviceId, login, password }, callback) => {
+  console.log(`Получение текущей версии прошивки для устройства ${deviceId}`);
+  const timeout = setTimeout(() => {
+    callback({ success: false, error: 'Timeout' });
+  }, 30000);
+
+  try {
+    // 1. Проверяем входные параметры
+    if (!deviceId || !password) {
+      throw new Error('Device ID and password are required');
+    }
+
+    // 2. Находим устройство
+    const device = getDeviceById(deviceId);
+    if (!device) {
+      throw new Error(`Device ${deviceId} not found`);
+    }
+
+    // // 3. Проверяем кэш (если версия актуальна)
+    // const cached = currentFirmwareVersion.get(deviceId);
+    // if (cached && Date.now() - cached.timestamp < 3600000) { // 1 час кэша
+    //   clearTimeout(timeout);
+    //   return callback({ 
+    //     success: true, 
+    //     sessionCookie: { release: cached.version },
+    //     cached: true
+    //   });
+    // }
+
+    console.log(`[${deviceId}] Запрос версии прошивки для ${device.checkUrl}`);
+
+    // 4. Получаем версию прошивки
+    const versionData = await keeneticAuth(
+      device.checkUrl, // Используем checkUrl из конфига
+      login || 'admin', // Логин по умолчанию
+      password         // Пароль с фронтенда (todayPassword)
+    );
+
+    if (!versionData?.release) {
+      throw new Error('Invalid firmware version response');
+    }
+
+    // 5. Сохраняем в кэш
+    currentFirmwareVersion.set(deviceId, {
+      version: versionData.release,
+      timestamp: Date.now()
+    });
+
+    // 6. Рассылаем обновление всем клиентам
+    io.emit('device:currentFW', deviceId, { 
+      FW: { release: versionData.release } 
+    });
+
+    clearTimeout(timeout);
+    callback({ 
+      success: true, 
+      sessionCookie: {
+        release: versionData.release
+      }
+    });
+
+  } catch (error) {
+    console.error('Ошибка получения версии:', error.message);
+    clearTimeout(timeout);
+    callback({ 
+      success: false, 
+      error: error.message,
+      deviceId: deviceId // Добавляем ID для идентификации на фронтенде
+    });
+  }
+});
 }
 
 

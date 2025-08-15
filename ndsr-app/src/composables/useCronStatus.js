@@ -6,7 +6,7 @@ export function useCronStatus() {
 
   const handleCronStatus = (status) => {
     cronEnabled.value = status
-    console.log('Received current cron status:', status)
+    // console.log('Received current cron status:', status)
   }
 
   const toggleCron = (newValue) => {

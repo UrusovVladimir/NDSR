@@ -8,7 +8,7 @@
             @confirm="handleTimeConfirm"
             @reset-toggle="handleResetToggle"
             />
-    </div>
+     </div>
     <div class="card shadow-sm position-relative h-100 justify-content-between"
   :class="[
     localBookingStatus.isBooked && localBookingStatus.bookedBy !== currentUserId ? 'card-booked' : '',
@@ -40,6 +40,19 @@
         </template>
       </Popper>
     </div>
+  </div>
+  <div class="position-absolute"  @click="authTodevice(todayPassword)" :disabled="isLoading || isOffline || !isOwnedByCurrentUser" style="left: 7px; top: 35px; z-index: 5;cursor: pointer;">
+    <span v-if="isFirmwareLoading" 
+          class="badge bg-secondary bg-opacity-25 px-1 py-1"
+          style="min-width: 80px; font-size: 0.75rem;">
+      <span class="spinner-border spinner-border-sm me-1"></span>
+      Loading...
+    </span>
+    <span v-else-if="firmwareVersion !== 'Unknown version'" 
+          class="badge bg-access bg-opacity-25 text-access border border-access py-1 px-1"
+          style="min-width: 80px; box-shadow: 0 1px 2px rgba(0,0,0,0.1); font-size: 0.75rem;border-radius: 0.5rem;">
+      v{{ firmwareVersion }}
+    </span>
   </div>
    <div v-if="isApplyingChanges" class="spinner-border spinner-border-sm position-absolute text-white"  style="top:35px; left:10px"></div>
    <div v-if="localBookingStatus.isBooked" class="position-absolute top-0 end-0 m-2 d-flex flex-wrap gap-1 align-items-center">
@@ -84,6 +97,7 @@
         :fontWeight="'bold'"
       />
       </div>
+      
         <div class="led-box" >
          <div v-if="device.type === 'AP'"
              :class="{
@@ -108,12 +122,12 @@
         <text x="50%" y="50%" fill="#eceeef" dy=".3em">
           {{ device.shortName }} {{ device.hwId }}
         </text>
+        
       </svg>
       </a>
     <div v-if="isLoading" class="spinner-border spinner-border-sm position-absolute text-white" style="top:10px; left:100px"></div>
        <div class="d-flex flex-column gap-1 p-2">
           <div class="d-flex flex-wrap gap-1 align-items-center">
-  
       <button
       v-if="device.type === 'router'" 
       @click="openModal('wanTypes')" 
@@ -128,8 +142,6 @@
         {{ currentWanTypeDisplay || 'ISP not configured' }}
       </span>
      </button>
-
-  
     <span  v-if="device.type === 'AP'" class="badge rounded-pill bg-dark bg-opacity-10 text-dark p-2 d-flex align-items-center">
       <i class="bi bi-router me-1"></i> AP Connected: {{ currentMwsRouterDisplay }}
       <Popper :offset-distance="'10'" :content="'Extender connected to router:' + currentMwsRouterDisplay" :arrow="true" :hover="true">
@@ -145,7 +157,6 @@
       <template v-if="consoleTimer === 0">Console</template>
       <template v-else>{{ consoleTimer }}s</template>
     </button>
-    
     <button @click="resetConfig" :disabled="!isOwnedByCurrentUser || isLoading" type="button" class="btn btn-sm btn-outline-danger flex-grow-1">
       <i class="bi bi-arrow-counterclockwise me-1"></i> Reset config
     </button>
@@ -158,7 +169,6 @@
       <i class="bi bi-phone me-1"></i> Reset DSL line
     </button>
   </div>
-
   <!-- Специальные кнопки -->
   <div class="d-flex flex-wrap gap-2">
     <button v-if="device.dslPort === 'yes'" :disabled="!isOwnedByCurrentUser" @click="openModal('dslSettings')" type="button" class="btn btn-sm btn-outline-info flex-grow-1">
@@ -168,9 +178,7 @@
     <button v-if="device.type === 'AP'" :disabled="!isOwnedByCurrentUser" @click="openModal('mwsConnection')" type="button" class="btn btn-sm btn-outline-success flex-grow-1">
       <i class="bi bi-router me-1"></i> MWS Connection
     </button>
-    
-
-    
+  
     <button v-if="device.type === 'router'" @click="vncOpen" :disabled="isLoading || isOffline || !isOwnedByCurrentUser" type="button" class="btn btn-sm btn-outline-secondary flex-grow-1">
       <i class="bi bi-display me-1"></i> LAN VNC
     </button>
@@ -178,12 +186,13 @@
     <button v-if="device.type === 'router'" @click="initializationDevice(todayPassword)" :disabled="isLoading || isOffline || !isOwnedByCurrentUser" type="button" class="btn btn-sm btn-outline-warning flex-grow-1">
       <i class="bi bi-toggle-off me-1"></i> Disable EasyConfig
     </button>
+    <!-- <button v-if="device.type === 'router'" @click="authTodevice(todayPassword)" :disabled="isLoading || isOffline || !isOwnedByCurrentUser" type="button" class="btn btn-sm btn-outline-primary flex-grow-1">
+      <i class="bi bi-key me-1"></i> v{{firmwareVersion}}
+    </button> -->
   </div>
 </div>
 </div>
     </div>
-
-
   <!-- Универсальное модальное окно -->
 
   <DeviceModal 
@@ -230,9 +239,7 @@ const consoleInterval = ref(null);
 const isConsoleOpen = ref(localStorage.getItem(`consoleOpen_${props.device.id}`) === 'true');
 
 
-
-
-console.log("Status console Window:", props.device.id, isConsoleOpen.value);
+// console.log("Status console Window:", props.device.id, isConsoleOpen.value);
 const usersNames = computed(() => {
   return props.users.reduce((map, user) => {
     map[user.ip] = user.name;
@@ -262,9 +269,12 @@ const {
 const {
   isLoading: isActionLoading,
   resetConfig,
+  isFirmwareLoading,
   rebootDevice,
   resetDslLine,
-  initializationDevice
+  initializationDevice,
+  authTodevice,
+  firmwareVersion
 } = useDeviceActions(props.device, isOffline);
 const isLoading = computed(() => isBookingLoading.value || isActionLoading.value);
 const isSelected = ref(bookingSelected.value)
@@ -414,7 +424,7 @@ const startConsoleTimer = (openWindow) => {
 
   // Начать таймер
   consoleTimer.value = import.meta.env.VITE_CONSOLE_TIMER;
-  console.log('Console timer started:', consoleTimer.value);
+  // console.log('Console timer started:', consoleTimer.value);
   consoleInterval.value = setInterval(() => {
     if (consoleTimer.value > 0) {
       consoleTimer.value--;
@@ -455,7 +465,15 @@ const fallbackCopy = (text) => {
   }
 };
 
+
+watch(() => props.device.statusCode, (newVal) => {
+  if (newVal === 200) { // Если устройство стало онлайн
+    authTodevice(todayPassword.value);
+  }
+});
+
 onMounted(() => {
+  // authTodevice(todayPassword.value);
   socket.emit('device:getCurrentWan', props.device.id, (response) => {
     currentWanTypeDisplay.value = !response?.type || response?.type === 'Clear WAN type'
       ? 'ISP not configured'
@@ -513,7 +531,7 @@ watch(isConsoleOpen, (val) => {
   watch(
   () => localBookingStatus.value.accessPassword,
   (newPassword) => {
-    console.log('Password changed:', newPassword);
+    // console.log('Password changed:', newPassword);
   }
 );
 
@@ -632,4 +650,17 @@ watch(isConsoleOpen, (val) => {
   z-index: 9999 !important;
   font-size: 16px;
 }
+
+/* .fw-version-badge {
+  position: absolute;
+  top: -1px;
+  background-color: rgba(13, 110, 253, 0.1);
+  color: #0d6efd;
+  border: 1px solid rgba(13, 110, 253, 0.3);
+  border-radius: 4px;
+  padding: 0 5px;
+  font-size: 0.9rem;
+  white-space: nowrap;
+} */
+  
 </style>

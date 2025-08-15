@@ -92,7 +92,7 @@ const selectFormat = (sliderValue, stepMinutes) => {
   
   function confirmTime() {
     const totalSeconds = sliderValue.value * 30 * 60;
-    console.log('Total seconds:', totalSeconds);
+    // console.log('Total seconds:', totalSeconds);
     emit('confirm', totalSeconds);
     // close();
   }
