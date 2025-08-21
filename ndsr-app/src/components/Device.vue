@@ -43,6 +43,7 @@
       </Popper>
     </div>
   </div>
+  <template v-if="isOwnedByCurrentUser">
   <div class="position-absolute"  @click="authTodevice(todayPassword)" :disabled="isLoading || isOffline || !isOwnedByCurrentUser" style="left: 7px; top: 35px; z-index: 5;cursor: pointer;">
     <span v-if="isFirmwareLoading" 
           class="badge bg-secondary bg-opacity-25 px-1 py-1"
@@ -56,6 +57,7 @@
       v{{ firmwareVersion }}
     </span>
   </div>
+  </template>
    <div v-if="isApplyingChanges" class="spinner-border spinner-border-sm position-absolute text-white"  style="top:10px; left:100px"></div>
    <div v-if="localBookingStatus.isBooked" class="position-absolute top-0 end-0 m-2 d-flex flex-wrap gap-1 align-items-center">
   <!-- Основной бейдж -->

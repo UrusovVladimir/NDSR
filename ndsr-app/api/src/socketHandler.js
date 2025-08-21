@@ -162,7 +162,42 @@ function setupEvents(socket, io) {
   
     callback({ success: true, expiresAt, accessPassword: dailyPasswords.today.value })
   })
+
+socket.on('device:extend', ({ deviceId, additionalDuration }, callback) => {
+  const bookedBy = socket.clientIp
+  const currentBooking = deviceBookings.get(deviceId)
+
+  // Проверяем существующую бронь
+  if (!currentBooking) {
+    return callback({ success: false, message: 'No active booking found' })
+  }
+
+  if (currentBooking.bookedBy !== bookedBy) {
+    return callback({ success: false, message: 'Not your booking' })
+  }
+
+  // ЗАМЕНА времени, а не продление
+  const newExpiresAt = Math.floor(Date.now() / 1000) + additionalDuration
   
+  deviceBookings.set(deviceId, {
+    bookedBy: bookedBy,
+    expiresAt: newExpiresAt, // Новое время вместо старого
+    accessPassword: currentBooking.accessPassword // Сохраняем пароль
+  })
+
+  io.emit('device:booked', {
+    deviceId,
+    bookedBy: bookedBy,
+    expiresAt: newExpiresAt,
+    accessPassword: currentBooking.accessPassword
+  })
+
+  callback({ 
+    success: true, 
+    newExpiresAt, 
+    accessPassword: currentBooking.accessPassword 
+  })
+})
 
   socket.on('device:get-booking-status', (deviceId, callback) => {
     // const booking = bookingHistory.find(b => b.deviceId === deviceId) || deviceBookings.get(deviceId);

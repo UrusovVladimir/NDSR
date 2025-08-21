@@ -110,6 +110,7 @@ export function useDeviceBooking(deviceId, currentUserId, emit) {
 
   // --- API вызовы -----------------------------------------------------------
   function bookDevice(durationSeconds) {
+    console.log("Вот тут должен быть пароль сохранен!")
     return new Promise((resolve, reject) => {
       socket.emit(
         'device:book',
@@ -122,6 +123,7 @@ export function useDeviceBooking(deviceId, currentUserId, emit) {
               bookedBy: currentUserId.value,
               isBooked: true
             })
+            console.log(response)
           } else {
             reject(response?.message || 'Booking failed')
           }
@@ -199,11 +201,12 @@ export function useDeviceBooking(deviceId, currentUserId, emit) {
       showPopup.value = true
       const confirmedSeconds = await waitForPopupConfirm()
       if (confirmedSeconds !== null) {
-        const result = await bookDevice(confirmedSeconds)
-        applyBookingState(result) // обновим таймер и пароль
-        hasWarned.value = false
-        sessionStorage.setItem(sessionStorageKey(), '0')
-      }
+      // Используем НОВЫЙ метод для продления
+      const result = await extendDeviceBooking(confirmedSeconds)
+      applyBookingState(result) // Обновляем только время
+      hasWarned.value = false
+      sessionStorage.setItem(sessionStorageKey(), '0')
+    }
     } catch (err) {
       console.warn('Extend booking error:', err)
     } finally {
@@ -212,6 +215,30 @@ export function useDeviceBooking(deviceId, currentUserId, emit) {
     }
   }
 
+function extendDeviceBooking(additionalSeconds) {
+  return new Promise((resolve, reject) => {
+    socket.emit(
+      'device:extend',
+      {
+        deviceId: deviceId.trim(),
+        additionalDuration: additionalSeconds
+        // bookedBy НЕ нужно отправлять - бэкенд берет из socket.clientIp
+      },
+      (response) => {
+        if (response?.success) {
+          resolve({
+            expiresAt: response.newExpiresAt, // Правильное имя поля!
+            accessPassword: response.accessPassword ?? localBookingStatus.value.accessPassword,
+            bookedBy: currentUserId.value,
+            isBooked: true
+          })
+        } else {
+          reject(response?.message || "Extension failed")
+        }
+      }
+    )
+  })
+}
   // --- Попап выбора времени -------------------------------------------------
   function handleTimeConfirm(seconds) {
     popupConfirmed.value = seconds

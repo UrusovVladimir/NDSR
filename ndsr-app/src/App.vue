@@ -1,6 +1,34 @@
 <template>
   <div>
     <DeviceModal ref="deviceModal" />
+    
+    <!-- Кнопка для открытия боковой панели -->
+    <button 
+      class="sidebar-toggle-btn"
+      @click="toggleSidebar"
+      :class="{ 'sidebar-open': isSidebarOpen }"
+    >
+      <i class="bi" :class="isSidebarOpen ? 'bi-x' : 'bi-list'"></i>
+    </button>
+
+    <!-- Боковая панель -->
+    <div class="sidebar" :class="{ 'sidebar-open': isSidebarOpen }">
+      <div class="sidebar-content">
+        <h5>Menu</h5>
+        <ul class="sidebar-menu">
+          <li><a href="#">Настройки</a></li>
+          <li><a href="#">Статистика</a></li>
+          <li><a  style="cursor: pointer;" @click="openFaqModal">FAQ</a></li>
+        </ul>
+      </div>
+    </div>
+
+    <!-- Затемнение фона -->
+    <div 
+      class="sidebar-overlay" 
+      :class="{ 'sidebar-open': isSidebarOpen }"
+      @click="toggleSidebar"
+    ></div>
     <header class="header">
       <div class="collapse bg-dark" id="navbarHeader">
       </div>
@@ -9,10 +37,21 @@
           <div class="navbar-brand d-flex align-items-center">
             <img src="/img/logo.svg" width="100%" height="100%">
           </div>
-          <form class="d-flex">
-            <input v-model="searchQuery" class="form-control me-2" type="search" 
-                  placeholder="Search Device" aria-label="Search Device">
-          </form>
+    <div class="search-container">
+        <div class="search-icon" @click="toggleSearch">
+          <i class="bi bi-search"></i>
+        </div>
+        <div class="search-input-wrapper" :class="{ 'expanded': isSearchExpanded }">
+          <input 
+            v-model="searchQuery" 
+            class="form-control search-input" 
+            type="search" 
+            placeholder="Search Device" 
+            aria-label="Search Device"
+            @blur="onSearchBlur"
+          >
+        </div>
+      </div>
         </div>
       </div>
       <div class="password-panel-container">
@@ -138,8 +177,28 @@ import card from "@/components/Device.vue"
 import { useCronStatus } from '@/composables/useCronStatus'
 import VueToggles from 'vue-toggles';
 import DeviceModal from "@/components/DeviceModals.vue"
+import { nextTick } from 'vue'
 
+const isSidebarOpen = ref(false)
 
+const toggleSidebar = () => {
+  isSidebarOpen.value = !isSidebarOpen.value
+  
+  // Добавляем/убираем класс на body
+  if (isSidebarOpen.value) {
+    document.body.classList.add('sidebar-open')
+  } else {
+    document.body.classList.remove('sidebar-open')
+  }
+}
+
+// Закрытие по ESC
+const handleKeydown = (event) => {
+  if (event.key === 'Escape' && isSidebarOpen.value) {
+    isSidebarOpen.value = false
+    document.body.classList.remove('sidebar-open')
+  }
+}
 
 // Состояние UI
 const isPanelExpanded = ref(true)
@@ -161,7 +220,36 @@ const passwordOfDays = ref([
   { label: 'Today', password: '' },
   { label: 'Yesterday', password: '' }
 ])
+const isSearchExpanded = ref(false)
 
+const toggleSearch = () => {
+  // Всегда переключаем состояние, независимо от условий
+  isSearchExpanded.value = !isSearchExpanded.value
+  
+  if (isSearchExpanded.value) {
+    nextTick(() => {
+      const searchInput = document.querySelector('.search-input')
+      if (searchInput) {
+        searchInput.focus()
+        searchInput.select()
+      }
+    })
+  }
+}
+
+const onSearchBlur = (event) => {
+  // Не закрываем если кликнули на саму иконку поиска
+  if (event.relatedTarget === document.querySelector('.search-icon')) {
+    return
+  }
+  
+  // Даем небольшую задержку перед закрытием
+  setTimeout(() => {
+    if (!searchQuery.value) {
+      isSearchExpanded.value = false
+    }
+  }, 150)
+}
 const toggleDay = () => {
   isSwitching.value = true;
   setTimeout(() => {
@@ -208,6 +296,7 @@ const updateTime = () => {
 // Получение данных
 
 onMounted(() => {
+  window.addEventListener('keydown', handleKeydown)
   currentDateTime.value = new Date();
   timer = setInterval(updateTime, 1000);
 
@@ -346,6 +435,8 @@ const cleanupSocketListeners = () => {
 }
 
 onUnmounted(() => {
+  window.removeEventListener('keydown', handleKeydown)
+  document.body.classList.remove('sidebar-open')
   if (timer) clearInterval(timer);
   cleanupSocketListeners();
 });
@@ -431,7 +522,7 @@ onUnmounted(() => {
 
 .toggle-btn-container {
   position: absolute;
-  z-index: 10;
+  z-index: 1004; /* Выше чем sidebar (1003) и password панель */
   bottom: -10px;
   right: 20px;
 }
@@ -446,9 +537,9 @@ onUnmounted(() => {
   align-items: center;
   justify-content: center;
   padding: 0;
-  box-shadow: 0 3px 5px rgba(0,0,0,0.2); 
+  box-shadow: 0 3px 5px rgba(0,0,0,0.2);
+  z-index: 1005; /* Еще выше чем контейнер */
 }
-
 .toggle-btn:hover {
   background: #f8f9fa;
 }
@@ -574,5 +665,275 @@ onUnmounted(() => {
   text-align: center;
   cursor: pointer;
   transition: all 0.2s;
+}
+
+
+
+
+/* Стили для боковой панели (справа) */
+.sidebar-toggle-btn {
+  position: fixed;
+  bottom: 85px; /* Сдвигаем ниже search панели */
+  right: 15px;
+  z-index: 1002; /* Выше header но ниже sidebar */
+  width: 40px;
+  height: 40px;
+  border: none;
+  border-radius: 50%;
+  background: #343a40;
+  color: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  box-shadow: 0 2px 10px rgba(0,0,0,0.3);
+  transition: all 0.3s ease;
+}
+
+.sidebar-toggle-btn:hover {
+  background: #495057;
+  transform: scale(1.05);
+}
+
+.sidebar-toggle-btn.sidebar-open {
+  right: 215px;
+}
+
+.sidebar {
+  position: fixed;
+  top: 0;
+  right: -200px;
+  width: 200px;
+  height: 100vh;
+  background: #343a40;
+  z-index: 1003; /* Выше кнопки и header */
+  transition: right 0.3s ease;
+  overflow-y: auto;
+}
+
+.sidebar.sidebar-open {
+  right: 0;
+}
+
+.sidebar-content {
+  padding: 20px;
+  color: white;
+}
+
+.sidebar-content h5 {
+  color: #ffc107;
+  margin-bottom: 20px;
+  border-bottom: 1px solid #495057;
+  padding-bottom: 10px;
+}
+
+.sidebar-menu {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.sidebar-menu li {
+  margin-bottom: 10px;
+}
+
+.sidebar-menu a {
+  color: #adb5bd;
+  text-decoration: none;
+  display: block;
+  padding: 8px 0;
+  transition: color 0.3s ease;
+}
+
+.sidebar-menu a:hover {
+  color: white;
+}
+
+.sidebar-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0,0,0,0.5);
+  z-index: 1001; /* Ниже sidebar но выше всего остального */
+  opacity: 0;
+  visibility: hidden;
+  transition: all 0.3s ease;
+}
+
+.sidebar-overlay.sidebar-open {
+  opacity: 1;
+  visibility: visible;
+}
+
+/* Обновляем z-index для header и password панели */
+.header {
+  position: sticky;
+  top: 0;
+  z-index: 1000; /* Ниже sidebar */
+}
+
+.password-panel-container {
+  position: relative;
+  z-index: 999; /* Ниже header */
+}
+
+.password-panel.expanded {
+  z-index: 998; /* Ниже password-panel-container */
+}
+
+/* Адаптивность для мобильных */
+@media (max-width: 768px) {
+  .sidebar-toggle-btn {
+    bottom: 15px; /* Ниже на мобильных */
+    right: 10px;
+  }
+  
+  .sidebar {
+    width: 80%;
+    right: -80%;
+  }
+  
+  .sidebar-toggle-btn.sidebar-open {
+    right: calc(80% + 10px);
+  }
+  
+  /* На мобильных скрываем кнопку когда открыта password панель */
+  .password-panel.expanded ~ .sidebar-toggle-btn {
+    display: none;
+  }
+}
+
+/* На десктопе - правильное наложение */
+@media (min-width: 769px) {
+  .password-panel.expanded {
+    z-index: 997; /* Password панель под sidebar */
+  }
+  
+  .sidebar.sidebar-open {
+    z-index: 1003; /* Sidebar поверх всего */
+  }
+}
+/* Стили для поисковой строки */
+.search-container {
+  display: flex;
+  align-items: center;
+  position: relative;
+}
+
+.search-icon {
+  cursor: pointer;
+  font-size: 1.2rem;
+  padding: 0.5rem;
+  color: white;
+  transition: all 0.3s ease;
+  border-radius: 50%;
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 101;
+  position: relative;
+  flex-shrink: 0; /* Запрещаем сжатие иконки */
+}
+
+.search-icon.active {
+  color: #ffc107;
+  background: rgba(255, 193, 7, 0.1);
+}
+
+.search-icon:hover {
+  color: #ffc107;
+  background: rgba(255, 255, 255, 0.1);
+  transform: scale(1.1);
+}
+
+.search-input-wrapper {
+  position: absolute;
+  right: calc(100% + 10px); /* Добавляем отступ от иконки */
+  top: 50%;
+  transform: translateY(-50%) scaleX(0);
+  transform-origin: right center;
+  opacity: 0;
+  transition: all 0.3s ease;
+  width: 220px;
+}
+
+.search-input-wrapper.expanded {
+  transform: translateY(-50%) scaleX(1);
+  opacity: 1;
+}
+
+.search-input {
+  width: 100%;
+  border: 2px solid transparent;
+  border-radius: 30px;
+  padding: 0.5rem 1.2rem; /* Уменьшаем padding для меньшей высоты */
+  background: rgba(255, 255, 255, 0.1);
+  color: white;
+  transition: all 0.3s ease;
+  box-sizing: border-box;
+  height: 40px; /* Фиксированная высота как у иконки */
+  font-size: 0.9rem;
+}
+
+.search-input:focus {
+  outline: none;
+  background: rgba(255, 255, 255, 0.2);
+  border-color: rgba(255, 193, 7, 0.5);
+  box-shadow: none;
+}
+
+.search-input::placeholder {
+  color: rgba(255, 255, 255, 0.7);
+}
+
+@media (max-width: 768px) {
+  .search-container {
+    position: relative;
+    margin-left: auto;
+  }
+  
+  .search-icon {
+    position: relative;
+    z-index: 1003;
+  }
+  
+  .search-input-wrapper {
+    position: absolute;
+    top: 50%;
+    right: 100%; /* Слева от иконки */
+    transform: translateY(-50%) scaleX(0);
+    transform-origin: right center;
+    width: 0;
+    opacity: 0;
+    transition: all 0.3s ease;
+    overflow: visible;
+  }
+  
+  .search-input-wrapper.expanded {
+    width: 300px;
+    transform: translateY(-50%) scaleX(1);
+    opacity: 1;
+    right: calc(100% + 10px); /* Отступ от иконки */
+  }
+  
+  .search-input {
+    width: 100%;
+    padding: 0.7rem 1rem;
+    height: 38px;
+    font-size: 14px;
+    background: rgba(52, 58, 64, 0.98);
+  }
+  
+  /* Запрещаем выезд за экран */
+  @media (max-width: 480px) {
+    .search-input-wrapper.expanded {
+      width: calc(100vw - 80px);
+      right: calc(100% + 5px);
+    }
+  }
 }
 </style>
