@@ -35,31 +35,35 @@
         
         <Transition name="dropdown">
           <div v-if="isToolsOpen" class="dropdown-content">
+            <!-- Первый сервер -->
             <div class="dropdown-item server-info">
               <i class="pi pi-sitemap text-blue-500"></i>
               <div class="server-details">
-                <span class="server-label">Iperf Server</span>
+                <span class="server-label">Iperf Server (Internal)</span>
                 <span class="server-address">{{ iperfServer }}</span>
               </div>
               <Button 
                 icon="pi pi-copy" 
                 class="p-button-text p-button-sm"
-                @click="copyServerAddress"
+                @click="copyServerAddress(iperfServer)"
                 v-tooltip="'Copy to clipboard'"
               />
             </div>
             
-            <!-- <div class="dropdown-divider"></div>
-            
-            <div 
-              v-for="tool in networkTools" 
-              :key="tool.id"
-              class="dropdown-item tool-item"
-              @click="selectTool(tool)"
-            >
-              <i :class="tool.icon"></i>
-              <span>{{ tool.label }}</span>
-            </div> -->
+            <!-- Второй сервер -->
+            <div class="dropdown-item server-info">
+              <i class="pi pi-sitemap text-green-500"></i>
+              <div class="server-details">
+                <span class="server-label">Iperf Server (Public)</span>
+                <span class="server-address">{{ iperfServerPublic }}</span>
+              </div>
+              <Button 
+                icon="pi pi-copy" 
+                class="p-button-text p-button-sm"
+                @click="copyServerAddress(iperfServerPublic)"
+                v-tooltip="'Copy to clipboard'"
+              />
+            </div>
           </div>
         </Transition>
       </div>
@@ -88,6 +92,7 @@ import { useToast } from 'primevue/usetoast'
 
 const toast = useToast()
 const iperfServer = import.meta.env.VITE_IPERF_SERVER
+const iperfServerPublic = import.meta.env.VITE_IPERF_SERVER_PUBLIC
 const isToolsOpen = ref(false)
 
 const networkTools = ref([
@@ -118,11 +123,11 @@ const selectTool = (tool) => {
   emit('select-tool', tool)
 }
 
-const copyServerAddress = () => {
+const copyServerAddress = (server) => {
   try {
     // Создаем временный input элемент
     const input = document.createElement('input')
-    input.value = iperfServer
+    input.value = server
     document.body.appendChild(input)
     input.select()
     input.setSelectionRange(0, 99999) // Для мобильных устройств
