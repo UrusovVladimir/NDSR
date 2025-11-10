@@ -96,10 +96,6 @@
 import { computed } from 'vue'
 import Popper from 'vue3-popper'
 
-// Импортируем users из вашего хранилища или API
-// В реальном приложении вам нужно будет получить users из вашего хранилища
-// Например: import { users } from '@/api/users'
-// Или передать через props
 
 const props = defineProps({
   users: Array,

@@ -56,7 +56,7 @@ const chatStore = useChatStore()
 const props = defineProps({
   onlineUsersCount: Number,
   onlineUsersIps: Array,
-  users: { // Добавляем пропс для users
+  users: {
     type: Array,
     default: () => []
   }
@@ -76,10 +76,15 @@ const generateColor = (ip) => {
 }
 
 const onlineUsers = computed(() => {
-  return props.onlineUsersIps.map(ip => {
-    // Используем переданный список users или создаем fallback
-    const user = props.users.find(u => u.ip === ip);
-    const name = user ? user.name : `User ${ip.slice(-4)}`;
+  // ✅ ДОБАВИТЬ ЗАЩИТУ ОТ НЕМАССИВА
+  const usersArray = Array.isArray(props.users) ? props.users : []
+  
+  // ✅ ФИЛЬТРУЕМ ТЕКУЩЕГО ПОЛЬЗОВАТЕЛЯ ТОЛЬКО ДЛЯ СПИСКА
+  const filteredIps = props.onlineUsersIps.filter(ip => ip !== chatStore.currentUserId)
+  
+  return filteredIps.map(ip => {
+    const user = usersArray.find(u => u.ip === ip)
+    const name = user ? user.name : `User ${ip.slice(-4)}`
     
     return {
       id: ip,
@@ -100,9 +105,7 @@ const handleMention = (user) => {
   chatStore.setMentionedUser(user)
 }
 </script>
-
 <style scoped>
-/* Стили остаются без изменений */
 .chat-header {
   background: linear-gradient(135deg, #343a40 0%, #495057 100%);
   color: #ffc107;

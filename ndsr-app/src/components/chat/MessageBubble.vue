@@ -10,7 +10,7 @@
       <!-- Имя и IP отправителя -->
       <div 
         class="message-sender" 
-        v-if="message.senderType !== 'system' && !isMyMessage"
+        v-if="message.senderType !== 'system' && !isMyMessage && message.senderName"
       >
         <span class="sender-name">{{ message.senderName }}</span>
         <span class="sender-ip">({{ message.clientIp }})</span>
@@ -32,14 +32,14 @@ const props = defineProps({
   currentUserId: String
 })
 
-// Computed свойства
+// Computed свойства с защитой от undefined
 const isMyMessage = computed(() => {
-  if (props.message.senderType === 'system') return false
+  if (!props.message || props.message.senderType === 'system') return false
   return props.message.clientIp === props.currentUserId
 })
 
 const messageClass = computed(() => {
-  if (props.message.senderType === 'system') return 'system'
+  if (!props.message || props.message.senderType === 'system') return 'system'
   return isMyMessage.value ? 'my-message' : 'other-message'
 })
 
@@ -49,13 +49,14 @@ const avatarColors = [
   '#DDA0DD', '#98D8C8', '#F7DC6F', '#BB8FCE', '#85C1E9'
 ]
 
-// Методы
+// Методы с защитой от undefined
 const getAvatarLetter = (message) => {
-  if (!message.senderName) return '?'
+  if (!message || !message.senderName) return '?'
   return message.senderName.charAt(0).toUpperCase()
 }
 
 const getAvatarColor = (message) => {
+  if (!message) return avatarColors[0]
   const name = message.senderName || 'Unknown'
   let hash = 0
   for (let i = 0; i < name.length; i++) {
@@ -66,6 +67,7 @@ const getAvatarColor = (message) => {
 }
 
 const formatTime = (timestamp) => {
+  if (!timestamp) return ''
   return new Date(timestamp).toLocaleTimeString('ru-RU', {
     hour: '2-digit',
     minute: '2-digit'

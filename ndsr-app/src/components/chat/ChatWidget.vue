@@ -24,7 +24,7 @@
 </template>
 
 <script setup>
-import { onMounted, onUnmounted, watch, ref } from 'vue'
+import { onMounted, onUnmounted, watch } from 'vue'
 import { useChatStore } from '@/stores/useChatStore'
 import ChatToggleButton from './ChatToggleButton.vue'
 import ChatWindow from './ChatWindow.vue'
@@ -32,7 +32,6 @@ import { socket } from '@/socket'
 
 const chatStore = useChatStore()
 
-// Принимаем users как пропс
 const props = defineProps({
   users: {
     type: Array,
@@ -50,14 +49,8 @@ watch(() => chatStore.isChatOpen, (isOpen) => {
 
 onMounted(() => {
   chatStore.setSocket(socket)
-  chatStore.setUsers(props.users) // Устанавливаем пользователей в хранилище
   chatStore.initializeChat()
 })
-
-// Следим за изменением users и обновляем хранилище
-watch(() => props.users, (newUsers) => {
-  chatStore.setUsers(newUsers)
-}, { deep: true })
 
 onUnmounted(() => {
   chatStore.cleanupSocketListeners()

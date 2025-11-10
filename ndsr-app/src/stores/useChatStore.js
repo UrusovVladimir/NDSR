@@ -1,6 +1,5 @@
 import { defineStore } from 'pinia'
-import { ref, computed, onUnmounted } from 'vue'
-import { socket } from '@/socket'
+import { ref, computed } from 'vue'
 import { toast } from 'vue3-toastify'
 import { useLocalStorage } from '@/composables/useLocalStorage'
 
@@ -24,8 +23,7 @@ export const useChatStore = defineStore('chat', () => {
   const mentionedUser = ref(null)
   const socketInstance = ref(null)
   
-  // Добавляем users в состояние хранилища
-  const chatUsers = ref([])
+
   
   // Getters
   const allMessages = computed(() => {
@@ -44,10 +42,6 @@ export const useChatStore = defineStore('chat', () => {
     setupSocketListeners()
   }
 
-  // Функция для установки пользователей
-  const setUsers = (users) => {
-    chatUsers.value = users
-  }
   
   const toggleChat = () => {
     isChatOpen.value = !isChatOpen.value
@@ -89,12 +83,10 @@ export const useChatStore = defineStore('chat', () => {
     
     if (mentionedUser.value) {
       if (mentionedUser.value.id === 'all') {
-        // Специальный случай - уведомление всем
         finalText = `@all ${finalText}`
         notifyAll = true
-        targetIp = null // Важно: для @all targetIp должен быть null
+        targetIp = null
       } else {
-        // Упоминание конкретного пользователя
         finalText = `@${mentionedUser.value.name} ${finalText}`
         targetIp = mentionedUser.value.ip
         notifyAll = false
@@ -102,21 +94,17 @@ export const useChatStore = defineStore('chat', () => {
       clearMentionedUser()
     }
     
-    // Используем chatUsers.value вместо users
-    const user = chatUsers.value.find(u => u.ip === currentUserId.value);
-    const senderName = user ? user.name : `User_${currentUserId.value?.split('.')?.pop() || 'Unknown'}`;
-
+    // ✅ ПРОСТО ОТПРАВЛЯЕМ СООБЩЕНИЕ БЕЗ senderName
     const messageData = {
       text: finalText,
       senderType: 'user',
       timestamp: new Date(),
-      clientIp: currentUserId.value,
-      senderName: senderName, // Используем вычисленное имя
+      clientIp: currentUserId.value || 'unknown',
       targetIp: targetIp,
       isMention: !!targetIp || notifyAll,
       notifyAll: notifyAll
     }
-  
+    
     isLoading.value = true
     try {
       if (socketInstance.value) {
@@ -130,7 +118,6 @@ export const useChatStore = defineStore('chat', () => {
       toast.error('Ошибка подключения', { autoClose: 2000 })
     }
   }
-  
   const sendTyping = () => {
     if (socketInstance.value) {
       socketInstance.value.emit('user_typing')
@@ -189,9 +176,11 @@ export const useChatStore = defineStore('chat', () => {
       ? messageData.text 
       : messageData.text.substring(0, 50) + '...'
     
-    const prefix = messageData.notifyAll ? 'Всем:' : null
-    
-    toast(`${prefix}${messageData.senderName}: ${shortMessage}`, options)
+      let notificationText = `${messageData.senderName}: ${shortMessage}`
+      if (messageData.notifyAll) {
+        notificationText = `Всем: ${notificationText}`
+      }
+      toast(notificationText, options)
   }
   
   const handleMentionNotification = (messageData) => {
@@ -204,8 +193,6 @@ export const useChatStore = defineStore('chat', () => {
   }
   
   const handleGeneralNotification = (messageData) => {
-    // ВАЖНО: ОБЫЧНЫЕ сообщения (без упоминаний) НЕ увеличивают счетчик
-    // Увеличиваем только для упоминаний
     const shouldCount = (messageData.notifyAll || messageData.targetIp === currentUserId.value) && !isChatOpen.value
     
     if (shouldCount) {
@@ -214,18 +201,12 @@ export const useChatStore = defineStore('chat', () => {
     }
   }
   
-  // Удаляем старую функцию getUserName и заменяем на простую версию
-  const getUserName = (ip) => {
-    const user = chatUsers.value.find(u => u.ip === ip);
-    return user ? user.name : `User ${ip?.split('.')?.pop() || 'Unknown'}`;
-  }
-  
   // Socket listeners
   const setupSocketListeners = () => {
     if (!socketInstance.value) return
     
     socketInstance.value.on('CLIENT_IP', (ip) => {
-      currentUserId.value = ip
+      currentUserId.value = ip || 'unknown';
     })
   
     socketInstance.value.on('chat_history', (history) => {
@@ -233,17 +214,18 @@ export const useChatStore = defineStore('chat', () => {
     })
   
     socketInstance.value.on('chat_message', (messageData) => {
+      // console.log('📩 RAW message from server:', JSON.parse(JSON.stringify(messageData)));
+      
       const newMessage = {
         ...messageData,
         timestamp: new Date(messageData.timestamp),
         isMentioned: messageData.targetIp === currentUserId.value || messageData.notifyAll
       }
       
+      
       messages.value.push(newMessage)
       
-      // ВАЖНО: Обрабатываем уведомления ТОЛЬКО для упоминаний
       if (!isChatOpen.value) {
-        // Для ОБЫЧНЫХ сообщений (без notifyAll и без targetIp) - НИЧЕГО не делаем
         if (newMessage.notifyAll || newMessage.targetIp) {
           handleMentionNotification(newMessage)
           handleGeneralNotification(newMessage)
@@ -262,8 +244,7 @@ export const useChatStore = defineStore('chat', () => {
     socketInstance.value.on('user_typing', (userData) => {
       const userId = userData.clientIp || userData.userId
       if (userId !== currentUserId.value) {
-        // Используем реальное имя пользователя из chatUsers
-        const displayName = getUserName(userId)
+        const displayName = userData.senderName || userId
         usersTyping.value.add(displayName)
         typingUsers.value = Array.from(usersTyping.value)
       }
@@ -272,9 +253,8 @@ export const useChatStore = defineStore('chat', () => {
     socketInstance.value.on('user_stop_typing', (userData) => {
       const userId = userData.clientIp || userData.userId
       if (userId !== currentUserId.value) {
-        // Используем реальное имя пользователя из chatUsers
-        const nameFromList = getUserName(userId)
-        usersTyping.value.delete(nameFromList)
+        const displayName = userData.senderName || userId
+        usersTyping.value.delete(displayName)
         typingUsers.value = Array.from(usersTyping.value)
       }
     })
@@ -350,7 +330,7 @@ export const useChatStore = defineStore('chat', () => {
     currentUserId,
     mentionedUser,
     socketInstance,
-    chatUsers, 
+    
     
     // Getters
     isMentioned,
@@ -365,9 +345,7 @@ export const useChatStore = defineStore('chat', () => {
     setMentionedUser,
     clearMentionedUser,
     setSocket,
-    getUserName,
     initializeChat,
-    cleanupSocketListeners,
-    setUsers
-  }
+    cleanupSocketListeners
+    }
 })

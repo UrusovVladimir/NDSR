@@ -3,7 +3,7 @@ import { makeAuthenticatedRequest, keeneticAuth } from "./athentication.js";
 import axios from "axios";
 import { connectToMws } from "./connectToMws.js"; 
 import { SSHManager } from "./sshManager.js";
-import { UniversalFirewallManager } from "../utils/universalFirewallManager.js";
+// import { UniversalFirewallManager } from "../utils/UniversalFirewallManager.js";
 import { DockerManager } from "../utils/dockerManager.js";
 import { HOST_CONFIG } from "../utils/hostConfig.js";
 import { DisconnectManager } from "../utils/disconnectManager.js";

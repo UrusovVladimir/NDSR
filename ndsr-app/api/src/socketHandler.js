@@ -776,15 +776,6 @@ const handleBatchFirmwareCheck = async (socket, data, callback) => {
 function setupEvents(socket, io) {
   socket.clientIp = socket.handshake.address?.replace(/^::ffff:/, '') || 'unknown';
   
-  // ✅ Функция для получения имени пользователя по IP
-  function getUserNameByIp(ip) {
-    if (!ip || ip === 'unknown') return 'Unknown User';
-    const user = users.find(u => u.ip === ip);
-    if (user) {
-      return user.name || `User ${ip.split('.').pop()}`;
-    }
-    return `User ${ip.split('.').pop()}`;
-  }
   
   socket.emit('CLIENT_IP', socket.clientIp);
 
@@ -1284,103 +1275,7 @@ async function startAggressiveStatusCheck(deviceId, device) {
     }
   }
 }
-  // socket.on('device:mwsConnected', (extenderId, routerId, disconnectExtender, callback) => {
-  //   console.log('🔗 MWS Connection request:', { extenderId, routerId, disconnectExtender });
-    
-  //   connectToMws(extenderId, routerId, disconnectExtender, universalPromptRegex)
-  //     .then(async () => {
-  //       callback({ status: 'ok' });
-  //       connectDisconnectAp = disconnectExtender;
-        
-  //       // ✅ УПРАВЛЯЕМ ПРАВИЛАМИ ПРОБРОСА ПОРТОВ ЧЕРЕЗ MWSConnectionManager
-  //       try {
-  //         if (disconnectExtender === 'disconnect') {
-  //           // ✅ ОТКЛЮЧЕНИЕ: УДАЛЯЕМ ПРАВИЛА ПРОБРОСА
-  //           console.log(`🔧 Removing port forwarding rules for extender ${extenderId}`);
-  //           await MWSConnectionManager.removeMWSConnection(extenderId, routerId);
-            
-  //           // ✅ ДЛЯ AP УСТРОЙСТВ - НЕ МЕНЯЕМ РЕЖИМ НА ROUTER!
-  //           const device = getDeviceById(extenderId);
-  //           if (device && device.type === 'AP' && device.hWtype === 'true') {
-  //             console.log(`🔧 AP устройство ${extenderId} - сохраняем текущий режим после отключения`);
-  //             // Оставляем текущий режим, но убираем routerId
-  //             const currentMode = currentModes.get(extenderId);
-  //             if (currentMode) {
-  //               currentModes.set(extenderId, {
-  //                 mode: currentMode.mode === 'extender_connect' ? 'extender' : currentMode.mode,
-  //                 routerId: null,
-  //                 timestamp: Date.now()
-  //               });
-  //             }
-  //           } else {
-  //             // Для обычных устройств - переводим в router
-  //             currentModes.set(extenderId, {
-  //               mode: 'router',
-  //               routerId: null,
-  //               timestamp: Date.now()
-  //             });
-  //           }
-            
-  //           currentMwsRouter = "None";
-  //           console.log(`🔗 Disconnected extender ${extenderId} from router`);
-  //         } else {
-  //           // ✅ ПОДКЛЮЧЕНИЕ: ДОБАВЛЯЕМ ПРАВИЛА ПРОБРОСА
-  //           console.log(`🔧 Setting up port forwarding rules for extender ${extenderId} -> router ${routerId}`);
-  //           await MWSConnectionManager.setupMWSConnection(extenderId, routerId);
-            
-  //           // ✅ ДЛЯ AP УСТРОЙСТВ - УСТАНАВЛИВАЕМ РЕЖИМ EXTENDER_CONNECT
-  //           const device = getDeviceById(extenderId);
-  //           if (device && device.type === 'AP' && device.hWtype === 'true') {
-  //             console.log(`🔧 AP устройство ${extenderId} - устанавливаем режим extender_connect`);
-  //             currentModes.set(extenderId, {
-  //               mode: 'extender_connect',
-  //               routerId: routerId,
-  //               timestamp: Date.now()
-  //             });
-  //           } else {
-  //             // Для обычных устройств
-  //             currentModes.set(extenderId, {
-  //               mode: 'extender_connect',
-  //               routerId: routerId,
-  //               timestamp: Date.now()
-  //             });
-  //           }
-            
-  //           currentMwsRouter = routerId;
-  //           console.log(`🔗 Connected extender ${extenderId} to router ${routerId}`);
-  //         }
-  //       } catch (error) {
-  //         console.error('❌ Port forwarding rules error:', error);
-  //         // Продолжаем выполнение даже при ошибке правил проброса
-  //       }
-  //     })
-  //     .catch((error) => {
-  //       console.error('❌ MWS connection error:', error);
-  //       callback({ status: 'error', error: error.message });
-  //     })
-  //     .then(() => {
-  //       // ✅ ОТПРАВЛЯЕМ ОБНОВЛЕНИЯ ВСЕМ КЛИЕНТАМ
-  //       if (connectDisconnectAp === 'disconnect') {
-  //         io.emit('device:checkMws', extenderId, currentMwsRouter);
-  //         io.emit('device:mwsStatusUpdated', {
-  //           deviceId: extenderId,
-  //           routerId: routerId,
-  //           status: 'disconnected',
-  //           timestamp: Date.now()
-  //         });
-  //       } else {
-  //         io.emit('device:checkMws', extenderId, routerId, connectDisconnectAp);
-  //         io.emit('device:mwsStatusUpdated', {
-  //           deviceId: extenderId,
-  //           routerId: routerId,
-  //           status: 'connected',
-  //           timestamp: Date.now()
-  //         });
-  //       }
-  //     });
-  // });
-
-  // В socketHandler.js - добавьте новый обработчик
+  
 socket.on('device:forceStatusCheck', (deviceId, callback) => {
   console.log(`🔍 Force status check requested for ${deviceId}`);
   
@@ -1793,18 +1688,40 @@ socket.on('device:init', async (data, callback) => {
     socket.emit('chat_history', chatHistory)
   })
 
+  function getUserNameByIp(ip) {
+    if (!ip || ip === 'unknown') return 'Unknown User';
+    
+    // Ищем пользователя в массиве users
+    const user = users.find(u => u.ip === ip);
+    if (user && user.name) {
+      return user.name;
+    }
+    
+    // Если пользователь не найден, создаем имя из IP
+    const ipParts = ip.split('.');
+    const lastPart = ipParts.length > 0 ? ipParts[ipParts.length - 1] : 'Unknown';
+    return `User_${lastPart}`; // Используем подчеркивание вместо пробела
+  }
+  
+  // Используйте эту функцию везде где нужно
   socket.on('chat_message', (messageData) => {
-    const user = users.find(u => u.ip === socket.clientIp);
-    const senderName = user ? user.name : `User_${socket.clientIp?.split('.')?.pop() || 'Unknown'}`;
 
+    const clientIp = socket.clientIp || 'unknown';
+    const senderName = getUserNameByIp(clientIp);
+    console.log('📨 Creating message:', {
+      clientIp: clientIp,
+      senderName: senderName,
+      text: messageData.text,
+      users: users.length // Проверьте что массив users не пустой
+    });
     const message = {
       id: Date.now().toString() + Math.random().toString(36).substr(2, 9),
       text: messageData.text,
       senderType: messageData.senderType || 'user',
-      senderName: senderName,
-      senderIp: socket.clientIp,
+      senderName: senderName, // ✅ Используем правильное имя
+      senderIp: clientIp,
       timestamp: new Date(),
-      clientIp: socket.clientIp,
+      clientIp: clientIp,
       targetIp: messageData.targetIp || null,
       isMention: messageData.isMention || false,
       notifyAll: messageData.notifyAll || false
@@ -1815,10 +1732,7 @@ socket.on('device:init', async (data, callback) => {
       chatHistory = chatHistory.slice(-100)
     }
     
-    // ОТПРАВЛЯЕМ СООБЩЕНИЕ ВСЕМ КЛИЕНТАМ
     io.emit('chat_message', message)
-    
-    // Отправляем подтверждение отправителю
     socket.emit('message_sent', message)
   })
 
