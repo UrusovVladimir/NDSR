@@ -195,9 +195,6 @@ export const useChatStore = defineStore('chat', () => {
   }
   
   const handleMentionNotification = (messageData) => {
-    // Увеличиваем счетчик упоминаний ТОЛЬКО если:
-    // - Это упоминание всем ИЛИ
-    // - Это упоминание текущему пользователю
     const shouldCount = (messageData.notifyAll || messageData.targetIp === currentUserId.value) && !isChatOpen.value
     
     if (shouldCount) {

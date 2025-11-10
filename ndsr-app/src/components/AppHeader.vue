@@ -38,7 +38,7 @@
           icon="pi pi-sync" 
           class="day-toggle"
           @click="$emit('toggle-day')"
-          v-tooltip.top="'Toggle day'"
+          v-tooltip.top="'Toggle password day'"
         />
       </div>
     </div>

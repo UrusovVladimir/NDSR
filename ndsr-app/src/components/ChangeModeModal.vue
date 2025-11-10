@@ -611,46 +611,6 @@ const connectedRouterId = computed(() => {
   return modeInfo?.routerId || null
 })
 
-// const show = async (password, source = 'global') => {
-//     console.log('🔑 ChangeModeModal show called:', { 
-//         device: props.device?.hwId,
-//         hasPassword: !!password 
-//     });
-  
-//     devicePassword.value = password;
-//     useDevicePassword.value = true;
-//     manualRouterPassword.value = '';
-//     passwordSource.value = source;
-//     authError.value = false;
-//     operationInProgress.value = false;
-//     currentStep.value = 0;
-//     selectedAction.value = 'router';
-//     selectedRouterId.value = '';
-//     modeCheckInProgress.value = false;
-//     isLoading.value = false;
-//     debugInfo.value = '';
-    
-//     currentDevice.value = props.device;
-//     visible.value = true;
-
-//     // ✅ ВАЖНОЕ ИСПРАВЛЕНИЕ: Загружаем режим БЕЗ сброса данных
-//     if (hasValidPassword.value && currentDevice.value) {
-//         console.log('🔄 Loading current mode when modal opens...');
-        
-//         // ✅ НЕ СБРАСЫВАЕМ ДАННЫЕ, А ЗАГРУЗАЕМ С ОБНОВЛЕНИЕМ
-//         await loadCurrentMode();
-//     }
-
-//     // ✅ ВОССТАНАВЛИВАЕМ ВЫБРАННЫЙ РОУТЕР ИЗ СУЩЕСТВУЮЩИХ ДАННЫХ
-//     if (currentDevice.value) {
-//         const savedMode = modeStore.getDeviceModeInfo(currentDevice.value.id);
-//         if (savedMode?.routerId) {
-//             selectedRouterId.value = savedMode.routerId;
-//             console.log(`🔗 Restored router selection: ${selectedRouterId.value}`);
-//         }
-//     }
-// }
-
 const show = async (password, source = 'global') => {
     console.log('🔑 ChangeModeModal show called:', { 
         device: props.device?.hwId,
@@ -673,11 +633,10 @@ const show = async (password, source = 'global') => {
     currentDevice.value = props.device;
     visible.value = true;
 
-    // ✅ ВАЖНОЕ ИСПРАВЛЕНИЕ: Загружаем режим БЕЗ СБРОСА ПОДКЛЮЧЕНИЙ
     if (hasValidPassword.value && currentDevice.value) {
         console.log('🔄 Loading current mode (preserving connections)...');
         
-        // ✅ ТОЛЬКО ДЛЯ ОТЛАДКИ - можно закомментировать в продакшене
+        // ✅ ТОЛЬКО ДЛЯ ОТЛАДКИ - можно закомментировать в проде
         await loadCurrentMode();
     }
 
