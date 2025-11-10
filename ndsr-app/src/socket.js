@@ -9,15 +9,31 @@ export const state = reactive({
 
 export const socket = io(import.meta.env.VITE_WS_HOST, {path: "/ws/"});
 
+// ✅ ГЛОБАЛЬНЫЕ ОБРАБОТЧИКИ ПОДКЛЮЧЕНИЯ
 socket.on("connect", () => {
-    console.log('socket connected');
+    console.log('🔌 Socket connected');
     state.connected = true;
-    // socket.emit("sendDisplayCheckedWanTypeIds");
+    
+    // Триггерим глобальное событие для всех компонентов/stores
+    window.dispatchEvent(new CustomEvent('socket:connected', {
+        detail: { socketId: socket.id }
+    }));
 });
 
 socket.on("disconnect", () => {
-    console.log('socket disconnected');
+    console.log('🔌 Socket disconnected');
     state.connected = false;
+    
+    window.dispatchEvent(new CustomEvent('socket:disconnected'));
+});
+
+socket.on("reconnect", () => {
+    console.log('🔁 Socket reconnected');
+    state.connected = true;
+    
+    window.dispatchEvent(new CustomEvent('socket:reconnected', {
+        detail: { socketId: socket.id }
+    }));
 });
 
 /*socket.on("foo", (...args) => {

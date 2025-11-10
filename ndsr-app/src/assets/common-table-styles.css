@@ -1,0 +1,252 @@
+.details-inline {
+  margin-left: 8px;
+  font-size: 0.75rem;
+  color: #06b6d4;
+  cursor: pointer;
+  padding: 3px;
+  border-radius: 50% !important;
+  background: transparent;
+  border: 1px solid rgba(6, 182, 212, 0.3);
+  transition: all 0.3s ease;
+  width: 20px;
+  height: 20px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.details-inline:hover {
+  color: #ffffff;
+  background: #06b6d4;
+  border-color: #06b6d4;
+}
+.common-section-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 1.25rem;
+    background: var(--surface-card);
+    border-bottom: 1px solid var(--surface-border);
+    border-radius: 12px 12px 0 0;
+  }
+  
+  .common-section-title {
+    display: flex;
+    align-items: center;
+    margin: 0;
+    font-size: 1.25rem;
+    font-weight: 600;
+    color: var(--text-color);
+  }
+  
+  .common-section-actions {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    flex: 1;
+    justify-content: flex-end;
+    
+  }
+  
+  .common-devices-count {
+    font-size: 0.9rem;
+    color: var(--text-color-secondary);
+    font-weight: 500;
+    background: var(--surface-ground);
+    padding: 0.25rem 0.5rem;
+    border-radius: 6px;
+    border: 1px solid var(--surface-200);
+    white-space: nowrap;
+  }
+  
+  .common-search-wrapper {
+    position: relative;
+  }
+  
+  .common-search-input-container {
+    position: relative;
+    display: inline-block;
+  }
+  
+  .common-global-filter {
+    width: 280px;
+    height: 36px;
+    border: 1.5px solid var(--surface-300);
+    border-radius: 8px;
+    padding: 0.5rem 1rem 0.5rem 2.5rem;
+    font-size: 0.9rem;
+    background: var(--surface-ground);
+    transition: all 0.3s ease;
+  }
+  
+  .common-global-filter:focus {
+    border-color: var(--primary-color);
+    outline: none;
+    box-shadow: 0 0 0 2px var(--primary-color-light);
+  }
+  
+  .common-search-icon {
+    position: absolute;
+    left: 12px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: var(--text-color-secondary);
+    font-size: 0.9rem;
+    z-index: 2;
+    
+  }
+  
+  .common-search-clear-btn {
+    position: absolute;
+    right: 8px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: var(--text-color-secondary);
+    cursor: pointer;
+    padding: 0.25rem;
+    border-radius: 50%;
+    width: 20px;
+    height: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s ease;
+    z-index: 2;
+    font-size: 0.7rem;
+  }
+  
+  .common-search-clear-btn:hover {
+    background: var(--surface-200);
+    color: var(--text-color);
+  }
+  
+  /* Общие стили для контейнеров устройств */
+  .common-device-info-container {
+    display: flex;
+    align-items: center;
+    width: 100%;
+  }
+  
+  .common-device-avatar {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;    
+  }
+  
+  .common-device-avatar.online {
+    background: var(--green-100);
+    color: var(--green-600);
+  }
+  
+  .common-device-avatar.offline {
+    background: var(--red-100);
+    color: var(--red-600);
+  }
+  
+  .common-device-avatar.ap {
+    background: var(--blue-100);
+    color: var(--blue-600);
+  }
+  
+  .common-device-icon {
+    font-size: 1.25rem;   
+  }
+  
+  .common-device-info {
+    line-height: 1.4;
+    min-width: 0;
+    flex: 1;
+    text-align: center !important;
+  }
+  
+  .common-device-name {
+    font-weight: 700;
+    color: var(--text-color);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    
+  }
+  
+  .common-device-hwid {
+    font-size: 0.8rem;
+    color: var(--text-color-secondary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  
+  /* Адаптивность для общих стилей */
+  @media (max-width: 1024px) {
+    .common-section-header {
+      flex-direction: column;
+      align-items: stretch;
+      gap: 1rem;
+    }
+    
+    .common-section-actions {
+      justify-content: space-between;
+    }
+  }
+  
+  @media (max-width: 768px) {
+    .common-section-header {
+      padding: 1rem;
+    }
+    
+    .common-section-title {
+      font-size: 1.1rem;
+    }
+    
+    .common-section-actions {
+      flex-direction: column;
+      gap: 0.75rem;
+    }
+    
+    .common-devices-count {
+      align-self: flex-start;
+      text-align: center;
+      width: 100%;
+    }
+    
+    .common-search-wrapper {
+      width: 100%;
+    }
+    
+    .common-global-filter {
+      width: 100%;
+    }
+  }
+  
+  @media (max-width: 480px) {
+    .common-section-header {
+      padding: 0.75rem;
+    }
+    
+    .common-section-title {
+      font-size: 1rem;
+    }
+    
+    .common-devices-count {
+      font-size: 0.8rem;
+    }
+    
+    .common-global-filter {
+      height: 32px;
+      font-size: 0.85rem;
+    }
+    
+    .common-device-avatar {
+      width: 32px;
+      height: 32px;
+    }
+    
+    .common-device-icon {
+      font-size: 1rem;
+      
+    }
+  }

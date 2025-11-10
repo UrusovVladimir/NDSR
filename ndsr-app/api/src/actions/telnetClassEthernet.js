@@ -38,11 +38,10 @@ class TelnetConnection {
         if (!this.connection) {
             throw new Error("Соединение не установлено!!Аварийный выход");
         }
-
+    
         const command = arg ? `${cmd} ${arg}` : cmd;
         try {
             const res = await this.connection.exec(command, { shellPrompt: prompt });
-            console.log(command, res);
             return res;
         } catch (error) {
             console.error("Ошибка выполнения команды:", error);

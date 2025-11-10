@@ -1,127 +1,303 @@
-@import 'bootstrap/dist/css/bootstrap.min.css';
 @import 'vue3-toastify/dist/index.css';
+
 html, body {
   height: 100%;
   width: 100%;
- }
+  margin: 0;
+  padding: 0;
+  font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", sans-serif;
+}
 
 :root {
-    --toastify-font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
-    --toastify-toast-width: 435px;
+  /* Цветовые переменные */
+  --toastify-font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", sans-serif;
+  --toastify-toast-width: min(435px, 90vw);
+  --primary-gradient: linear-gradient(135deg, #3B82F6, #1D4ED8);
+  --success-gradient: linear-gradient(135deg, #10B981, #047857);
+  --warning-gradient: linear-gradient(135deg, #F59E0B, #D97706);
+  --danger-gradient: linear-gradient(135deg, #EF4444, #DC2626);
+  
+  /* Z-index система */
+  --z-index-sidebar: 1000;
+  --z-index-modal: 1050;
+  --z-index-dropdown: 1100;
+  --z-index-tooltip: 1200;
+  --z-index-toast: 1300;
+  
+  /* Breakpoints */
+  --breakpoint-mobile: 768px;
+  --breakpoint-tablet: 1024px;
+  --breakpoint-desktop: 1200px;
 }
 
-.led-box {
-  height: 13px;
-  width: 13px;
-  position: absolute;
-  margin: 130px 0 0 0;
-  left: 49%;
-  background: none;
-  border-radius: 50%;
+/* FIX для черного фона overlay */
+.p-dialog-mask.p-component-overlay {
+  background-color: rgba(0, 0, 0, 0.1) !important;
+  backdrop-filter: blur(0.5px) !important;
+  z-index: var(--z-index-modal) !important;
 }
 
-
-.led-red {
-  margin: 0 auto;
-  width: 13px;
-  height: 13px;
-  background-color: #F00;
-  border-radius: 50%;
-  box-shadow: rgba(0, 0, 0, .5) 0 -1px 7px 1px, inset #441313 0 -1px 9px, rgba(255, 0, 0, 0.5) 0 2px 12px;
+/* Стили для Progress Dialog */
+.operation-dialog-overlay .p-dialog {
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3) !important;
+  border: 1px solid #dee2e6 !important;
+  border-radius: 12px !important;
+  z-index: var(--z-index-modal) !important;
 }
 
-.led-green {
-    margin: 0 auto;
-    width: 13px;
-    height: 13px;
-    background-color: #ABFF00;
-    border-radius: 50%;
-    box-shadow: rgba(0.8, 0, 0, 10.2) 0 -1px 7px 1px, inset #304701 0 -1px 9px, #89FF00 0 2px 12px;
+.operation-dialog-overlay .p-dialog-header {
+  background: linear-gradient(135deg, #f8f9fa, #e9ecef) !important;
+  border-bottom: 1px solid #dee2e6 !important;
+  padding: 1.25rem 1.5rem !important;
+  border-radius: 12px 12px 0 0 !important;
 }
 
-.led-grey {
-    margin: 0 auto;
-    background-color: #CCC;
-    box-shadow: rgba(0.8, 0, 0, 10.2) 0 -1px 7px 1px, inset #181818 0 -1px 9px, #929391 0 2px 12px;
-    width: 13px;
-    height: 13px;
-    border-radius: 50%;
-    animation: none;
+.operation-dialog-overlay .p-dialog-content {
+  padding: 1.5rem !important;
+  background: #ffffff !important;
 }
 
-.led-blue {
-    margin: 0 auto;
-    width: 13px;
-    height: 13px;
-    background-color: rgb(0, 110, 255);
-    border-radius: 50%;
-    box-shadow: rgba(0.8, 0, 0, 10.2) 0 -1px 7px 1px, inset #000 0 -1px 7px, rgba(0, 0, 255, 0.5) 0 2px 12px;
+.operation-dialog-overlay .p-dialog-footer {
+  background: #f8f9fa !important;
+  border-top: 1px solid #dee2e6 !important;
+  padding: 1rem 1.5rem !important;
+  text-align: center !important;
+  border-radius: 0 0 12px 12px !important;
 }
 
-.bd-placeholder-img {
-  font-size: 1.125rem;
-  text-anchor: middle;
+/* Стили для прогресс-бара в operation dialog */
+.operation-dialog-overlay .custom-progressbar .p-progressbar {
+  height: 12px !important;
+  border-radius: 6px !important;
+  background: #e9ecef !important;
 }
 
-@media (min-width: 768px) {
-  .bd-placeholder-img-lg {
-    font-size: 3.5rem;
+.operation-dialog-overlay .custom-progressbar .p-progressbar-value {
+  height: 12px !important;
+  border-radius: 6px !important;
+  background: linear-gradient(90deg, #007bff, #0056b3) !important;
+}
+
+/* Глобальные стили для современных кнопок */
+.p-button {
+  border-radius: 8px !important;
+  transition: all 0.3s ease !important;
+  font-weight: 500 !important;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1) !important;
+}
+
+.p-button:hover {
+  transform: translateY(-1px) !important;
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15) !important;
+}
+
+.p-button:active {
+  transform: translateY(0) !important;
+}
+
+/* Круглые кнопки - ГЛОБАЛЬНЫЕ СТИЛИ */
+.p-button.p-button-rounded {
+  border-radius: 50% !important;
+  width: 2.5rem !important;
+  height: 2.5rem !important;
+  transition: all 0.3s ease !important;
+  position: relative;
+}
+
+.p-button.p-button-rounded .p-button-icon {
+  font-size: 1rem !important;
+  opacity: 1 !important;
+  visibility: visible !important;
+  display: inline-block !important;
+  transition: all 0.3s ease !important;
+}
+
+.p-button.p-button-rounded:hover {
+  transform: translateY(-2px) scale(1.05) !important;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15) !important;
+  z-index: 10;
+}
+
+.p-button.p-button-rounded:active {
+  transform: translateY(0) scale(1) !important;
+}
+
+.p-button.p-button-rounded:disabled {
+  opacity: 0.6 !important;
+}
+
+.p-button.p-button-rounded:disabled .p-button-icon {
+  opacity: 0.6 !important;
+}
+
+/* Primary кнопки */
+.p-button-primary {
+  background: var(--primary-gradient) !important;
+}
+
+.p-button-primary:hover {
+  background: linear-gradient(135deg, #2563EB, #1E40AF) !important;
+}
+
+/* Success кнопки */
+.p-button-success {
+  background: linear-gradient(135deg, #10B981, #047857) !important;
+  border: none !important;
+}
+
+/* Warning кнопки */
+.p-button-warning {
+  background: linear-gradient(135deg, #F59E0B, #D97706) !important;
+  border: none !important;
+}
+
+/* Danger кнопки */
+.p-button-danger {
+  background: linear-gradient(135deg, #EF4444, #DC2626) !important;
+  border: none !important;
+}
+
+/* Outlined кнопки */
+.p-button-outlined {
+  background: transparent !important;
+  border: 2px solid !important;
+}
+
+.p-button-outlined.p-button-primary {
+  color: #3B82F6 !important;
+  border-color: #3B82F6 !important;
+}
+
+.p-button-outlined.p-button-success {
+  color: #10B981 !important;
+  border-color: #10B981 !important;
+}
+
+.p-button-outlined.p-button-warning {
+  color: #F59E0B !important;
+  border-color: #F59E0B !important;
+}
+
+.p-button-outlined.p-button-danger {
+  color: #EF4444 !important;
+  border-color: #EF4444 !important;
+}
+
+/* Text кнопки */
+.p-button-text {
+  background: transparent !important;
+  border: none !important;
+  color: #6B7280 !important;
+}
+
+.p-button-text:hover {
+  background: rgba(0, 0, 0, 0.04) !important;
+  color: #374151 !important;
+}
+
+/* Улучшенные стили для модальных окон */
+.p-dialog .p-dialog-header {
+  background: linear-gradient(135deg, #F8FAFC, #F1F5F9) !important;
+  border-bottom: 1px solid #E2E8F0 !important;
+  padding: 1.5rem !important;
+}
+
+.p-dialog .p-dialog-content {
+  padding: 1.5rem !important;
+  background: #FFFFFF !important;
+}
+
+.p-dialog .p-dialog-footer {
+  background: #F8FAFC !important;
+  border-top: 1px solid #E2E8F0 !important;
+  padding: 1rem 1.5rem !important;
+  display: flex !important;
+  gap: 0.5rem !important;
+  justify-content: flex-end !important;
+}
+
+/* Улучшенные инпуты */
+.p-inputtext {
+  border-radius: 6px !important;
+  border: 1px solid #D1D5DB !important;
+  transition: all 0.3s ease !important;
+}
+
+.p-inputtext:focus {
+  border-color: #3B82F6 !important;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1) !important;
+}
+
+/* Улучшенная таблица */
+.p-datatable .p-datatable-thead > tr > th {
+  background: #F8FAFC !important;
+  border-color: #E2E8F0 !important;
+  font-weight: 600 !important;
+  color: #374151 !important;
+}
+
+.p-datatable .p-datatable-tbody > tr {
+  transition: background-color 0.2s ease !important;
+}
+
+.p-datatable .p-datatable-tbody > tr:hover {
+  background: #F9FAFB !important;
+}
+
+/* Dropdown стили */
+.p-dropdown-panel {
+  z-index: var(--z-index-dropdown) !important;
+  position: absolute !important;
+}
+
+/* Стили для спиннера */
+.p-button.p-button-rounded .pi-spinner {
+  animation: spin 1s linear infinite !important;
+  opacity: 1 !important;
+  visibility: visible !important;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+/* Адаптивность */
+@media (max-width: 768px) {
+  .operation-dialog-overlay .p-dialog {
+    width: 95vw !important;
+    margin: 2.5vw !important;
+  }
+  
+  .p-dialog {
+    width: 95vw !important;
+    margin: 2.5vw !important;
+  }
+  
+  /* Адаптивность для круглых кнопок на мобильных */
+  .p-button.p-button-rounded {
+    width: 2.5rem !important;
+    height: 2.5rem !important;
+    border-radius: 50% !important;
+    
+    
+  }
+  
+  .p-button.p-button-rounded .p-button-icon {
+    font-size: 0.9rem !important;
   }
 }
 
-.form-check > * {
-    cursor: pointer;
-}
-
-.flex-item {
-  flex: 1 1 0%;
- }
- .card-text h6 {
-  padding: 0;
- }
- .flex-container {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center !important; /* Выравнивание по центру по вертикали */
-  justify-content: left !important; /* Выравнивание по центру по горизонтали */
-  height: 4.6rem;
+@media (max-width: 480px) {
+  .p-button.p-button-rounded {
+    width: 2.5rem !important;
+    height: 2.5rem !important;
+    border-radius: 50% !important;
+  }
   
-}
-.badge {
-  display: inline-flex;
-  width: auto; /* Автоматически подстраивается под содержимое */
-  height: auto; /* Пример фиксированной высоты */
-  padding: 0.5em 0.4em; /* Пример отступов */
-  padding-top: auto;
-  border-radius: 10px; /* Радиус закругления */
-  background-color: #6c757d; /* Цвет фона */
-  color: white; /* Цвет текста */
-  white-space: pre-wrap;
-  overflow: hidden; /* Скрывает текст, выходящий за границы */
-  font-family: Segoe UI, sans-serif;
-  /* font-weight: normal; */
-  font-size: 0.75rem;
-  margin-bottom: 0.5rem;
- }
- .badge + .badge {
-  margin-left: 0.2rem; /* Расстояние между span */
-  margin-right: 0.3rem; /* Расстояние между span */
-  margin-top: 0rem;
- }  
-
- .popper {
-  --popper-theme-background-color: #333333;
-  --popper-theme-background-color-hover: #333333;
-  --popper-theme-text-color: white;
-  --popper-theme-border-width: 0px;
-  --popper-theme-border-radius: 10px;
-  --popper-theme-padding: 1.05rem;
-  --popper-theme-box-shadow: 0 6px 30px -6px rgba(0, 0, 0, 0.25); 
+  .p-button.p-button-rounded .p-button-icon {
+    font-size: 0.85rem !important;
+  }
 }
 
-body.sidebar-open {
-  overflow: hidden !important;
-  position: fixed !important;
-  width: 100% !important;
-  height: 100% !important;
-}
+
