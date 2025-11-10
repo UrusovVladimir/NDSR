@@ -577,7 +577,7 @@ const currentDeviceModeInfo = computed(() => {
   
   // ✅ ЕСЛИ В STORE NULL, НО УСТРОЙСТВО ОНЛАЙН - ПЫТАЕМСЯ ОПРЕДЕЛИТЬ
   if (!modeInfo && hasValidPassword.value && !authError.value) {
-    console.log('🔄 No mode info in store for online device');
+    // console.log('🔄 No mode info in store for online device');
     // Можно запустить автоматическое определение
   }
   
@@ -612,10 +612,10 @@ const connectedRouterId = computed(() => {
 })
 
 const show = async (password, source = 'global') => {
-    console.log('🔑 ChangeModeModal show called:', { 
-        device: props.device?.hwId,
-        hasPassword: !!password 
-    });
+    // console.log('🔑 ChangeModeModal show called:', { 
+    //     device: props.device?.hwId,
+    //     hasPassword: !!password 
+    // });
   
     devicePassword.value = password;
     useDevicePassword.value = true;
@@ -634,7 +634,7 @@ const show = async (password, source = 'global') => {
     visible.value = true;
 
     if (hasValidPassword.value && currentDevice.value) {
-        console.log('🔄 Loading current mode (preserving connections)...');
+        // console.log('🔄 Loading current mode (preserving connections)...');
         
         // ✅ ТОЛЬКО ДЛЯ ОТЛАДКИ - можно закомментировать в проде
         await loadCurrentMode();
@@ -645,7 +645,7 @@ const show = async (password, source = 'global') => {
         const savedMode = modeStore.getDeviceModeInfo(currentDevice.value.id);
         if (savedMode?.routerId) {
             selectedRouterId.value = savedMode.routerId;
-            console.log(`🔗 Restored router selection: ${selectedRouterId.value}`);
+            // console.log(`🔗 Restored router selection: ${selectedRouterId.value}`);
         }
         
         // ✅ АВТОМАТИЧЕСКИ ВЫБИРАЕМ СООТВЕТСТВУЮЩЕЕ ДЕЙСТВИЕ
@@ -660,7 +660,7 @@ const autoSelectActionBasedOnMode = (modeInfo) => {
     const mode = modeInfo.mode;
     const hasConnection = modeInfo.routerId;
     
-    console.log('🤖 Auto-selecting action based on mode:', { mode, hasConnection });
+    // console.log('🤖 Auto-selecting action based on mode:', { mode, hasConnection });
     
     if (mode === 'router' && !hasConnection) {
         selectedAction.value = 'router';
@@ -680,18 +680,18 @@ const loadCurrentMode = async () => {
     authError.value = false;
     
     try {
-        console.log('🔄 Loading current mode (preserving connections)...');
+        // console.log('🔄 Loading current mode (preserving connections)...');
         
         // ✅ СОХРАНЯЕМ ПОЛНУЮ ИНФОРМАЦИЮ О ТЕКУЩЕМ РЕЖИМЕ
         const existingModeInfo = modeStore.getDeviceModeInfo(currentDevice.value.id);
         const existingMode = existingModeInfo?.mode;
         const existingRouterId = existingModeInfo?.routerId;
         
-        console.log('📊 Existing mode info:', { existingMode, existingRouterId });
+        // console.log('📊 Existing mode info:', { existingMode, existingRouterId });
         
         // ✅ ЕСЛИ УСТРОЙСТВО ПОДКЛЮЧЕНО - НЕ ПЕРЕОПРЕДЕЛЯЕМ РЕЖИМ!
         if (existingMode === 'extender_connect' && existingRouterId) {
-            console.log('🔗 Device is connected, skipping mode detection to preserve connection');
+            // console.log('🔗 Device is connected, skipping mode detection to preserve connection');
             authError.value = false;
             return; // ← ВАЖНО: выходим без переопределения режима
         }
@@ -706,7 +706,7 @@ const loadCurrentMode = async () => {
         // Если устройство было подключено, но сервер вернул extender - сохраняем подключение
         if (existingMode === 'extender_connect' && detectedMode === 'extender' && existingRouterId) {
             finalMode = 'extender_connect';
-            console.log('🔄 Preserving connection mode despite server response');
+            // console.log('🔄 Preserving connection mode despite server response');
         }
         // Если не подключено и сервер вернул router - очищаем routerId
         else if (detectedMode === 'router') {
@@ -720,7 +720,7 @@ const loadCurrentMode = async () => {
         });
         
         authError.value = false;
-        console.log(`✅ Mode updated: ${finalMode}, routerId: ${finalRouterId}`);
+        // console.log(`✅ Mode updated: ${finalMode}, routerId: ${finalRouterId}`);
         
     } catch (error) {
         console.log('❌ Error getting current mode:', error.message);
@@ -728,7 +728,7 @@ const loadCurrentMode = async () => {
         // ✅ ПРИ ОШИБКЕ НЕ СБРАСЫВАЕМ ДАННЫЕ
         const existingModeInfo = modeStore.getDeviceModeInfo(currentDevice.value.id);
         if (existingModeInfo) {
-            console.log('⚠️ Keeping existing mode data due to error:', existingModeInfo);
+            // console.log('⚠️ Keeping existing mode data due to error:', existingModeInfo);
         }
         
         if (error.message.includes('401') || error.message.includes('authentication')) {
@@ -767,11 +767,11 @@ const testModeDetection = async () => {
       return;
     }
     
-    console.log('🔧 TestModeDetection via store:', {
-      deviceId: currentDevice.value.id,
-      hasPassword: !!testPassword,
-      passwordLength: testPassword.length
-    });
+    // console.log('🔧 TestModeDetection via store:', {
+    //   deviceId: currentDevice.value.id,
+    //   hasPassword: !!testPassword,
+    //   passwordLength: testPassword.length
+    // });
     
     // ✅ Используем forceRefresh: true только для тестирования
     const mode = await modeStore.getCurrentMode(currentDevice.value.id, testPassword, { forceRefresh: true })
@@ -781,10 +781,10 @@ const testModeDetection = async () => {
     
   } catch (error) {
     debugInfo.value = `❌ Store error: ${error.message}`
-    console.error('TestModeDetection store error:', error)
+    // console.error('TestModeDetection store error:', error)
     
     if (modeStore.error) {
-      console.error('Store error details:', modeStore.error)
+      // console.error('Store error details:', modeStore.error)
       debugInfo.value += `\nStore error: ${modeStore.error}`
     }
     
@@ -930,10 +930,10 @@ const confirmAction = async () => {
     if (selectedAction.value === 'extenderConnect' || selectedAction.value === 'disconnectRouter') {
       if (useDevicePassword.value) {
         routerPasswordToUse = devicePassword.value
-        console.log('🔑 Using device password for router')
+        // console.log('🔑 Using device password for router')
       } else if (manualRouterPassword.value) {
         routerPasswordToUse = manualRouterPassword.value
-        console.log('🔑 Using manual password for router')
+        // console.log('🔑 Using manual password for router')
       }
     }
     
@@ -1010,13 +1010,13 @@ const shouldShowAction = (action) => {
   const hasConnection = hasRouterConnection.value;
   const connectedRouter = connectedRouterId.value;
   
-  console.log('🔍 shouldShowAction check:', {
-    action,
-    baseMode,
-    hasConnection,
-    connectedRouter,
-    modeInfo: currentDeviceModeInfo.value
-  });
+  // console.log('🔍 shouldShowAction check:', {
+  //   action,
+  //   baseMode,
+  //   hasConnection,
+  //   connectedRouter,
+  //   modeInfo: currentDeviceModeInfo.value
+  // });
   
   switch (action) {
     case 'router':
@@ -1238,7 +1238,7 @@ watch(
   () => currentDeviceModeInfo.value,
   (newModeInfo) => {
     if (currentDevice.value && visible.value && newModeInfo) {
-      console.log('🔄 Mode updated in store:', newModeInfo)
+      // console.log('🔄 Mode updated in store:', newModeInfo)
       
       // Автоматически выбираем соответствующий роутер для disconnect
       if (newModeInfo.routerId && hasRouterConnection.value) {

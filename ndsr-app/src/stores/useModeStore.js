@@ -2,7 +2,7 @@ import { defineStore } from 'pinia'
 import { ref, watch } from 'vue'
 import { socket } from '@/socket'
 import { useToast } from 'primevue/usetoast'
-import { useDeviceStore } from './usedeviceStore'
+import { useDeviceStore } from './useDeviceStore'
 
 export const useModeStore = defineStore('mode', () => {
   const toast = useToast()

@@ -1,6 +1,4 @@
-// [file name]: dockerManager.js (ИСПРАВЛЕННАЯ ВЕРСИЯ)
-import { SSHManager } from '../actions/sshManager.js';
-import { UniversalFirewallManager } from './universalFirewallManager.js';
+import { UniversalFirewallManager } from './UniversalFirewallManager.js';
 import { getParamRouter } from '../devices.js';
 import { makeAuthenticatedRequest } from '../actions/athentication.js';
 

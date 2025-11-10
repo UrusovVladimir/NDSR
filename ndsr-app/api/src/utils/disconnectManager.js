@@ -1,5 +1,5 @@
 import { SSHManager } from "../actions/sshManager.js";
-import { UniversalFirewallManager } from "./universalFirewallManager.js";
+import { UniversalFirewallManager } from "./UniversalFirewallManager.js";
 import { DockerManager } from "./dockerManager.js";
 import { HOST_CONFIG } from "./hostConfig.js";
 import { getDeviceById, getParamRouter, wanTypes } from "../devices.js";
