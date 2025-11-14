@@ -4,6 +4,6 @@ export const HOST_CONFIG = {
         port: parseInt(process.env.SSH_PORT) || 9678,
         username: process.env.SSH_USERNAME || 'v.urusov',
         // privateKeyPath: process.env.SSH_PRIVATE_KEY_PATH || '/root/.ssh/id_rsa'
-        privateKeyPath: '/Users/vladimir/.ssh/id_ed25519'
+        privateKeyPath: process.env.SSH_PRIVATE_KEY_PATH
     }
 };
