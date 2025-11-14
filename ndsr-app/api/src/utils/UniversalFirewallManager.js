@@ -1,5 +1,3 @@
-// [file name]: universalFirewallManager.js (ОБНОВЛЕННЫЙ)
-import { SSHManager } from '../actions/sshManager.js';
 import { NftablesManager } from './nftablesManager.js';
 
 export class UniversalFirewallManager {
@@ -25,17 +23,16 @@ export class UniversalFirewallManager {
     /**
      * Добавляет правило в НАЧАЛО цепочки
      */
-    async addRule(port, destinationIp, iface = 'internet') {
+    async addRule(port, destinationIp, iface = null) { 
         return await this.nftManager.addRule(port, destinationIp, iface);
     }
 
     /**
      * Обновляет правило (удаляет ВСЕ старые, добавляет новое в НАЧАЛО)
      */
-    async updateRule(port, destinationIp, iface = 'internet') {
+    async updateRule(port, destinationIp, iface = null) {  
         return await this.nftManager.updateRule(port, destinationIp, iface);
     }
-
     /**
      * Показывает все правила
      */

@@ -1,10 +1,10 @@
 import {TelnetConnection} from "./telnetClassEthernet.js"
 import {getParamRouter, devices, wanTypes} from "../devices.js";
 import { getManagmentID } from "./getManagmentID.js";
+import { rebootDevice } from "./rebootDevice.js";
 
 // ✅ ОБНОВЛЕННАЯ ФУНКЦИЯ - ПРИНИМАЕТ ОБЪЕКТ ДАННЫХ
 async function connectToMws(data, universalPromptRegex) {
-    // ✅ ОБЪЯВЛЯЕМ connection ВНЕ try блока
     let connection = null;
     
     try {
@@ -62,7 +62,7 @@ async function connectToMws(data, universalPromptRegex) {
             extender: extender.hwId, 
             router: router.hwId, 
             action: action,
-            extenderVlan: extender.vlanLocal,
+            extenderVlan: extender.vlanLocal, 
             routerVlan: router.vlanLocal,
             switch: switchBaseUrl,
             ports: PORTS
@@ -78,17 +78,19 @@ async function connectToMws(data, universalPromptRegex) {
         const isExtenderDisconnect = action === 'extender_disconnect';
 
         if (isDisconnect) {
-            console.log(`🔗 DISCONNECT: Applying fake VLAN 4094 to port ${extender.switchPortLan}`, `Router VLAN: ${router.vlanLocal}`);
+            // ✅ ИСПРАВЛЕНИЕ: Используем VLAN устройства вместо fake VLAN
+            console.log(`🔗 DISCONNECT: Applying device VLAN ${extender.vlanLocal} to port ${extender.switchPortLan}`, `Router VLAN: ${router.vlanLocal}`);
 
             let OFF_PVID = wanTypes.find(command => "offVlanPVID" === command.setting);
             
-            // ✅ ПРИМЕНЯЕМ КОМАНДЫ ДЛЯ ОТКЛЮЧЕНИЯ
+            // ✅ ПРИМЕНЯЕМ КОМАНДЫ ДЛЯ ОТКЛЮЧЕНИЯ С ПРАВИЛЬНЫМ VLAN
             for (let cmd of OFF_PVID.commands) {
                 let param = null;
                 if (cmd === 'interface port-channel') {
                     param = extender.switchPortLan;
                 } else if (cmd === 'pvid') {
-                    param = "4094"; // Fake VLAN
+                    // ✅ ИСПРАВЛЕНИЕ: Используем VLAN устройства вместо 4094
+                    param = extender.vlanLocal; // 4065 для NC-1613
                 }
                 console.log(`➡️ Executing: ${cmd} ${param || ''}`);
                 await connection.executeCommand(cmd, param, universalPromptRegex);
@@ -100,8 +102,23 @@ async function connectToMws(data, universalPromptRegex) {
             await connection.executeCommand("forbidden", extender.switchPortLan, universalPromptRegex);
             await new Promise(resolve => setTimeout(resolve, 500));
             
-
+            // ✅ ДОБАВЛЯЕМ ПЕРЕЗАГРУЗКУ УСТРОЙСТВА ПРИ ОТКЛЮЧЕНИИ
+            console.log(`🔧 Выполняем перезагрузку устройства ${deviceId} после отключения от роутера...`);
+            try {
+                await rebootDevice(deviceId);
+                console.log(`✅ Устройство ${deviceId} успешно перезагружено после отключения`);
+                
+                // ✅ ДАЕМ ВРЕМЯ НА ПЕРЕЗАГРУЗКУ
+                console.log(`⏳ Ожидаем 10 секунд для завершения перезагрузки...`);
+                await new Promise(resolve => setTimeout(resolve, 10000));
+                
+            } catch (rebootError) {
+                console.warn(`⚠️ Не удалось перезагрузить устройство ${deviceId}: ${rebootError.message}`);
+                console.log(`🔄 Продолжаем без перезагрузки...`);
+            }
+            
         } else if (isExtenderDisconnect) {
+            // ✅ ИСПРАВЛЕНИЕ: Используем VLAN устройства
             console.log(`🔗 EXTENDER DISCONNECT: Applying device VLAN ${extender.vlanLocal} to port ${extender.switchPortLan}`);
             
             let OFF_PVID = wanTypes.find(command => "offVlanPVID" === command.setting);
@@ -111,14 +128,30 @@ async function connectToMws(data, universalPromptRegex) {
                 if (cmd === 'interface port-channel') {
                     param = extender.switchPortLan;
                 } else if (cmd === 'pvid') {
-                    param = extender.vlanLocal;
+                    // ✅ ИСПРАВЛЕНИЕ: Используем VLAN устройства
+                    param = extender.vlanLocal; // 4065 для NC-1613
                 }
                 console.log(`➡️ Executing: ${cmd} ${param || ''}`);
                 await connection.executeCommand(cmd, param, universalPromptRegex);
             }
             
+            // ✅ ДОБАВЛЯЕМ ПЕРЕЗАГРУЗКУ УСТРОЙСТВА ПРИ EXTENDER_DISCONNECT
+            console.log(`🔧 Выполняем перезагрузку устройства ${deviceId} после отключения экстендера...`);
+            try {
+                await rebootDevice(deviceId);
+                console.log(`✅ Устройство ${deviceId} успешно перезагружено после отключения экстендера`);
+                
+                // ✅ ДАЕМ ВРЕМЯ НА ПЕРЕЗАГРУЗКУ
+                console.log(`⏳ Ожидаем 10 секунд для завершения перезагрузки...`);
+                await new Promise(resolve => setTimeout(resolve, 10000));
+                
+            } catch (rebootError) {
+                console.warn(`⚠️ Не удалось перезагрузить устройство ${deviceId}: ${rebootError.message}`);
+                console.log(`🔄 Продолжаем без перезагрузки...`);
+            }
+            
         } else {
-            // ✅ ПОДКЛЮЧЕНИЕ
+            // ✅ ПОДКЛЮЧЕНИЕ (оставляем без изменений)
             console.log(`🔗 CONNECT: Applying router VLAN ${lanVlan} to ports ${PORTS.join(', ')}`);
             
             // 1. Настройка PVID для порта экстендера
@@ -128,7 +161,7 @@ async function connectToMws(data, universalPromptRegex) {
                 if (cmd === 'interface port-channel') {
                     param = extender.switchPortLan;
                 } else if (cmd === 'pvid') {
-                    param = lanVlan;
+                    param = lanVlan; // VLAN роутера при подключении
                 }
                 console.log(`➡️ PVID: ${cmd} ${param || ''}`);
                 await connection.executeCommand(cmd, param, universalPromptRegex);

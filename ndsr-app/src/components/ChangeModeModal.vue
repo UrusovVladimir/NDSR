@@ -193,52 +193,56 @@
         </div>
 
         <div v-if="(selectedAction === 'extenderConnect' || selectedAction === 'disconnectRouter') && hasValidPassword && !authError" 
-            class="router-password-section mb-4">
+             class="router-password-section mb-4">
           <h6 class="section-title mb-3">Router Authentication:</h6>
           
-          <!-- Переключатель между паролем устройства и ручным вводом -->
+          <!-- ИСПРАВЛЕННЫЙ БЛОК - ГОРИЗОНТАЛЬНОЕ РАСПОЛОЖЕНИЕ -->
           <div class="password-toggle-section mb-3">
-            <div class="flex align-items-center gap-3">
-              <div class="password-option" 
+            <div class="horizontal-password-options">
+              <div class="password-option horizontal-option" 
                   :class="{ 'active': useDevicePassword }"
                   @click="useDevicePassword = true">
-                <RadioButton
-                  v-model="useDevicePassword"
-                  inputId="useDevicePassword"
-                  name="passwordSource"
-                  :value="true"
-                  class="password-radio"
-                />
-                <label for="useDevicePassword" class="password-label">
-                  <div class="flex align-items-center">
-                    <i class="pi pi-key mr-2 text-primary"></i>
-                    <strong>Use Device Password</strong>
-                  </div>
-                  <small class="block text-color-secondary">
-                    Use the same password as the device (recommended)
-                  </small>
-                </label>
+                <div class="option-content">
+                  <RadioButton
+                    v-model="useDevicePassword"
+                    inputId="useDevicePassword"
+                    name="passwordSource"
+                    :value="true"
+                    class="password-radio"
+                  />
+                  <label for="useDevicePassword" class="password-label">
+                    <div class="flex align-items-center mb-1">
+                      <i class="pi pi-key mr-2 text-primary"></i>
+                      <strong>Device Password</strong>
+                    </div>
+                    <small class="block text-color-secondary">
+                      Same as device
+                    </small>
+                  </label>
+                </div>
               </div>
 
-              <div class="password-option" 
+              <div class="password-option horizontal-option" 
                   :class="{ 'active': !useDevicePassword }"
                   @click="useDevicePassword = false">
-                <RadioButton
-                  v-model="useDevicePassword"
-                  inputId="useManualPassword"
-                  name="passwordSource"
-                  :value="false"
-                  class="password-radio"
-                />
-                <label for="useManualPassword" class="password-label">
-                  <div class="flex align-items-center">
-                    <i class="pi pi-pencil mr-2 text-warning"></i>
-                    <strong>Enter Manually</strong>
-                  </div>
-                  <small class="block text-color-secondary">
-                    Use different password for router
-                  </small>
-                </label>
+                <div class="option-content">
+                  <RadioButton
+                    v-model="useDevicePassword"
+                    inputId="useManualPassword"
+                    name="passwordSource"
+                    :value="false"
+                    class="password-radio"
+                  />
+                  <label for="useManualPassword" class="password-label">
+                    <div class="flex align-items-center mb-1">
+                      <i class="pi pi-pencil mr-2 text-warning"></i>
+                      <strong>Manual Password</strong>
+                    </div>
+                    <small class="block text-color-secondary">
+                      Enter manually
+                    </small>
+                  </label>
+                </div>
               </div>
             </div>
           </div>
@@ -255,10 +259,6 @@
                 toggleMask
                 :disabled="operationInProgress"
               />
-              <small class="text-color-secondary mt-1 block">
-                <i class="pi pi-info-circle mr-1"></i>
-                Enter the router's admin password if different from device
-              </small>
             </div>
           </div>
 
@@ -277,16 +277,21 @@
 
         <!-- Выбор роутера для отключения -->
         <div v-if="selectedAction === 'disconnectRouter' && hasValidPassword && !authError" 
-            class="router-selection-section mb-4">
+             class="router-selection-section mb-4">
           <h6 class="section-title mb-2">Select Router to Disconnect From:</h6>
           <Dropdown 
             v-model="selectedRouterId" 
             :options="availableBookedRoutersFormatted"
             optionLabel="displayName"
             optionValue="id"
-            placeholder="Select router to disconnect from..."
+            placeholder="Select a router..."
             class="w-full router-dropdown"
+            :appendTo="dropdownAppendTo"
+            :panelStyle="dropdownPanelStyle"
             :disabled="operationInProgress"
+            @focus="lockBodyScroll"
+            @blur="unlockBodyScroll"
+            @before-show="onDropdownShow"
           />
         </div>
 
@@ -300,12 +305,12 @@
             optionValue="id"
             placeholder="Select a router..."
             class="w-full router-dropdown"
-            :panelStyle="{ 
-              maxHeight: '200px',
-              position: 'absolute',
-              zIndex: 10000 
-            }"
+            :appendTo="dropdownAppendTo"
+            :panelStyle="dropdownPanelStyle"
             :disabled="operationInProgress"
+            @focus="lockBodyScroll"
+            @blur="unlockBodyScroll"
+            @before-show="onDropdownShow"
           />
           <div v-if="selectedAction === 'extenderConnect' && !selectedRouterId" class="text-orange-500 text-sm mt-2">
             <i class="pi pi-exclamation-circle mr-1"></i>
@@ -341,12 +346,12 @@
 
         <!-- Debug секция -->
         <Button 
-              :label="showDebug ? 'Hide' : 'Show Debug Info'"
-              :icon="showDebug ? 'bi bi-toggle-on' : 'bi bi-tools'"
-              @click="showDebugSection"
-              class="p-button-sm p-button-info"
-              style="margin-top: 15px;"
-            />
+          :label="showDebug ? 'Hide' : 'Show Debug Info'"
+          :icon="showDebug ? 'bi bi-toggle-on' : 'bi bi-tools'"
+          @click="showDebugSection"
+          class="p-button-sm p-button-info"
+          style="margin-top: 15px;"
+        />
             
         <div v-if="showDebug" class="debug-section mt-3 p-2 border-round" style="background: #f8f9fa; border: 1px dashed #ccc;">
           <small class="text-color-secondary">Debug info:</small>
@@ -441,7 +446,7 @@
 </template>
 
 <script setup>
-import { ref, computed, watch, onUnmounted, onMounted, inject } from 'vue'
+import { ref, computed, watch, onUnmounted, onMounted, inject, nextTick } from 'vue'
 import { useToast } from 'primevue/usetoast'
 import { useModeStore } from '@/stores/useModeStore'
 import { useDeviceStore } from '@/stores/useDeviceStore'
@@ -454,8 +459,6 @@ import ProgressSpinner from 'primevue/progressspinner'
 import Chip from 'primevue/chip'
 import Message from 'primevue/message'
 import Password from 'primevue/password' 
-
-
 
 const toast = useToast()
 const modeStore = useModeStore()
@@ -474,6 +477,97 @@ const checkMobile = () => {
 const showDebugSection = () => {
   showDebug.value = !showDebug.value
 }
+
+// ✅ ФУНКЦИИ ДЛЯ УПРАВЛЕНИЯ СКРОЛЛОМ
+const lockBodyScroll = () => {
+  const scrollY = window.scrollY;
+  document.body.style.overflow = 'hidden';
+  document.body.style.position = 'fixed';
+  document.body.style.top = `-${scrollY}px`;
+  document.body.style.width = '100%';
+  document.body.classList.add('dropdown-open');
+  
+  // Сохраняем позицию скролла для восстановления
+  document.body.dataset.scrollY = scrollY.toString();
+}
+
+const unlockBodyScroll = () => {
+  document.body.style.overflow = '';
+  document.body.style.position = '';
+  document.body.style.top = '';
+  document.body.style.width = '';
+  document.body.classList.remove('dropdown-open');
+  
+  // Восстанавливаем позицию скролла
+  const scrollY = document.body.dataset.scrollY;
+  if (scrollY) {
+    window.scrollTo(0, parseInt(scrollY));
+  }
+}
+
+// ✅ НОВАЯ ФУНКЦИЯ ДЛЯ КОРРЕКТНОГО ПОЗИЦИОНИРОВАНИЯ DROPDOWN
+const onDropdownShow = () => {
+  if (!isMobile.value) return;
+  
+  nextTick(() => {
+    const dropdownPanels = document.querySelectorAll('.p-dropdown-panel');
+    dropdownPanels.forEach(panel => {
+      if (panel.style.display !== 'none') {
+        const input = panel.previousElementSibling;
+        if (input) {
+          const inputRect = input.getBoundingClientRect();
+          const panelHeight = panel.offsetHeight;
+          const viewportHeight = window.innerHeight;
+          
+          // Вычисляем доступное пространство снизу
+          const spaceBelow = viewportHeight - inputRect.bottom;
+          const spaceAbove = inputRect.top;
+          
+          let topPosition;
+          
+          if (spaceBelow >= panelHeight || spaceBelow >= spaceAbove) {
+            // Открываем вниз, если есть место
+            topPosition = inputRect.bottom;
+          } else {
+            // Открываем вверх, если снизу нет места
+            topPosition = inputRect.top - panelHeight;
+          }
+          
+          // Ограничиваем позиционирование в пределах viewport
+          topPosition = Math.max(10, Math.min(topPosition, viewportHeight - panelHeight - 10));
+          
+          panel.style.position = 'fixed';
+          panel.style.top = `${topPosition}px`;
+          panel.style.left = `${inputRect.left}px`;
+          panel.style.width = `${inputRect.width}px`;
+          panel.style.transform = 'none';
+          panel.style.maxHeight = '200px';
+          panel.style.zIndex = '10000';
+        }
+      }
+    });
+  });
+}
+
+// ✅ ОБНОВЛЕННЫЕ COMPUTED ДЛЯ DROPDOWN
+const dropdownAppendTo = computed(() => {
+  return isMobile.value ? null : 'body'
+})
+
+const dropdownPanelStyle = computed(() => {
+  if (isMobile.value) {
+    return {
+      maxHeight: '200px',
+      position: 'fixed',
+      zIndex: 10000
+    }
+  }
+  
+  return {
+    maxHeight: '200px'
+  }
+})
+
 // Стили для диалога
 const dialogStyle = computed(() => {
   if (isMobile.value) {
@@ -562,7 +656,7 @@ const progressInterval = ref(null)
 const currentDevice = ref(null)
 
 const debugInfo = ref('')
-const showDebug = ref(false) // ✅ Добавляем переключатель для debug секции
+const showDebug = ref(false)
 
 // ✅ ДОБАВЛЯЕМ ОТСУТСТВУЮЩИЕ ПЕРЕМЕННЫЕ
 const mwsStatus = computed(() => {
@@ -670,8 +764,6 @@ const autoSelectActionBasedOnMode = (modeInfo) => {
         selectedAction.value = 'disconnectRouter';
     }
 }
-
-
 
 const loadCurrentMode = async () => {
     if (!hasValidPassword.value || !currentDevice.value) return;
@@ -1261,6 +1353,7 @@ onUnmounted(() => {
   fullCleanup()
 })
 </script>
+
 <style scoped>
 .change-mode-modal {
   min-height: 200px;
@@ -1435,30 +1528,57 @@ onUnmounted(() => {
   margin-bottom: 1rem;
 }
 
-.password-option {
+/* ИСПРАВЛЕННЫЕ СТИЛИ ДЛЯ ГОРИЗОНТАЛЬНЫХ ОПЦИЙ ПАРОЛЯ */
+.horizontal-password-options {
   display: flex;
-  align-items: flex-start;
-  padding: 0.75rem;
+  flex-direction: row;
+  gap: 1rem;
+  width: 100%;
+}
+
+.horizontal-option {
+  flex: 1;
+  min-width: 0;
+}
+
+.password-option.horizontal-option {
+  display: flex;
+  align-items: stretch;
+  padding: 0;
   border: 2px solid var(--surface-300);
   border-radius: 8px;
   cursor: pointer;
   transition: all 0.3s ease;
-  flex: 1;
+  height: auto;
 }
 
-.password-option:hover {
+.password-option.horizontal-option:hover {
   border-color: var(--primary-300);
   background-color: var(--surface-50);
 }
 
-.password-option.active {
+.password-option.horizontal-option.active {
   border-color: var(--primary-500);
   background-color: var(--primary-50);
 }
 
-.password-radio {
+.password-option.horizontal-option .option-content {
+  display: flex;
+  align-items: flex-start;
+  padding: 0.75rem;
+  width: 100%;
+}
+
+.password-option.horizontal-option .password-radio {
   margin-right: 12px;
   margin-top: 2px;
+  flex-shrink: 0;
+}
+
+.password-option.horizontal-option .password-label {
+  cursor: pointer;
+  flex: 1;
+  margin: 0;
 }
 
 .password-label {
@@ -1568,12 +1688,13 @@ onUnmounted(() => {
     font-size: 0.8rem;
   }
   
-  .password-toggle-section .flex.align-items-center {
+  /* Адаптация горизонтальных опций для мобильных */
+  .horizontal-password-options {
     flex-direction: column;
     gap: 0.5rem;
   }
   
-  .password-option {
+  .password-option.horizontal-option {
     width: 100%;
   }
 }
@@ -1720,13 +1841,13 @@ onUnmounted(() => {
   border-color: #28a745 !important;
   box-shadow: 0 0 0 0.2rem rgba(40, 167, 69, 0.25) !important;
 }
+
 /* Стили через классы PrimeVue */
 .custom-progressbar {
   height: 13.5px !important;
   border-radius: 4px;
   margin: 0.5rem 0;
 }
-
 
 :deep(.custom-progressbar.progress-info .p-progressbar .p-progressbar-value) {
   background: linear-gradient(90deg, #007bff, #0056b3) !important;
@@ -1739,6 +1860,7 @@ onUnmounted(() => {
 :deep(.custom-progressbar.progress-success .p-progressbar .p-progressbar-value) {
   background: linear-gradient(90deg, #28a745, #20c997) !important;
 }
+
 /* ПОЛНОЭКРАННАЯ АДАПТИВНОСТЬ ДЛЯ МОБИЛЬНЫХ */
 @media (max-width: 768px) {
   .change-mode-dialog .p-dialog {
@@ -1822,5 +1944,25 @@ onUnmounted(() => {
 .router-password-input .p-password:focus-within input {
   border-color: #28a745 !important;
   box-shadow: 0 0 0 0.2rem rgba(40, 167, 69, 0.25) !important;
+}
+
+/* ИСПРАВЛЕННЫЕ СТИЛИ ДЛЯ DROPDOWN НА МОБИЛЬНЫХ */
+@media (max-width: 768px) {
+  :deep(.p-dropdown-panel) {
+    z-index: 10001 !important;
+  }
+  
+  :deep(.p-component-overlay) {
+    z-index: 10000 !important;
+  }
+}
+
+/* Дополнительные исправления для позиционирования */
+:deep(.p-overlay) {
+  z-index: 10000 !important;
+}
+
+:deep(.p-component-overlay) {
+  z-index: 9999 !important;
 }
 </style>

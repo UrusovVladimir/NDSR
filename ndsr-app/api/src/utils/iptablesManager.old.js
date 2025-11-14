@@ -1,5 +1,3 @@
-import { SSHManager } from '../actions/sshManager.js';
-import { NetworkManager } from './networkManager.js';
 
 export class NftablesManager {
     constructor(sshManager) {
@@ -100,38 +98,62 @@ export class NftablesManager {
         }
     }
 
-    /**
-     * Добавляет новое правило PREROUTING
-     */
-    async addRule(port, destinationIp, iface = 'internet') {
+
+    async addRule(port, destinationIp, iface = null) {
         try {
             const backend = await this.detectBackend();
             
             if (backend === 'nftables' || backend === 'nf_tables') {
-                // Для nftables
-                const rule = `nft add rule ip nat PREROUTING iifname ${iface} tcp dport ${port} dnat to ${destinationIp}`;
-                console.log(`🔧 Добавляем nftables правило: ${rule}`);
-                await this.ssh.executeCommand(rule);
+                let rule;
+                
+                if (iface !== null) {
+                    // С интерфейсом
+                    rule = `nft add rule ip nat PREROUTING iifname "${iface}" tcp dport ${port} dnat to ${destinationIp}`;
+                    console.log(`🔧 Добавляем nftables правило с интерфейсом: ${rule}`);
+                } else {
+                    // Без интерфейса
+                    rule = `nft add rule ip nat PREROUTING tcp dport ${port} dnat to ${destinationIp}`;
+                    console.log(`🔧 Добавляем nftables правило (все интерфейсы): ${rule}`);
+                }
+                
+                const result = await this.ssh.executeCommand(rule);
+                
+                if (result.stderr) {
+                    throw new Error(result.stderr);
+                }
+                
+                console.log(`✅ Добавлено правило: порт ${port} -> ${destinationIp}${iface ? ` (интерфейс: ${iface})` : ' (все интерфейсы)'}`);
+                return true;
                 
             } else {
                 // Для legacy iptables
-                const rule = `iptables -t nat -I PREROUTING 1 -i ${iface} -p tcp -m tcp --dport ${port} -j DNAT --to-destination ${destinationIp}`;
+                let rule;
+                
+                if (iface !== null) {
+                    rule = `iptables -t nat -I PREROUTING 1 -i ${iface} -p tcp -m tcp --dport ${port} -j DNAT --to-destination ${destinationIp}`;
+                } else {
+                    rule = `iptables -t nat -I PREROUTING 1 -p tcp -m tcp --dport ${port} -j DNAT --to-destination ${destinationIp}`;
+                }
+                
                 console.log(`🔧 Добавляем iptables правило: ${rule}`);
-                await this.ssh.executeCommand(rule);
+                const result = await this.ssh.executeCommand(rule);
+                
+                if (result.stderr && result.stderr.includes('Permission denied')) {
+                    throw new Error('Недостаточно прав для выполнения iptables команд.');
+                }
+                
+                console.log(`✅ Добавлено правило: порт ${port} -> ${destinationIp}${iface ? ` (интерфейс: ${iface})` : ' (все интерфейсы)'}`);
+                return true;
             }
-            
-            console.log(`✅ Добавлено правило: порт ${port} -> ${destinationIp}`);
-            return true;
         } catch (error) {
             console.error(`❌ Ошибка добавления правила:`, error);
             throw error;
         }
     }
 
-    /**
-     * Обновляет правило (удаляет старое, добавляет новое)
-     */
-    async updateRule(port, destinationIp, iface = 'internet') {
+
+
+    async updateRule(port, destinationIp, iface = null) { 
         await this.deleteRule(port, destinationIp);
         await this.addRule(port, destinationIp, iface);
     }

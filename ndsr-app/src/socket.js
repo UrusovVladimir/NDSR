@@ -7,7 +7,10 @@ export const state = reactive({
     //barEvents: []
 });
 
-export const socket = io(import.meta.env.VITE_WS_HOST, {path: "/ws/"});
+export const socket = io(import.meta.env.VITE_WS_HOST, {
+    path: "/socket.io/",
+    transports: ['websocket', 'polling']
+  });
 
 // ✅ ГЛОБАЛЬНЫЕ ОБРАБОТЧИКИ ПОДКЛЮЧЕНИЯ
 socket.on("connect", () => {

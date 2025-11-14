@@ -9,13 +9,13 @@ const WS_PORT = process.env.WS_PORT || 3001;
 console.log(`🚀 Fast status check interval: ${STATUS_CHECK_INTERVAL} seconds`);
 console.log(`⚡ Status check timeout: ${process.env.STATUS_CHECK_TIMEOUT} seconds`);
 
-const io = new Server({
-    path: "/ws/",
+// ✅ СОЗДАЕМ SERVER С ПРАВИЛЬНЫМИ НАСТРОЙКАМИ
+const io = new Server(WS_PORT, {
+    path: "/socket.io/",
     cors: {
         origin: "*",
         methods: ["GET", "POST"]
     },
-    // ✅ ОПТИМИЗАЦИИ ПРОИЗВОДИТЕЛЬНОСТИ
     pingTimeout: 60000,
     pingInterval: 25000,
     maxHttpBufferSize: 1e8
@@ -23,6 +23,7 @@ const io = new Server({
 
 initPasswordSystem(io);
 
+// ✅ ТОЛЬКО ОДИН ОБРАБОТЧИК CONNECTION (убрать дубликат)
 io.on("connection", (socket) => {
     console.log(`🔌 New client connected. Total: ${io.engine.clientsCount}`);
     
@@ -35,7 +36,8 @@ io.on("connection", (socket) => {
     });
 });
 
-io.listen(WS_PORT);
+// ❌ УБРАТЬ ЭТУ СТРОКУ - сервер уже запущен при создании new Server(WS_PORT)
+// io.listen(WS_PORT);
 
 // ✅ БОЛЕЕ ЧАСТАЯ ПРОВЕРКА СТАТУСОВ
 const interval = setInterval(() => {

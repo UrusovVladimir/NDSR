@@ -32,6 +32,7 @@ export class IpDiscoveryService {
             throw error;
         }
     }
+
     /**
      * Получает IP адрес extender'а через DHCP bindings роутера
      */
@@ -46,17 +47,28 @@ export class IpDiscoveryService {
                 if (!router) {
                     throw new Error(`Роутер ${routerId} не найден`);
                 }
-
+    
                 // ✅ ИСПОЛЬЗУЕМ УМНЫЙ ЗАПРОС
                 const dhcpBindings = await this.getDhcpBindingsSmart(router.URL, routerPassword);
-
+    
                 console.log(`📋 Получены DHCP bindings (попытка ${attempt}):`, 
                     dhcpBindings?.lease?.length || 0, 'записей');
-
+    
                 if (!dhcpBindings || !Array.isArray(dhcpBindings.lease)) {
+                    console.log(`⚠️ Некорректный ответ DHCP bindings, пробуем ARP таблицу...`);
+                    // Пробуем получить через ARP таблицу
+                    try {
+                        const arpIp = await this.getExtenderIpFromArp(routerId, extenderMac, routerPassword);
+                        if (arpIp) {
+                            console.log(`✅ Найден IP через ARP таблицу: ${arpIp}`);
+                            return arpIp;
+                        }
+                    } catch (arpError) {
+                        console.log(`⚠️ ARP метод также не сработал: ${arpError.message}`);
+                    }
                     throw new Error('Некорректный ответ от роутера при запросе DHCP bindings');
                 }
-
+    
                 // ✅ УЛУЧШЕННОЕ СРАВНЕНИЕ MAC-АДРЕСОВ
                 const normalizedTargetMac = this.normalizeMac(extenderMac);
                 console.log(`🔍 Ищем MAC: ${extenderMac} -> нормализованный: ${normalizedTargetMac}`);
@@ -67,7 +79,7 @@ export class IpDiscoveryService {
                     console.log(`  📝 Сравниваем с: ${binding.mac} -> ${bindingMac}`);
                     return bindingMac === normalizedTargetMac;
                 });
-
+    
                 if (!extenderBinding) {
                     console.log(`⌛ Extender еще не появился в DHCP bindings (попытка ${attempt}/${maxAttempts})`);
                     
@@ -79,13 +91,24 @@ export class IpDiscoveryService {
                         });
                         console.log(`🔍 Ищем: ${extenderMac} (нормализованный: ${normalizedTargetMac})`);
                         
+                        // Пробуем ARP как последнюю попытку
+                        try {
+                            const arpIp = await this.getExtenderIpFromArp(routerId, extenderMac, routerPassword);
+                            if (arpIp) {
+                                console.log(`✅ Найден IP через ARP таблицу (последняя попытка): ${arpIp}`);
+                                return arpIp;
+                            }
+                        } catch (arpError) {
+                            console.log(`⚠️ ARP метод также не сработал: ${arpError.message}`);
+                        }
+                        
                         throw new Error(`Extender с MAC ${extenderMac} не появился в DHCP bindings после ${maxAttempts} попыток. Проверьте подключение устройства к роутеру.`);
                     }
                     
                     await new Promise(resolve => setTimeout(resolve, delay));
                     continue;
                 }
-
+    
                 if (!extenderBinding.ip) {
                     console.log(`⌛ У extender'а еще не назначен IP адрес в DHCP (попытка ${attempt}/${maxAttempts})`);
                     
@@ -96,10 +119,10 @@ export class IpDiscoveryService {
                     await new Promise(resolve => setTimeout(resolve, delay));
                     continue;
                 }
-
+    
                 console.log(`✅ Найден IP extender'а через DHCP: ${extenderBinding.ip} (попытка ${attempt})`);
                 return extenderBinding.ip;
-
+    
             } catch (error) {
                 lastError = error;
                 console.log(`⚠️ Ошибка получения IP через DHCP (попытка ${attempt}/${maxAttempts}): ${error.message}`);
@@ -111,7 +134,7 @@ export class IpDiscoveryService {
                 await new Promise(resolve => setTimeout(resolve, delay));
             }
         }
-
+    
         throw lastError || new Error(`Не удалось получить IP адрес extender'а после ${maxAttempts} попыток`);
     }
 
@@ -135,7 +158,7 @@ export class IpDiscoveryService {
                 'GET'
             );
 
-            console.log('📊 ARP таблица:', arpTable);
+            console.log('📊 ARP таблица получена, записей:', arpTable?.ip?.length || 0);
 
             if (!arpTable || !arpTable.ip || !Array.isArray(arpTable.ip)) {
                 throw new Error('Некорректный ответ от роутера при запросе ARP таблицы');

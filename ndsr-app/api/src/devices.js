@@ -37,10 +37,14 @@ async function getDevicesStatus(devices) {
     return statuses
 }
 
-async function getDeviceStatusCode(device) {
+async function getDeviceStatusCode(device, customUrl = null) {
     let statusCode;
     try {
-        let response = await axios.get(device.checkUrl, {
+        const urlToCheck = customUrl || device.checkUrl;
+        
+        console.log(`🔍 getDeviceStatusCode проверяет: ${urlToCheck}`);
+        
+        let response = await axios.get(urlToCheck, {
             timeout: STATUS_CHECK_TIMEOUT,
             maxRedirects: 0,
             signal: AbortSignal.timeout(STATUS_CHECK_TIMEOUT)

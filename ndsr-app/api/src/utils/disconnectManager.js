@@ -427,7 +427,7 @@ static async removeIptablesRulesOnly(deviceId, routerId) {
 
         // ✅ УДАЛЯЕМ ПРАВИЛА ПРОБРОСА ПОРТОВ
         console.log(`🔧 Запускаем removePortForwarding...`);
-        await dockerManager.removePortForwarding(deviceId, routerId, device);
+        await dockerManager.removePortForwarding(deviceId, routerId);
         
         console.log(`✅ Правила проброса портов удалены для устройства ${deviceId}`);
 

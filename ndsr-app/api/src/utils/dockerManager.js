@@ -1,16 +1,20 @@
 import { UniversalFirewallManager } from './UniversalFirewallManager.js';
 import { getParamRouter } from '../devices.js';
 import { makeAuthenticatedRequest } from '../actions/athentication.js';
-
+import { SSHManager } from '../actions/sshManager.js';
 const globalExtenderIps = new Map();
 const globalRouterIps = new Map();
 
 export class DockerManager {
-    constructor(sshManager) {
-        this.ssh = sshManager;
+    constructor(sshManager) {  // ✅ меняем на маленькую букву
+        if (!sshManager) {
+            throw new Error('SSHManager is required for DockerManager');
+        }
+        this.sshManager = sshManager;  // ✅ меняем на маленькую букву
         this.firewallManager = new UniversalFirewallManager(sshManager);
         this.extenderIps = globalExtenderIps;
         this.routerIps = globalRouterIps;
+        console.log(`✅ DockerManager initialized with SSHManager`);
     }
 
     /**
@@ -27,25 +31,25 @@ export class DockerManager {
                 if (!router) {
                     throw new Error(`Роутер ${routerId} не найден`);
                 }
-
-                // ✅ СОХРАНЯЕМ IP РОУТЕРА В ГЛОБАЛЬНОЕ ХРАНИЛИЩЕ
-                this.routerIps.set(routerId, router.ip);
-
+    
+                // ✅ ВАЖНОЕ ИСПРАВЛЕНИЕ: ПРАВИЛЬНАЯ АУТЕНТИФИКАЦИЯ
+                console.log(`🔐 Аутентификация на роутере ${router.URL} для получения DHCP bindings`);
+                
                 const dhcpBindings = await makeAuthenticatedRequest(
                     router.URL,
                     'admin',
-                    routerPassword,
+                    routerPassword, // ✅ ДОЛЖЕН БЫТЬ ПРАВИЛЬНЫЙ ПАРОЛЬ
                     '/rci/show/ip/dhcp/bindings',
                     'GET'
                 );
-
+    
                 console.log(`📋 Получены DHCP bindings (попытка ${attempt}):`, 
                     dhcpBindings?.lease?.length || 0, 'записей');
-
+    
                 if (!dhcpBindings || !Array.isArray(dhcpBindings.lease)) {
                     throw new Error('Некорректный ответ от роутера при запросе DHCP bindings');
                 }
-
+    
                 const normalizedTargetMac = extenderMac.toLowerCase().replace(/:/g, '');
                 
                 const extenderBinding = dhcpBindings.lease.find(binding => {
@@ -53,7 +57,7 @@ export class DockerManager {
                     const bindingMac = binding.mac.toLowerCase().replace(/:/g, '');
                     return bindingMac === normalizedTargetMac;
                 });
-
+    
                 if (!extenderBinding) {
                     console.log(`⌛ Extender еще не появился в DHCP bindings (попытка ${attempt}/${maxAttempts})`);
                     
@@ -64,7 +68,7 @@ export class DockerManager {
                     await new Promise(resolve => setTimeout(resolve, delay));
                     continue;
                 }
-
+    
                 if (!extenderBinding.ip) {
                     console.log(`⌛ У extender'а еще не назначен IP адрес в DHCP (попытка ${attempt}/${maxAttempts})`);
                     
@@ -75,13 +79,18 @@ export class DockerManager {
                     await new Promise(resolve => setTimeout(resolve, delay));
                     continue;
                 }
-
+    
                 console.log(`✅ Найден IP extender'а через DHCP: ${extenderBinding.ip} (попытка ${attempt})`);
                 return extenderBinding.ip;
-
+    
             } catch (error) {
                 lastError = error;
                 console.log(`⚠️ Ошибка получения IP через DHCP (попытка ${attempt}/${maxAttempts}): ${error.message}`);
+                
+                if (error.message.includes('401') || error.message.includes('Unauthorized') || error.message.includes('Authentication')) {
+                    console.error(`❌ Критическая ошибка аутентификации: неправильный пароль роутера`);
+                    throw new Error(`Ошибка аутентификации на роутере: неправильный пароль. Проверьте routerPassword.`);
+                }
                 
                 if (attempt === maxAttempts) {
                     break;
@@ -90,91 +99,71 @@ export class DockerManager {
                 await new Promise(resolve => setTimeout(resolve, delay));
             }
         }
-
-        console.log(`🔄 Не удалось получить IP через DHCP, пробуем через neighbour...`);
-        try {
-            return await this.getExtenderIpFromRouterFallback(routerId, extenderMac, routerPassword);
-        } catch (fallbackError) {
-            throw lastError || new Error(`Не удалось получить IP адрес extender'а после ${maxAttempts} попыток`);
-        }
+    
+        console.error(`❌ Не удалось получить IP экстендера через DHCP`);
+        throw new Error(`Не удалось получить IP адрес экстендера. Проверьте подключение устройства к роутеру и правильность пароля.`);
     }
 
 
-    async manageContainerFirewall(containerName, port, extenderIp, action = 'setup') {
+
+    async manageContainerFirewall(containerName, port, targetIp, action = 'setup') {
+        const formattedTargetIp = targetIp.split('/')[0];
+        
         try {
-            if (action === 'setup') {
-                console.log(`🔧 Настраиваем проброс порта ${port} -> ${extenderIp}:80 в контейнере ${containerName}`);
-            } else {
-                console.log(`🔧 Удаляем проброс порта ${port} в контейнере ${containerName}`);
+            console.log(`🔧 КОНТЕЙНЕР ${containerName}: порт ${port} -> ${formattedTargetIp}:80`);
+            
+            if (!this.sshManager) {
+                throw new Error('SSHManager не доступен');
             }
             
-            const isRunning = await this.isContainerRunning(containerName);
-            if (!isRunning) {
+            // ✅ ПРОВЕРЯЕМ КОНТЕЙНЕР
+            const checkContainerCmd = `sudo docker ps --filter "name=${containerName}" --format "{{.Names}}"`;
+            const containerCheck = await this.sshManager.executeCommand(checkContainerCmd);
+            const isContainerRunning = containerCheck.stdout.trim() === containerName;
+            
+            if (!isContainerRunning) {
                 throw new Error(`Контейнер ${containerName} не запущен`);
             }
-
+    
             if (action === 'setup') {
-                const containerInterface = 'eth0';
+                // ✅ ДОБАВЛЯЕМ ПРАВИЛО В КОНТЕЙНЕР
+                const addRuleCmd = `sudo docker exec ${containerName} bash -c "iptables -t nat -I PREROUTING 1 -p tcp --dport ${port} -i eth0 -j DNAT --to-destination ${formattedTargetIp}:80"`;
+                await this.sshManager.executeCommand(addRuleCmd);
+                console.log(`✅ КОНТЕЙНЕР: правило добавлено ${port} -> ${formattedTargetIp}:80`);
+    
+            } else if (action === 'remove') {
+                // ✅ УДАЛЯЕМ ТОЛЬКО ПРАВИЛА ДЛЯ ЭТОГО ПОРТА И IP
+                const listRulesCmd = `sudo docker exec ${containerName} iptables -t nat -L PREROUTING -n --line-numbers | grep ":${port} " | grep "${formattedTargetIp}" | awk '{print $1}' | sort -rn`;
+                const listResult = await this.sshManager.executeCommand(listRulesCmd);
                 
-                console.log(`🔧 Используем iptables и интерфейс ${containerInterface} в контейнере`);
+                const lineNumbers = listResult.stdout.split('\n').filter(line => line.trim());
+                console.log(`📋 Найдено правил для удаления: ${lineNumbers.length}`);
                 
-                await this.removeContainerFirewallRules(containerName, port);
-                
-                await this.execInContainer(containerName,
-                    `iptables -t nat -I PREROUTING 1 -p tcp --dport ${port} -i ${containerInterface} -j DNAT --to-destination ${extenderIp}:80`
-                );
-
-                const verifyCommand = `docker exec ${containerName} iptables -t nat -L PREROUTING -n | grep ":${port} " | grep "${extenderIp}:80"`;
-                const verifyResult = await this.ssh.executeCommand(verifyCommand);
-                
-                if (!verifyResult.stdout) {
-                    throw new Error(`Не удалось проверить добавление правила фаервола в контейнере`);
+                for (const lineNum of lineNumbers) {
+                    if (lineNum.trim()) {
+                        const deleteCmd = `sudo docker exec ${containerName} iptables -t nat -D PREROUTING ${lineNum.trim()}`;
+                        await this.sshManager.executeCommand(deleteCmd);
+                        console.log(`✅ КОНТЕЙНЕР: удалено правило строка ${lineNum}`);
+                    }
                 }
-
-                console.log(`✅ Обновлен фаервол в контейнере ${containerName}: порт ${port} -> extender ${extenderIp}:80`);
-            } else {
-                await this.removeContainerFirewallRules(containerName, port);
             }
-            
-            return true;
+        
         } catch (error) {
-            console.error(`❌ Ошибка управления фаерволом в контейнере:`, error);
+            console.error(`❌ Ошибка в контейнере ${containerName}:`, error);
             throw error;
         }
     }
-
-    /**
-     * Настраивает проброс порта на хосте для extender'а
-     */
-    async manageHostFirewall(port, routerIp, action = 'setup', extenderIp = null) {
+    async manageHostFirewall(port, targetIp, action = 'setup') {
         try {
+            const formattedIp = targetIp.split('/')[0];
+            
             if (action === 'setup') {
-                console.log(`🔧 Настраиваем проброс порта на хосте: ${port} -> ${routerIp}`);
-                await this.firewallManager.updateRule(port, routerIp);
-                console.log(`✅ Обновлен фаервол на хосте: порт ${port} -> роутер ${routerIp}`);
+                console.log(`🔧 ХОСТ: настраиваем проброс порта ${port} -> ${formattedIp}`);
+                await this.firewallManager.updateRule(port, formattedIp);
             } else {
-                // ✅ ИСПОЛЬЗУЕМ ГЛОБАЛЬНЫЕ ХРАНИЛИЩА
-                const storedExtenderIp = this.extenderIps.get(port);
-                const storedRouterIp = this.routerIps.get(port);
-                
-                console.log(`🔍 Поиск IP для удаления в глобальном хранилище:`, {
-                    port: port,
-                    storedExtenderIp: storedExtenderIp,
-                    storedRouterIp: storedRouterIp,
-                    providedExtenderIp: extenderIp
-                });
-
-                let ipToUse = storedRouterIp;
-                
-                if (!ipToUse) {
-
-                    console.warn(`⚠️ Не найден IP для порта ${port} в глобальном хранилище, используем fallback`);
-                    await this.firewallManager.deleteRule(port,'0.0.0.0');
-                } else {
-                    console.log(`🔧 Удаляем проброс порта на хосте: ${port} (IP: ${ipToUse})`);
-                    await this.firewallManager.deleteRule(port,ipToUse);
-                }
-                console.log(`✅ Удален фаервол на хосте для порта ${port}`);
+                // ✅ УДАЛЯЕМ ТОЛЬКО ПРАВИЛА С ЭТИМ IP
+                console.log(`🔧 ХОСТ: удаляем проброс порта ${port} -> ${formattedIp}`);
+                await this.firewallManager.deleteRule(port, formattedIp);
             }
             return true;
         } catch (error) {
@@ -183,9 +172,6 @@ export class DockerManager {
         }
     }
 
-    /**
-     * Полная настройка проброса портов для extender'а
-     */
     async setupPortForwarding(deviceId, routerId, device, routerPassword = null) {
         try {
             console.log(`🔧 Полная настройка проброса портов для extender'а ${deviceId} к роутеру ${routerId}`);
@@ -194,123 +180,170 @@ export class DockerManager {
             if (!router) {
                 throw new Error(`Роутер ${routerId} не найден`);
             }
-
-            console.log(`📋 Параметры роутера:`, {
-                hwId: router.hwId,
-                ip: router.ip,
-                containerName: router.hwId
+    
+            const routerIp = router.ip.split('/')[0];
+            
+            console.log(`📋 Параметры:`, {
+                deviceId: deviceId,
+                routerId: routerId, 
+                routerIp: routerIp,
+                deviceMac: device.macAddress,
+                deviceIp: device.ip // ← Добавляем device.ip в логи
             });
-
-            console.log(`📋 Параметры extender'а:`, {
-                deviceId: device.id,
-                macAddress: device.macAddress,
-                hwId: device.hwId
-            });
-
-            // ✅ 1. ПОЛУЧАЕМ И СОХРАНЯЕМ IP EXTENDER'А В ГЛОБАЛЬНОЕ ХРАНИЛИЩЕ
+            // ✅ 1. ПОЛУЧАЕМ РЕАЛЬНЫЙ IP EXTENDER'А ИЗ DHCP ИЛИ ARP
             let extenderIp;
             try {
-                extenderIp = await this.getExtenderIpFromRouter(routerId, device.macAddress, routerPassword);
-                console.log(`✅ Получен IP extender'а: ${extenderIp}`);
+                // Используем комбинированный метод с передачей device
+                extenderIp = await this.getExtenderIpCombined(routerId, device.macAddress, routerPassword, device);
+                console.log(`🔍 ОТЛАДКА IP:`);
+                console.log(`   - Полученный IP: ${extenderIp}`);
+                console.log(`   - IP роутера: ${routerIp}`);
+                console.log(`   - IP устройства из конфига: ${device.ip}`);
+                console.log(`   - Это IP роутера? ${extenderIp === routerIp}`);
+                console.log(`   - Это IP устройства? ${extenderIp === device.ip?.split('/')[0]}`);
                 
-                // ✅ СОХРАНЯЕМ В ГЛОБАЛЬНЫЕ ХРАНИЛИЩА
-                this.extenderIps.set(deviceId, extenderIp);
-                this.routerIps.set(deviceId, router.ip);
-                
-                console.log(`💾 Сохранены IP в глобальное хранилище для порта ${deviceId}:`, {
-                    extenderIp: extenderIp,
-                    routerIp: router.ip,
-                    totalExtenderIps: this.extenderIps.size,
-                    totalRouterIps: this.routerIps.size
-                });
             } catch (ipError) {
-                console.warn(`⚠️ Не удалось получить IP extender'а: ${ipError.message}`);
-                console.log(`🔄 Используем IP роутера для проброса: ${router.ip}`);
-                extenderIp = router.ip;
+                console.error(`❌ Не удалось получить IP экстендера: ${ipError.message}`);
                 
-                // ✅ СОХРАНЯЕМ IP РОУТЕРА В ГЛОБАЛЬНЫЕ ХРАНИЛИЩА
-                this.extenderIps.set(deviceId, router.ip);
-                this.routerIps.set(deviceId, router.ip);
-                
-                console.log(`💾 Сохранен IP роутера в глобальное хранилище: ${router.ip}`);
-            }
-
-            // ✅ 2. НАСТРАИВАЕМ ПРОБРОС НА ХОСТЕ
-            await this.manageHostFirewall(deviceId, router.ip, 'setup', extenderIp);
-
-            // ✅ 3. НАСТРАИВАЕМ ПРОБРОС В КОНТЕЙНЕРЕ
-            const storedExtenderIp = this.extenderIps.get(deviceId);
-            if (storedExtenderIp) {
-                try {
-                    await this.manageContainerFirewall(router.hwId, deviceId, storedExtenderIp, 'setup');
-                } catch (containerError) {
-                    console.warn(`⚠️ Не удалось настроить проброс в контейнере: ${containerError.message}`);
+                // ✅ ИСПРАВЛЕНИЕ: Сначала используем device.ip, потом router.ip
+                if (device && device.ip) {
+                    extenderIp = device.ip.split('/')[0];
+                    console.log(`🔄 Используем IP устройства из конфигурации: ${extenderIp}`);
+                } else {
+                    console.log(`🔄 Используем IP роутера как fallback: ${routerIp}`);
+                    extenderIp = routerIp;
                 }
             }
-
-            console.log(`✅ Полная настройка проброса портов завершена: порт ${deviceId} -> ${extenderIp}:80`);
+    
+            // ✅ СОХРАНЯЕМ В ГЛОБАЛЬНЫЕ ХРАНИЛИЩА
+            this.extenderIps.set(deviceId, extenderIp);
+            this.routerIps.set(deviceId, routerIp);
+            
+            console.log(`💾 Сохранены IP:`, {
+                extenderIp: extenderIp,
+                routerIp: routerIp
+            });
+    
+            // ✅ 2. НАСТРАИВАЕМ ПРОБРОС НА ХОСТЕ НА IP РОУТЕРА
+            console.log(`🔧 ХОСТ: порт ${deviceId} -> ${routerIp}`);
+            await this.manageHostFirewall(deviceId, routerIp, 'setup');
+    
+            // ✅ 3. НАСТРАИВАЕМ ПРОБРОС В КОНТЕЙНЕРЕ НА РЕАЛЬНЫЙ IP EXTENDER'А
+            console.log(`🔧 КОНТЕЙНЕР: порт ${deviceId} -> ${extenderIp}:80`);
+            await this.manageContainerFirewall(router.hwId, deviceId, extenderIp, 'setup');
+    
+            console.log(`✅ Пробросы настроены:`);
+            console.log(`   🏠 ХОСТ: ${deviceId} -> ${routerIp}`);
+            console.log(`   🐳 КОНТЕЙНЕР ${router.hwId}: ${deviceId} -> ${extenderIp}:80`);
+            
             return extenderIp;
-
+    
         } catch (error) {
             console.error(`❌ Ошибка настройки проброса портов:`, error);
             throw error;
         }
     }
 
-    /**
-     * Удаляет правила проброса портов для extender'а
-     */
-    async removePortForwarding(deviceId, routerId, device) {
+    async getExtenderIpCombined(routerId, extenderMac, routerPassword = null, device = null) {
         try {
-            console.log(`🔧 Удаление правил проброса портов для устройства ${deviceId} и роутера ${routerId}`);
+            console.log(`🔍 Комбинированный поиск IP для MAC: ${extenderMac} через роутер ${routerId}`);
+            
+            // Сначала пробуем через DHCP bindings
+            console.log(`🔄 Попытка 1: DHCP bindings`);
+            const dhcpIp = await this.getExtenderIpFromRouter(routerId, extenderMac, routerPassword, 5, 3000);
+            console.log(`✅ DHCP метод вернул IP: ${dhcpIp}`);
+            
+            // Проверяем, что это не IP роутера
+            const router = getParamRouter(routerId);
+            const routerIp = router?.ip?.split('/')[0];
+            
+            if (dhcpIp === routerIp) {
+                console.log(`⚠️ ВНИМАНИЕ: DHCP вернул IP роутера (${routerIp}), пробуем ARP`);
+                throw new Error('DHCP returned router IP instead of extender IP');
+            }
+            
+            return dhcpIp;
+            
+        } catch (dhcpError) {
+            console.log(`⚠️ DHCP метод не сработал: ${dhcpError.message}`);
+            console.log(`🔄 Попытка 2: ARP таблица...`);
+            
+            try {
+                // Пробуем через ARP таблицу
+                const arpIp = await this.getExtenderIpFromArp(routerId, extenderMac, routerPassword);
+                console.log(`✅ ARP метод вернул IP: ${arpIp}`);
+                
+                // Проверяем, что это не IP роутера
+                const router = getParamRouter(routerId);
+                const routerIp = router?.ip?.split('/')[0];
+                
+                if (arpIp === routerIp) {
+                    console.log(`⚠️ ВНИМАНИЕ: ARP вернул IP роутера (${routerIp})`);
+                    throw new Error('ARP returned router IP instead of extender IP');
+                }
+                
+                return arpIp;
+                
+            } catch (arpError) {
+                console.log(`❌ Оба метода не сработали: ${arpError.message}`);
+                
+                // ✅ ИСПРАВЛЕНИЕ: Используем device.ip вместо router.ip
+                if (device && device.ip) {
+                    const deviceIp = device.ip.split('/')[0];
+                    console.log(`🔄 Используем IP устройства из конфигурации: ${deviceIp}`);
+                    return deviceIp;
+                }
+                
+                const router = getParamRouter(routerId);
+                if (!router) {
+                    throw new Error(`Роутер не найден`);
+                }
+                
+                const routerIp = router.ip.split('/')[0];
+                console.log(`🔄 Используем IP роутера как последний fallback: ${routerIp}`);
+                return routerIp;
+            }
+        }
+    }
+    async removePortForwarding(deviceId, routerId) {
+        try {
+            console.log(`🔧 Удаление правил проброса для устройства ${deviceId} и роутера ${routerId}`);
             
             const router = getParamRouter(routerId);
             if (!router) {
                 throw new Error(`Роутер ${routerId} не найден`);
             }
-
+    
+            const routerIp = this.routerIps.get(deviceId) || router.ip.split('/')[0];
+            const extenderIp = this.extenderIps.get(deviceId) || routerIp;
+            
             console.log(`📋 Параметры удаления:`, {
                 deviceId: deviceId,
                 routerId: routerId,
-                routerHwId: router.hwId,
-                routerIp: router.ip
+                routerIp: routerIp,
+                extenderIp: extenderIp
             });
-
-            // ✅ 1. ПОЛУЧАЕМ ВСЕ СОХРАНЕННЫЕ IP ИЗ ГЛОБАЛЬНОГО ХРАНИЛИЩА
-            const storedExtenderIp = this.extenderIps.get(deviceId);
-            const storedRouterIp = this.routerIps.get(deviceId);
-            
-            console.log(`💾 Найдены сохраненные IP в глобальном хранилище:`, {
-                extenderIp: storedExtenderIp,
-                routerIp: storedRouterIp,
-                totalExtenderIps: this.extenderIps.size,
-                totalRouterIps: this.routerIps.size
-            });
-
-            // ✅ 2. УДАЛЯЕМ ПРАВИЛА НА ХОСТЕ
-            await this.manageHostFirewall(deviceId, null, 'remove', storedExtenderIp);
-
-            // ✅ 3. УДАЛЯЕМ ПРАВИЛА В КОНТЕЙНЕРЕ
-            try {
-                await this.manageContainerFirewall(router.hwId, deviceId, storedExtenderIp || '0.0.0.0', 'remove');
-            } catch (containerError) {
-                console.warn(`⚠️ Не удалось удалить правила в контейнере: ${containerError.message}`);
-            }
-
-            // ✅ 4. УДАЛЯЕМ СОХРАНЕННЫЕ IP ИЗ ГЛОБАЛЬНОГО ХРАНИЛИЩА
+    
+            // ✅ УДАЛЯЕМ ПРАВИЛА НА ХОСТЕ ТОЛЬКО ДЛЯ IP РОУТЕРА
+            console.log(`🔧 Удаляем на ХОСТЕ: порт ${deviceId} -> ${routerIp}`);
+            await this.manageHostFirewall(deviceId, routerIp, 'remove');
+    
+            // ✅ УДАЛЯЕМ ПРАВИЛА В КОНТЕЙНЕРЕ ТОЛЬКО ДЛЯ IP EXTENDER'А
+            console.log(`🔧 Удаляем в КОНТЕЙНЕРЕ: порт ${deviceId} -> ${extenderIp}`);
+            await this.manageContainerFirewall(router.hwId, deviceId, extenderIp, 'remove');
+    
+            // ✅ УДАЛЯЕМ СОХРАНЕННЫЕ IP
             this.extenderIps.delete(deviceId);
             this.routerIps.delete(deviceId);
-            console.log(`🧹 Удалены сохраненные IP из глобального хранилища для порта ${deviceId}`);
-
-            console.log(`✅ Все правила проброса портов удалены для устройства ${deviceId}`);
-
+            console.log(`🧹 Удалены сохраненные IP для порта ${deviceId}`);
+    
+            console.log(`✅ Правила проброса удалены для устройства ${deviceId}`);
+    
         } catch (error) {
-            console.error(`❌ Ошибка удаления правил проброса портов:`, error);
+            console.error(`❌ Ошибка удаления правил:`, error);
             throw error;
         }
     }
-
-
     async removeContainerFirewallRules(containerName, port) {
         try {
             console.log(`🔧 Удаление правил фаервола в контейнере ${containerName} для порта ${port}`);

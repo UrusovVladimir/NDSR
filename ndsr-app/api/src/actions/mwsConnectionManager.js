@@ -2,11 +2,10 @@ import { SSHManager } from "../actions/sshManager.js";
 import { DockerManager } from "../utils/dockerManager.js";
 import { HOST_CONFIG } from "../utils/hostConfig.js";
 import { getDeviceById, getParamRouter } from "../devices.js";
-import { IpDiscoveryService } from "../utils/ipDiscovery.js"; // ✅ ДОБАВИТЬ ИМПОРТ
+import { IpDiscoveryService } from "../utils/ipDiscovery.js"; // ✅ ПРАВИЛЬНЫЙ ИМПОРТ
 
 export class MWSConnectionManager {
-    // ✅ УДАЛИТЬ ВЕСЬ ДУБЛИРУЮЩИЙСЯ КОД И ОСТАВИТЬ ТОЛЬКО ЭТО:
-    
+    // ✅ ТЕПЕРЬ ЭТИ МЕТОДЫ БУДУТ РАБОТАТЬ
     static async getExtenderIpFromRouter(routerId, extenderMac, routerPassword = null, maxAttempts = 10, delay = 5000) {
         return await IpDiscoveryService.getExtenderIpFromRouter(routerId, extenderMac, routerPassword, maxAttempts, delay);
     }
@@ -25,195 +24,224 @@ export class MWSConnectionManager {
 
     // ✅ ОСТАВИТЬ ТОЛЬКО УНИКАЛЬНЫЕ МЕТОДЫ MWSConnectionManager:
     
-    static async setupMWSConnection(extenderId, routerId, devicePassword = null, routerPassword = null) {
-        let sshManager = null;
+
+static async setupMWSConnection(extenderId, routerId, devicePassword = null, routerPassword = null) {
+    let sshManager = null;
+    
+    try {
+        console.log(`🔗 Настройка MWS подключения: extender ${extenderId} -> router ${routerId}`);
         
+        const device = getDeviceById(extenderId);
+        const router = getParamRouter(routerId);
+        
+        if (!device || !router) {
+            throw new Error(`Устройство или роутер не найдены`);
+        }
+
+        console.log(`📋 Параметры подключения:`, {
+            extender: device.hwId,
+            router: router.hwId,
+            extenderMac: device.macAddress
+        });
+
+        // ✅ РАЗДЕЛЯЕМ IP ДЛЯ ХОСТА И КОНТЕЙНЕРА
+        let hostTargetIp = router.ip.split('/')[0]; // IP роутера для хоста
+        let containerTargetIp; // Реальный IP устройства для контейнера
+
+        console.log(`🔧 Получаем реальный IP устройства для контейнера...`);
         try {
-            console.log(`🔗 Настройка MWS подключения: extender ${extenderId} -> router ${routerId}`);
+            // ✅ ПОЛУЧАЕМ РЕАЛЬНЫЙ IP УСТРОЙСТВА ИЗ DHCP ДЛЯ КОНТЕЙНЕРА
+            containerTargetIp = await this.getExtenderIpFromRouter(routerId, device.macAddress, routerPassword, 5, 3000);
+            console.log(`✅ Получен реальный IP устройства для контейнера: ${containerTargetIp}`);
             
-            const device = getDeviceById(extenderId);
-            const router = getParamRouter(routerId);
-            
-            if (!device || !router) {
-                throw new Error(`Устройство или роутер не найдены`);
-            }
+        } catch (ipError) {
+            console.warn(`⚠️ Не удалось получить реальный IP устройства: ${ipError.message}`);
+            console.log(`🔄 Используем IP роутера и для контейнера: ${hostTargetIp}`);
+            containerTargetIp = hostTargetIp;
+        }
 
-            console.log(`📋 Параметры подключения:`, {
-                extender: device.hwId,
-                router: router.hwId,
-                extenderMac: device.macAddress
-            });
+        console.log(`🎯 Финальные IP для пробросов:`, {
+            hostTarget: hostTargetIp,      // Для хоста - IP роутера
+            containerTarget: containerTargetIp // Для контейнера - реальный IP устройства
+        });
 
-            // ✅ ИСПОЛЬЗУЕМ КОМБИНИРОВАННЫЙ МЕТОД ПОЛУЧЕНИЯ IP
-            console.log(`🔧 Получаем IP адрес extender'а...`);
-            let extenderIp;
-            try {
-                extenderIp = await this.getExtenderIp(extenderId, routerId, routerPassword);
-                console.log(`✅ Получен IP extender'а: ${extenderIp}`);
-            } catch (ipError) {
-                console.warn(`⚠️ Не удалось получить точный IP extender'а: ${ipError.message}`);
-                console.log(`🔄 Используем IP роутера для проброса: ${router.ip}`);
-                extenderIp = router.ip;
-            }
+        // ✅ ПОДКЛЮЧАЕМСЯ ПО SSH
+        sshManager = new SSHManager(
+            HOST_CONFIG.mainHost.host,
+            HOST_CONFIG.mainHost.port,
+            HOST_CONFIG.mainHost.username,
+            HOST_CONFIG.mainHost.privateKeyPath
+        );
+        
+        await sshManager.connect();
+        console.log(`✅ SSH подключение установлено`);
+        
+        // ✅ ИНИЦИАЛИЗИРУЕМ DOCKER MANAGER
+        const dockerManager = new DockerManager(sshManager);
+        console.log(`✅ DockerManager инициализирован`);
 
-            // ✅ ПОДКЛЮЧАЕМСЯ ПО SSH
-            sshManager = new SSHManager(
-                HOST_CONFIG.mainHost.host,
-                HOST_CONFIG.mainHost.port,
-                HOST_CONFIG.mainHost.username,
-                HOST_CONFIG.mainHost.privateKeyPath
-            );
-            
-            await sshManager.connect();
-            console.log(`✅ SSH подключение установлено`);
-            
-            // ✅ ИНИЦИАЛИЗИРУЕМ DOCKER MANAGER
-            const dockerManager = new DockerManager(sshManager);
-            console.log(`✅ DockerManager инициализирован`);
+        // ✅ ШАГ 1: НАСТРАИВАЕМ ПРОБРОС НА ХОСТЕ (на IP роутера)
+        console.log(`🔧 Настраиваем проброс портов на хосте...`);
+        console.log(`   → Хост: порт ${extenderId} -> ${hostTargetIp}:80`);
+        await dockerManager.manageHostFirewall(extenderId, hostTargetIp, 'setup', hostTargetIp);
 
-            // ✅ ШАГ 2: НАСТРАИВАЕМ ПРОБРОС ПОРТОВ НА ХОСТЕ
-            console.log(`🔧 Настраиваем проброс портов на хосте...`);
-            await dockerManager.manageHostFirewall(extenderId, router.ip, 'setup', extenderIp);
+        // ✅ ШАГ 2: НАСТРАИВАЕМ ПРОБРОС В КОНТЕЙНЕРЕ (на реальный IP устройства)
+        console.log(`🔧 Настраиваем проброс портов в контейнере роутера...`);
+        console.log(`   → Контейнер: порт ${extenderId} -> ${containerTargetIp}:80`);
+        await dockerManager.manageContainerFirewall(router.hwId, extenderId, containerTargetIp, 'setup');
 
-            // ✅ ШАГ 3: НАСТРАИВАЕМ ПРОБРОС В КОНТЕЙНЕРЕ РОУТЕРА
-            console.log(`🔧 Настраиваем проброс портов в контейнере роутера...`);
-            await dockerManager.manageContainerFirewall(router.hwId, extenderId, extenderIp, 'setup');
+        console.log(`✅ MWS подключение настроено:`);
+        console.log(`   - Хост: порт ${extenderId} -> ${hostTargetIp}:80`);
+        console.log(`   - Контейнер: порт ${extenderId} -> ${containerTargetIp}:80`);
+        
+        return {
+            success: true,
+            hostTargetIp: hostTargetIp,
+            containerTargetIp: containerTargetIp,
+            routerIp: router.ip,
+            port: extenderId,
+            routerContainer: router.hwId
+        };
 
-            console.log(`✅ MWS подключение настроено: порт ${extenderId} -> ${extenderIp}:80`);
-            
-            return {
-                success: true,
-                extenderIp: extenderIp,
-                routerIp: router.ip,
-                port: extenderId,
-                routerContainer: router.hwId
-            };
-
-        } catch (error) {
-            console.error(`❌ Ошибка настройки MWS подключения:`, error);
-            throw error;
-        } finally {
-            if (sshManager) {
-                sshManager.disconnect();
-                console.log(`🔧 SSH подключение закрыто`);
-            }
+    } catch (error) {
+        console.error(`❌ Ошибка настройки MWS подключения:`, error);
+        throw error;
+    } finally {
+        if (sshManager) {
+            sshManager.disconnect();
+            console.log(`🔧 SSH подключение закрыто`);
         }
     }
+}
 
-    /**
-     * Удаляет MWS подключение и правила проброса портов
-     */
-    static async removeMWSConnection(extenderId, routerId) {
-        let sshManager = null;
+static async removeMWSConnection(extenderId, routerId) {
+    let sshManager = null;
+    
+    try {
+        console.log(`🔗 Удаление MWS подключения: extender ${extenderId} -> router ${routerId}`);
         
+        const device = getDeviceById(extenderId);
+        const router = getParamRouter(routerId);
+        
+        if (!device || !router) {
+            throw new Error(`Устройство или роутер не найдены`);
+        }
+
+        console.log(`📋 Параметры удаления:`, {
+            extender: device.hwId,
+            router: router.hwId,
+            routerIp: router.ip
+        });
+
+        // ✅ ПОДКЛЮЧАЕМСЯ ПО SSH
+        sshManager = new SSHManager(
+            HOST_CONFIG.mainHost.host,
+            HOST_CONFIG.mainHost.port,
+            HOST_CONFIG.mainHost.username,
+            HOST_CONFIG.mainHost.privateKeyPath
+        );
+        
+        await sshManager.connect();
+        console.log(`✅ SSH подключение установлено`);
+        
+        // ✅ ИНИЦИАЛИЗИРУЕМ DOCKER MANAGER
+        const dockerManager = new DockerManager(sshManager);
+        console.log(`✅ DockerManager инициализирован`);
+
+        // ✅ ШАГ 1: УДАЛЯЕМ ПРАВИЛА ПРОБРОСА В КОНТЕЙНЕРЕ РОУТЕРА
+        console.log(`🔧 Удаляем правила проброса в контейнере роутера...`);
+        
+        // ✅ ИСПРАВЛЕНИЕ: Получаем реальный IP устройства для удаления из контейнера
+        let deviceIpForContainer = '0.0.0.0';
         try {
-            console.log(`🔗 Удаление MWS подключения: extender ${extenderId} -> router ${routerId}`);
-            
-            const device = getDeviceById(extenderId);
-            const router = getParamRouter(routerId);
-            
-            if (!device || !router) {
-                throw new Error(`Устройство или роутер не найдены`);
-            }
+            // Для контейнера нужен реальный IP устройства в сети роутера
+            deviceIpForContainer = await this.getExtenderIpFromRouter(routerId, device.macAddress, null, 3, 2000);
+            console.log(`✅ Получен IP устройства для удаления из контейнера: ${deviceIpForContainer}`);
+        } catch (ipError) {
+            console.warn(`⚠️ Не удалось получить IP устройства для контейнера: ${ipError.message}`);
+            console.log(`🔄 Используем fallback IP для удаления из контейнера`);
+        }
+        
+        await dockerManager.manageContainerFirewall(router.hwId, extenderId, deviceIpForContainer, 'remove');
 
-            console.log(`📋 Параметры удаления:`, {
-                extender: device.hwId,
-                router: router.hwId
-            });
+        // ✅ ШАГ 2: УДАЛЯЕМ ПРАВИЛА ПРОБРОСА НА ХОСТЕ (ТОЛЬКО ДЛЯ РОУТЕРА)
+        console.log(`🔧 Удаляем правила проброса на хосте (только для роутера ${router.ip})...`);
+        await this.forceRemoveHostFirewallRules(sshManager, extenderId, router.ip);
 
-            // ✅ ПОДКЛЮЧАЕМСЯ ПО SSH
-            sshManager = new SSHManager(
-                HOST_CONFIG.mainHost.host,
-                HOST_CONFIG.mainHost.port,
-                HOST_CONFIG.mainHost.username,
-                HOST_CONFIG.mainHost.privateKeyPath
-            );
-            
-            await sshManager.connect();
-            console.log(`✅ SSH подключение установлено`);
-            
-            // ✅ ИНИЦИАЛИЗИРУЕМ DOCKER MANAGER
-            const dockerManager = new DockerManager(sshManager);
-            console.log(`✅ DockerManager инициализирован`);
+        console.log(`✅ MWS подключение удалено для порта ${extenderId}`);
+        
+        return {
+            success: true,
+            port: extenderId,
+            routerContainer: router.hwId
+        };
 
-            // ✅ ШАГ 1: УДАЛЯЕМ ПРАВИЛА ПРОБРОСА В КОНТЕЙНЕРЕ РОУТЕРА
-            console.log(`🔧 Удаляем правила проброса в контейнере роутера...`);
-            await dockerManager.manageContainerFirewall(router.hwId, extenderId, '0.0.0.0', 'remove');
-
-            // ✅ ШАГ 2: УДАЛЯЕМ ПРАВИЛА ПРОБРОСА НА ХОСТЕ
-            console.log(`🔧 Удаляем правила проброса на хосте...`);
-            await this.forceRemoveHostFirewallRules(sshManager, extenderId, router.ip);
-
-            console.log(`✅ MWS подключение удалено для порта ${extenderId}`);
-            
-            return {
-                success: true,
-                port: extenderId,
-                routerContainer: router.hwId
-            };
-
-        } catch (error) {
-            console.error(`❌ Ошибка удаления MWS подключения:`, error);
-            throw error;
-        } finally {
-            if (sshManager) {
-                sshManager.disconnect();
-                console.log(`🔧 SSH подключение закрыто`);
-            }
+    } catch (error) {
+        console.error(`❌ Ошибка удаления MWS подключения:`, error);
+        throw error;
+    } finally {
+        if (sshManager) {
+            sshManager.disconnect();
+            console.log(`🔧 SSH подключение закрыто`);
         }
     }
+}
 
-    /**
-     * ФОРСИРОВАННОЕ УДАЛЕНИЕ ПРАВИЛ НА ХОСТЕ (исправление проблемы с nftables)
-     */
+
+
     static async forceRemoveHostFirewallRules(sshManager, port, routerIp) {
         try {
-            console.log(`🔧 Форсированное удаление правил на хосте для порта ${port}`);
+            console.log(`🔧 Форсированное удаление правил на хосте для порта ${port} (только для роутера ${routerIp})`);
             
-            // ✅ СПОСОБ 1: УДАЛЕНИЕ ЧЕРЕЗ NFTABLES ПО HANDLE
-            console.log(`🔧 Поиск и удаление правил nftables по handle...`);
+            // ✅ ФОРМАТИРУЕМ IP РОУТЕРА (убираем маску если есть)
+            const formattedRouterIp = routerIp.split('/')[0];
             
-            // Получаем все handles для этого порта
-            const findHandlesCommand = `nft -a list chain ip nat PREROUTING | grep "tcp dport ${port}" | grep -o "handle [0-9]*" | awk '{print $2}'`;
+            // ✅ СПОСОБ 1: УДАЛЕНИЕ ЧЕРЕЗ NFTABLES ПО HANDLE И КОНКРЕТНОМУ IP
+            console.log(`🔧 Поиск и удаление правил nftables для порта ${port} и роутера ${formattedRouterIp}...`);
+            
+            // Получаем все handles для этого порта И роутера
+            const findHandlesCommand = `nft -a list chain ip nat PREROUTING | grep "tcp dport ${port}" | grep "${formattedRouterIp}" | grep -o "handle [0-9]*" | awk '{print $2}'`;
             const findResult = await sshManager.executeCommand(findHandlesCommand);
             
             const handles = findResult.stdout.split('\n').filter(handle => handle.trim());
-            console.log(`📋 Найдено handles для удаления: ${handles.length}`);
+            console.log(`📋 Найдено handles для удаления (порт ${port} -> ${formattedRouterIp}): ${handles.length}`);
             
             // Удаляем все найденные handles
             for (const handle of handles) {
                 if (handle) {
                     try {
                         await sshManager.executeCommand(`nft delete rule ip nat PREROUTING handle ${handle}`);
-                        console.log(`✅ Удалено правило handle ${handle}`);
+                        console.log(`✅ Удалено правило handle ${handle} (порт ${port} -> ${formattedRouterIp})`);
                     } catch (error) {
                         console.log(`⚠️ Не удалось удалить handle ${handle}: ${error.message}`);
                     }
                 }
             }
             
-            // ✅ СПОСОБ 2: УДАЛЕНИЕ ЧЕРЕЗ IPTABLES (LEGACY)
-            console.log(`🔧 Удаление через iptables (legacy)...`);
+            // ✅ СПОСОБ 2: УДАЛЕНИЕ ЧЕРЕЗ IPTABLES (LEGACY) С ФИЛЬТРАЦИЕЙ ПО IP
+            console.log(`🔧 Удаление через iptables (legacy) для роутера ${formattedRouterIp}...`);
             try {
-                const findIptablesCommand = `iptables -t nat -L PREROUTING -n --line-numbers | grep ":${port} " | awk '{print $1}' | sort -rn`;
+                // Ищем правила только для конкретного IP роутера
+                const findIptablesCommand = `iptables -t nat -L PREROUTING -n --line-numbers | grep ":${port} " | grep "${formattedRouterIp}" | awk '{print $1}' | sort -rn`;
                 const iptablesResult = await sshManager.executeCommand(findIptablesCommand);
                 
                 const lineNumbers = iptablesResult.stdout.split('\n').filter(line => line.trim());
+                console.log(`📋 Найдено iptables правил для удаления: ${lineNumbers.length}`);
                 
                 for (const lineNum of lineNumbers) {
                     if (lineNum.trim()) {
                         await sshManager.executeCommand(`iptables -t nat -D PREROUTING ${lineNum.trim()}`);
-                        console.log(`✅ Удалено iptables правило строка ${lineNum}`);
+                        console.log(`✅ Удалено iptables правило строка ${lineNum} (порт ${port} -> ${formattedRouterIp})`);
                     }
                 }
             } catch (error) {
-                console.log(`ℹ️ iptables правила не найдены или уже удалены: ${error.message}`);
+                console.log(`ℹ️ iptables правила для роутера ${formattedRouterIp} не найдены или уже удалены: ${error.message}`);
             }
             
-            // ✅ СПОСОБ 3: УДАЛЕНИЕ ПО КОНКРЕТНОМУ IP (ДОПОЛНИТЕЛЬНАЯ ОЧИСТКА)
-            console.log(`🔧 Дополнительная очистка по IP ${routerIp}...`);
+            // ✅ ДОПОЛНИТЕЛЬНАЯ ОЧИСТКА: удаляем только по конкретному IP роутера
+            console.log(`🔧 Дополнительная очистка по IP ${formattedRouterIp}...`);
             try {
-                const cleanupCommand = `nft list ruleset | grep "tcp dport ${port}" | grep "${routerIp}" | grep -o "handle [0-9]*" | awk '{print $2}'`;
+                const cleanupCommand = `nft list ruleset | grep "tcp dport ${port}" | grep "${formattedRouterIp}" | grep -o "handle [0-9]*" | awk '{print $2}'`;
                 const cleanupResult = await sshManager.executeCommand(cleanupCommand);
                 
                 const cleanupHandles = cleanupResult.stdout.split('\n').filter(handle => handle.trim());
@@ -221,25 +249,25 @@ export class MWSConnectionManager {
                 for (const handle of cleanupHandles) {
                     if (handle) {
                         await sshManager.executeCommand(`nft delete rule ip nat PREROUTING handle ${handle}`);
-                        console.log(`✅ Удалено правило cleanup handle ${handle}`);
+                        console.log(`✅ Удалено правило cleanup handle ${handle} (порт ${port} -> ${formattedRouterIp})`);
                     }
                 }
             } catch (error) {
                 console.log(`ℹ️ Дополнительная очистка не требуется: ${error.message}`);
             }
             
-            // ✅ ФИНАЛЬНАЯ ПРОВЕРКА
-            console.log(`🔧 Проверка что правила удалены...`);
-            const finalCheckCommand = `nft list chain ip nat PREROUTING | grep "tcp dport ${port}" | wc -l`;
+            // ✅ ФИНАЛЬНАЯ ПРОВЕРКА - проверяем только правила для этого роутера
+            console.log(`🔧 Проверка что правила для роутера ${formattedRouterIp} удалены...`);
+            const finalCheckCommand = `nft list chain ip nat PREROUTING | grep "tcp dport ${port}" | grep "${formattedRouterIp}" | wc -l`;
             const finalCheck = await sshManager.executeCommand(finalCheckCommand);
             const remainingRules = parseInt(finalCheck.stdout);
             
             if (remainingRules === 0) {
-                console.log(`✅ Все правила для порта ${port} успешно удалены`);
+                console.log(`✅ Все правила для порта ${port} -> ${formattedRouterIp} успешно удалены`);
             } else {
-                console.log(`⚠️ Осталось ${remainingRules} правил для порта ${port}`);
+                console.log(`⚠️ Осталось ${remainingRules} правил для порта ${port} -> ${formattedRouterIp}`);
                 // Покажем оставшиеся правила для диагностики
-                const showRemainingCommand = `nft list chain ip nat PREROUTING | grep "tcp dport ${port}"`;
+                const showRemainingCommand = `nft list chain ip nat PREROUTING | grep "tcp dport ${port}" | grep "${formattedRouterIp}"`;
                 const remainingResult = await sshManager.executeCommand(showRemainingCommand);
                 console.log(`📋 Оставшиеся правила:\n${remainingResult.stdout}`);
             }
@@ -249,10 +277,6 @@ export class MWSConnectionManager {
             throw error;
         }
     }
-
-    /**
-     * Проверяет статус проброса портов для MWS подключения
-     */
     static async checkMWSConnectionStatus(extenderId, routerId) {
         let sshManager = null;
         

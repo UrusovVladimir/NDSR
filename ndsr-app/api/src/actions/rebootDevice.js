@@ -17,7 +17,7 @@ export async function rebootDevice(deviceId, maxRetries = 3) {
       host: JEROME_HOST,
       port: process.env.JEROME_PORT,
       negotiationMandatory: false,
-      timeout: 10000, // Увеличили таймаут
+      timeout: 1000,
       sendTimeout: 5000,
       execTimeout: 10000,
     };
@@ -29,25 +29,25 @@ export async function rebootDevice(deviceId, maxRetries = 3) {
       await connection.send("\n", { ors: "\r\n" });
       await new Promise(resolve => setTimeout(resolve, 1000));
 
-      // ИСПРАВЛЕНО: Правильная последовательность для ребута - ВКЛЮЧАЕМ порт
-      console.log(`[REBOOT] Setting reboot port ${device.rebootPort} to 1`);
-      let res = await connection.send(`$KE,WR,${device.rebootPort},1`, { 
+      // ИСПРАВЛЕНО: Правильная последовательность для ребута - ВЫКЛЮЧАЕМ порт
+      console.log(`[REBOOT] Setting reboot port ${device.rebootPort} to 0`);
+      let res = await connection.send(`$KE,WR,${device.rebootPort},0`, { 
         ors: "\r\n",
         waitfor: /\$\w+,\w+,\d+,1/
       });
-      console.log('[REBOOT] Result ON:', res);
+      console.log('[REBOOT] Result OFF:', res);
 
-      // Увеличиваем задержку для ребута (5 секунд вместо 1)
+      // Увеличиваем задержку для ребута (4 секунд вместо 1)
       console.log('[REBOOT] Waiting 5 seconds for reboot pulse...');
-      await new Promise(resolve => setTimeout(resolve, 5000));
+      await new Promise(resolve => setTimeout(resolve, 4000));
 
       // ВЫКЛЮЧАЕМ порт (завершаем импульс)
-      console.log(`[REBOOT] Setting reboot port ${device.rebootPort} to 0`);
-      res = await connection.send(`$KE,WR,${device.rebootPort},0`, { 
+      console.log(`[REBOOT] Setting reboot port ${device.rebootPort} to 1`);
+      res = await connection.send(`$KE,WR,${device.rebootPort},1`, { 
         ors: "\r\n",
         waitfor: /\$\w+,\w+,\d+,0/
       });
-      console.log('[REBOOT] Result OFF:', res);
+      console.log('[REBOOT] Result ON:', res);
 
       await connection.end();
       

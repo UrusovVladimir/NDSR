@@ -89,7 +89,6 @@
         </Message>
       </div>
 
-      <!-- ✅ ИСПРАВЛЕННАЯ СЕКЦИЯ ПАРОЛЯ РОУТЕРА -->
       <div v-if="hasValidPassword && !authError" class="router-password-section mb-4">
         <h6 class="section-title mb-3">Router Authentication:</h6>
         
@@ -789,7 +788,7 @@ const selectRouter = (routerId) => {
           useDevicePassword: useDevicePassword.value,
           callback: (success, message) => {
             if (success) {
-              resolve(message) // ✅ ПЕРЕДАЕМ СООБЩЕНИЕ
+              resolve(message)
             } else {
               reject(new Error(message))
             }
