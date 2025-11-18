@@ -1,13 +1,13 @@
 <template>
   <Dialog 
-    v-model:visible="visible" 
-    :modal="true" 
-    :header="modalTitle"
-    :style="{ width: mobileView ? '95vw' : '550px', maxWidth: '550px' }"
-    :breakpoints="{ '960px': '85vw', '641px': '95vw' }"
-    :contentStyle="{ padding: mobileView ? '1rem' : '1.5rem' }"
-    class="optimized-modal mws-connection-modal"
-  >
+  v-model:visible="visible" 
+  :modal="true" 
+  :header="modalTitle"
+  :style="getModalStyle"
+  :breakpoints="{ '960px': '85vw', '641px': '95vw' }"
+  :contentStyle="{ padding: mobileView ? '1rem' : '1.5rem' }"
+  class="optimized-modal mws-connection-modal"
+>
     <!-- WAN Types Modal -->
     <div v-if="modalType === 'wanTypes'" class="modal-content">
       <div class="options-grid">
@@ -92,49 +92,54 @@
       <div v-if="hasValidPassword && !authError" class="router-password-section mb-4">
         <h6 class="section-title mb-3">Router Authentication:</h6>
         
-        <!-- Переключатель между паролем устройства и ручным вводом -->
         <div class="password-toggle-section mb-3">
-          <div class="flex align-items-center gap-3">
-            <div class="password-option" 
+          <div class="horizontal-password-options">
+            <!-- Первая опция -->
+            <div class="password-option horizontal-option" 
                 :class="{ 'active': useDevicePassword }"
                 @click="useDevicePassword = true">
-              <RadioButton
-                v-model="useDevicePassword"
-                inputId="useDevicePassword"
-                name="passwordSource"
-                :value="true"
-                class="password-radio"
-              />
-              <label for="useDevicePassword" class="password-label">
-                <div class="flex align-items-center">
-                  <i class="pi pi-key mr-2 text-primary"></i>
-                  <strong>Use Device Password</strong>
-                </div>
-                <small class="block text-color-secondary">
-                  Use the same password as the device (recommended)
-                </small>
-              </label>
+              <div class="option-content">
+                <RadioButton
+                  v-model="useDevicePassword"
+                  inputId="useDevicePassword"
+                  name="passwordSource"
+                  :value="true"
+                  class="password-radio"
+                />
+                <label for="useDevicePassword" class="password-label">
+                  <div class="flex align-items-center mb-1">
+                    <i class="pi pi-key mr-2 text-primary"></i>
+                    <strong>Device Password</strong>
+                  </div>
+                  <small class="block text-color-secondary">
+                    Same as device
+                  </small>
+                </label>
+              </div>
             </div>
 
-            <div class="password-option" 
+            <!-- Вторая опция -->
+            <div class="password-option horizontal-option" 
                 :class="{ 'active': !useDevicePassword }"
                 @click="useDevicePassword = false">
-              <RadioButton
-                v-model="useDevicePassword"
-                inputId="useManualPassword"
-                name="passwordSource"
-                :value="false"
-                class="password-radio"
-              />
-              <label for="useManualPassword" class="password-label">
-                <div class="flex align-items-center">
-                  <i class="pi pi-pencil mr-2 text-warning"></i>
-                  <strong>Enter Manually</strong>
-                </div>
-                <small class="block text-color-secondary">
-                  Use different password for router
-                </small>
-              </label>
+              <div class="option-content">
+                <RadioButton
+                  v-model="useDevicePassword"
+                  inputId="useManualPassword"
+                  name="passwordSource"
+                  :value="false"
+                  class="password-radio"
+                />
+                <label for="useManualPassword" class="password-label">
+                  <div class="flex align-items-center mb-1">
+                    <i class="pi pi-pencil mr-2 text-warning"></i>
+                    <strong>Manual Password</strong>
+                  </div>
+                  <small class="block text-color-secondary">
+                    Enter manually
+                  </small>
+                </label>
+              </div>
             </div>
           </div>
         </div>
@@ -497,14 +502,14 @@ const localizedFaqItems = {
   ]
 }
 
-// ✅ ДОБАВЛЕН computed ДЛЯ ПАРОЛЯ
+
 const hasValidPassword = computed(() => {
   return devicePassword.value && 
         devicePassword.value.trim() !== '' && 
         devicePassword.value !== 'Loading...'
 })
 
-// ✅ ДОБАВЛЕН computed ДЛЯ ПОЛУЧЕНИЯ ПАРОЛЯ РОУТЕРА
+
 const routerPasswordToUse = computed(() => {
   if (useDevicePassword.value) {
     return devicePassword.value
@@ -686,6 +691,20 @@ const formatConnectionTime = (timestamp) => {
   return new Date(timestamp).toLocaleString()
 }
 
+const getModalStyle = computed(() => {
+  if (mobileView.value) {
+    return { width: '95vw', maxWidth: '95vw' }
+  }
+  
+  // Настройки ширины для разных типов модалок
+  const widthSettings = {
+    mwsConnection: { width: '600px', maxWidth: '600px' },
+    wanTypes: { width: '550px', maxWidth: '550px' },
+    faq: { width: '700px', maxWidth: '700px' }
+  }
+  
+  return widthSettings[modalType.value] || { width: '550px', maxWidth: '550px' }
+})
 // ✅ ОБНОВЛЕННЫЙ метод show для получения пароля
 const show = async (type, password = '', source = 'global') => {
   modalType.value = type
@@ -744,34 +763,35 @@ const selectRouter = (routerId) => {
 
       let valueToSend = modalValue.value
       let actionType = action
-
       if (modalType.value === 'mwsConnection') {
-        if (action === 'disconnect') {
-          if (!currentConnection.value) {
-            throw new Error('No active connection to disconnect from')
+          if (action === 'disconnect') {
+            if (!currentConnection.value) {
+              throw new Error('No active connection to disconnect from')
+            }
+            
+            valueToSend = currentConnection.value.routerId
+            actionType = 'disconnect'
+            
+            console.log("🔗 DISCONNECT from current connection:", {
+              device: currentDevice.value?.hwId,
+              router: currentConnection.value.routerName,
+              routerId: valueToSend,
+              action: actionType 
+            })
+            
+          } else {
+            valueToSend = modalValue.value
+            actionType = currentConnection.value ? 'reconnect' : 'connect'
+            
+            console.log("🔗 CONNECT to selected router:", {
+              device: currentDevice.value?.hwId, 
+              selectedRouter: modalValue.value,
+              action: actionType, 
+              useDevicePassword: useDevicePassword.value,
+              hasManualPassword: !!manualRouterPassword.value
+            })
           }
-          
-          valueToSend = currentConnection.value.routerId
-          actionType = 'disconnect'
-          
-          // console.log("🔗 DISCONNECT from current connection:", {
-          //   device: currentDevice.value?.hwId,
-          //   router: currentConnection.value.routerName,
-          //   routerId: valueToSend
-          // })
-        } else {
-          valueToSend = modalValue.value
-          actionType = currentConnection.value ? 'reconnect' : 'connect'
-          
-          // console.log("🔗 CONNECT to selected router:", {
-          //   device: currentDevice.value?.hwId, 
-          //   selectedRouter: modalValue.value,
-          //   useDevicePassword: useDevicePassword.value,
-          //   hasManualPassword: !!manualRouterPassword.value
-          // })
         }
-      }
-
       // ✅ ПЕРЕДАЕМ ДАННЫЕ О ПАРОЛЕ И ПОЛУЧАЕМ СООБЩЕНИЕ
       const customMessage = await new Promise((resolve, reject) => {
         // ✅ ДОПОЛНИТЕЛЬНАЯ ПРОВЕРКА ПЕРЕД ОТПРАВКОЙ
@@ -816,7 +836,7 @@ const selectRouter = (routerId) => {
         
         socket.emit('device:forceStatusCheck', deviceId, (response) => {
           if (response?.success) {
-            // console.log(`✅ Extender ${deviceHwId} status: ${response.status}`)
+            console.log(`✅ Extender ${deviceHwId} status: ${response.status}`)
           } else {
             // console.log(`⚠️ Failed to check extender status: ${response?.error}`)
           }
@@ -891,8 +911,8 @@ watch(modalValue, (newVal) => {
 defineExpose({ show })
 </script>
 
+
 <style scoped>
-/* ✅ СОВМЕЩЕННЫЕ СТИЛИ ИЗ ОБОИХ КОМПОНЕНТОВ */
 
 .optimized-modal {
   max-height: 90vh;
@@ -902,34 +922,290 @@ defineExpose({ show })
   padding: 0.5rem 0;
 }
 
-.mws-connection-modal .modal-content {
+.section-title {
+  font-weight: 600;
+  margin-bottom: 1rem;
+  color: var(--text-color);
+  font-size: 1rem;
+  line-height: 1.2;
+}
+
+.message-content {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+}
+
+.message-content i {
+  color: var(--primary-color);
+  margin-top: 0.125rem;
+  flex-shrink: 0;
+}
+
+/* ===== WAN TYPES СТИЛИ ===== */
+.options-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  max-height: 50vh;
+  overflow-y: auto;
+}
+
+.option-item {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.75rem;
+  border: 1px solid var(--surface-border);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.option-item:hover {
+  background: var(--surface-hover);
+  border-color: var(--primary-color);
+}
+
+.option-selected {
+  background: var(--primary-color-light);
+  border-color: var(--primary-color);
+}
+
+.option-label {
+  cursor: pointer;
+  flex: 1;
+  margin: 0;
+}
+
+/* ===== MWS CONNECTION СТИЛИ ===== */
+.mws-connection-content {
   display: flex;
   flex-direction: column;
   gap: 1.5rem;
 }
 
-/* Стили для секции пароля */
+.message-content {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  padding: 0.5rem 0;
+  margin: 0;
+}
+.connection-info {
+  margin: 0;
+}
+
+.current-connection-section {
+  margin-bottom: 1.5rem;
+}
+
+.connection-info :deep(.p-message) {
+  padding: 0.75rem;
+}
+
+.connection-info :deep(.p-message-content) {
+  padding: 0;
+}
+.connection-details {
+  flex: 1;
+}
+
+.connection-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.5rem; /* Уменьшено с 0.75rem */
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.status-badge {
+  font-size: 0.7rem;
+}
+
+.connection-info-line {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.25rem;}
+
+.connection-info-line strong,.connection-info-line span:not(.info-label) {
+  font-size: 0.85rem;
+  line-height: 1.2;
+}
+
+.signal-indicator {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.85rem;
+}
+
+.info-label {
+  color: var(--text-color-secondary);
+  min-width: 120px;
+  text-align: left;
+  font-size: 0.85rem;
+}
+
+.signal-indicator {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+/* Секция пароля роутера */
 .router-password-section {
   background: var(--surface-50);
   border-radius: 8px;
   padding: 1rem;
   border: 1px solid var(--surface-200);
-  margin-bottom: 1rem;
 }
 
 .password-toggle-section {
   margin-bottom: 1rem;
 }
 
-.password-option {
+.horizontal-password-options {
   display: flex;
-  align-items: flex-start;
-  padding: 0.75rem;
+  flex-direction: row;
+  gap: 1rem;
+  width: 100%;
+}
+
+.horizontal-password-options {
+  display: flex;
+  flex-direction: row;
+  gap: 1rem;
+  width: 100%;
+}
+
+.password-option.horizontal-option {
+  display: flex;
+  align-items: stretch;
+  padding: 0;
   border: 2px solid var(--surface-300);
   border-radius: 8px;
   cursor: pointer;
   transition: all 0.3s ease;
+  height: auto;
   flex: 1;
+  min-width: 0;
+}
+
+.password-option.horizontal-option:hover {
+  border-color: var(--primary-300);
+  background-color: var(--surface-50);
+}
+
+.password-option.horizontal-option.active {
+  border-color: var(--primary-500);
+  background-color: var(--primary-50);
+}
+
+.password-option.horizontal-option .option-content {
+  display: flex;
+  align-items: flex-start;
+  padding: 1rem;
+  width: 100%;
+  height: 100%;
+}
+
+.password-option.horizontal-option .password-radio {
+  margin-right: 12px;
+  margin-top: 2px;
+  flex-shrink: 0;
+}
+
+.password-option.horizontal-option .password-label {
+  cursor: pointer;
+  flex: 1;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  min-height: 100%;
+}
+
+/* Выравнивание текста и иконок */
+.password-label .flex.align-items-center {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  width: 100%;
+}
+
+.password-label .flex.align-items-center i {
+  flex-shrink: 0;
+}
+
+.password-label .flex.align-items-center strong {
+  flex: 1;
+  text-align: left;
+}
+
+.password-label small {
+  text-align: left;
+  margin-top: 0.25rem;
+}
+
+/* Выравнивание по вертикали для всего контента */
+.password-option.horizontal-option .option-content {
+  display: flex;
+  align-items: flex-start;
+}
+
+/* ===== АДАПТИВНОСТЬ ДЛЯ МОБИЛЬНЫХ ===== */
+@media (max-width: 768px) {
+  .horizontal-password-options {
+    flex-direction: column;
+    gap: 0.75rem;
+  }
+  
+  .password-option.horizontal-option {
+    width: 100%;
+  }
+  
+  .password-option.horizontal-option .option-content {
+    padding: 0.75rem;
+  }
+}
+
+/* ===== ДОПОЛНИТЕЛЬНЫЕ ИСПРАВЛЕНИЯ ВЫРАВНИВАНИЯ ===== */
+.router-password-section {
+  background: var(--surface-50);
+  border-radius: 8px;
+  padding: 1.25rem;
+  border: 1px solid var(--surface-200);
+}
+
+.password-toggle-section {
+  margin-bottom: 1.5rem;
+}
+
+.section-title {
+  font-weight: 600;
+  margin-bottom: 1rem;
+  color: var(--text-color);
+  font-size: 1rem;
+  line-height: 1.2;
+  text-align: left;
+}
+
+/* Убедитесь, что все элементы выровнены по левому краю */
+.password-label {
+  text-align: left;
+}
+
+.password-label strong {
+  display: block;
+  margin-bottom: 0.25rem;
+}
+
+.password-label small {
+  display: block;
+  line-height: 1.4;
 }
 
 .password-option:hover {
@@ -943,8 +1219,8 @@ defineExpose({ show })
 }
 
 .password-radio {
-  margin-right: 12px;
-  margin-top: 2px;
+  margin-right: 0.75rem;
+  margin-top: 0.125rem;
 }
 
 .password-label {
@@ -963,78 +1239,10 @@ defineExpose({ show })
   position: relative;
 }
 
-.info-message {
-  border-left: 4px solid #28a745;
-}
-
-.router-password-input .p-password input {
-  border-radius: 6px !important;
-  border: 1px solid #ced4da !important;
-  width: 100% !important;
-}
-
-.router-password-input .p-password:focus-within input {
-  border-color: #28a745 !important;
-  box-shadow: 0 0 0 0.2rem rgba(40, 167, 69, 0.25) !important;
-}
-
-/* Стили для MWS подключения */
-.current-connection-section,
-.no-connection-section {
-  margin-bottom: 0.5rem;
-}
-
-.connection-info .message-content {
-  display: flex;
-  align-items: flex-start;
-  gap: 0.75rem;
-}
-
-.connection-details {
-  flex: 1;
-}
-
-.connection-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 0.5rem;
-}
-
-.status-badge {
-  font-size: 0.7rem;
-}
-
-.connection-info-line {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  margin-bottom: 0.25rem;
-  font-size: 0.9rem;
-}
-
-.info-label {
-  color: var(--text-color-secondary);
-  min-width: 100px;
-}
-
-.signal-indicator {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-}
-
+/* Список роутеров */
 .connection-options-section {
   border-top: 1px solid var(--surface-border);
   padding-top: 1rem;
-}
-
-.section-title {
-  margin: 0 0 1rem 0;
-  color: var(--text-color);
-  font-weight: 600;
-  display: flex;
-  align-items: center;
 }
 
 .routers-list {
@@ -1054,7 +1262,6 @@ defineExpose({ show })
   border-radius: 8px;
   cursor: pointer;
   transition: all 0.2s ease;
-  -webkit-tap-highlight-color: transparent;
 }
 
 .router-item:hover {
@@ -1087,12 +1294,16 @@ defineExpose({ show })
 
 .router-main-info {
   flex: 1;
+  min-width: 0;
 }
 
 .router-name {
   font-weight: 600;
   color: var(--text-color);
   margin-bottom: 0.25rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .router-hwid {
@@ -1105,6 +1316,7 @@ defineExpose({ show })
   flex-direction: column;
   align-items: flex-end;
   gap: 0.25rem;
+  flex-shrink: 0;
 }
 
 .online-indicator {
@@ -1131,10 +1343,7 @@ defineExpose({ show })
   font-weight: 500;
 }
 
-.no-routers-message {
-  margin-top: 1rem;
-}
-
+/* Подсказки подключения */
 .connection-tips {
   margin-top: 1rem;
 }
@@ -1150,60 +1359,7 @@ defineExpose({ show })
   color: var(--text-color-secondary);
 }
 
-/* WAN Types Styles */
-.options-grid {
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
-  max-height: 50vh;
-  overflow-y: auto;
-}
-
-.option-item {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  padding: 0.75rem;
-  border: 1px solid var(--surface-border);
-  border-radius: 8px;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  -webkit-tap-highlight-color: transparent;
-}
-
-.option-item:hover {
-  background: var(--surface-hover);
-  border-color: var(--primary-color);
-}
-
-.option-selected {
-  background: var(--primary-color-light);
-  border-color: var(--primary-color);
-}
-
-.option-label {
-  cursor: pointer;
-  flex: 1;
-  margin: 0;
-}
-
-.info-message {
-  margin-top: 1rem;
-}
-
-.message-content {
-  display: flex;
-  align-items: flex-start;
-  gap: 0.75rem;
-}
-
-.message-content i {
-  color: var(--primary-color);
-  margin-top: 0.125rem;
-  flex-shrink: 0;
-}
-
-/* FAQ Styles */
+/* ===== FAQ СТИЛИ ===== */
 .faq-modal-content {
   display: flex;
   flex-direction: column;
@@ -1225,7 +1381,6 @@ defineExpose({ show })
   flex-shrink: 0;
 }
 
-/* ✅ ИСПРАВЛЕННЫЕ СТИЛИ ДЛЯ ПОИСКА */
 .search-container {
   position: relative;
   flex: 1;
@@ -1243,46 +1398,12 @@ defineExpose({ show })
 
 .search-input {
   width: 100%;
-  padding-left: 2.5rem !important; /* Место для иконки */
-}
-
-.search-input:focus {
-  border-color: var(--primary-color) !important;
-  box-shadow: 0 0 0 0.1rem var(--primary-color) !important;
+  padding-left: 2.5rem !important;
 }
 
 .faq-list {
   flex: 1;
   overflow-y: auto;
-}
-
-/* ✅ МОБИЛЬНАЯ АДАПТАЦИЯ */
-@media (max-width: 768px) {
-  .faq-controls {
-    flex-direction: column;
-    gap: 0.75rem;
-  }
-
-  .language-switcher {
-    justify-content: center;
-    width: 100%;
-  }
-
-  .search-container {
-    max-width: 100%;
-    width: 100%;
-  }
-}
-
-/* ✅ ДЕСКТОПНАЯ АДАПТАЦИЯ */
-@media (min-width: 769px) {
-  .faq-controls {
-    flex-direction: row;
-  }
-  
-  .search-container {
-    max-width: 200px;
-  }
 }
 
 .answer-text {
@@ -1317,7 +1438,7 @@ defineExpose({ show })
   text-align: center;
 }
 
-/* Footer Styles */
+/* ===== ФУТЕР МОДАЛКИ ===== */
 .modal-footer {
   display: flex;
   justify-content: space-between;
@@ -1353,9 +1474,20 @@ defineExpose({ show })
   min-width: 100px;
 }
 
-/* Mobile Optimizations */
+/* ===== АДАПТИВНОСТЬ ДЛЯ МОБИЛЬНЫХ УСТРОЙСТВ ===== */
 @media (max-width: 768px) {
-  .mws-connection-modal .modal-content {
+  /* Общие мобильные стили */
+  .modal-content {
+    padding: 0.25rem 0;
+  }
+
+  .section-title {
+    font-size: 0.95rem;
+    margin-bottom: 0.75rem;
+  }
+
+  /* MWS Connection мобильные стили */
+  .mws-connection-content {
     gap: 1rem;
   }
 
@@ -1363,6 +1495,36 @@ defineExpose({ show })
     flex-direction: column;
     align-items: flex-start;
     gap: 0.5rem;
+  }
+
+  .connection-info-line {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.25rem;
+  }
+
+  .info-label {
+    min-width: auto;
+    font-size: 0.9rem;
+  }
+
+  /* Пароль роутера мобильные */
+  .router-password-section {
+    padding: 0.75rem;
+  }
+
+  .horizontal-password-options {
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+
+  .password-option {
+    width: 100%;
+  }
+
+  /* Список роутеров мобильные */
+  .router-item {
+    padding: 0.75rem;
   }
 
   .router-info {
@@ -1378,6 +1540,23 @@ defineExpose({ show })
     justify-content: space-between;
   }
 
+  /* FAQ мобильные */
+  .faq-controls {
+    flex-direction: column;
+    gap: 0.75rem;
+  }
+
+  .language-switcher {
+    justify-content: center;
+    width: 100%;
+  }
+
+  .search-container {
+    max-width: 100%;
+    width: 100%;
+  }
+
+  /* Футер мобильные */
   .modal-footer {
     flex-direction: column;
     gap: 0.75rem;
@@ -1390,49 +1569,39 @@ defineExpose({ show })
   .connection-actions .p-button {
     flex: 1;
   }
+}
+
+/* ===== АДАПТИВНОСТЬ ДЛЯ ОЧЕНЬ МАЛЕНЬКИХ ЭКРАНОВ ===== */
+@media (max-width: 480px) {
+  .router-password-section {
+    padding: 0.5rem;
+  }
+
+  .password-option {
+    padding: 0.5rem;
+  }
 
   .router-item {
-    padding: 0.75rem;
+    padding: 0.5rem;
   }
 
-  .faq-controls {
-    flex-direction: column;
-    gap: 0.75rem;
-  }
-
-  .language-switcher {
-    justify-content: center;
-  }
-
-  .router-password-section {
-    padding: 0.75rem;
-    margin-bottom: 1rem;
-  }
-  
-  .password-toggle-section .flex.align-items-center {
-    flex-direction: column;
-    gap: 0.5rem;
-  }
-  
-  .password-option {
-    width: 100%;
+  .option-item {
+    padding: 0.5rem;
   }
 }
 
-/* Desktop Optimizations */
+/* ===== ДЕСКТОПНЫЕ ОПТИМИЗАЦИИ ===== */
 @media (min-width: 769px) {
   .faq-controls {
     flex-direction: row;
-    justify-content: space-between;
-    align-items: center;
   }
 
   .search-container {
-    width: 200px;
+    max-width: 200px;
   }
 }
 
-/* Scrollbar Styling */
+/* ===== СТИЛИ ДЛЯ SCROLLBAR ===== */
 .routers-list::-webkit-scrollbar,
 .options-grid::-webkit-scrollbar,
 .faq-list::-webkit-scrollbar {
@@ -1457,4 +1626,15 @@ defineExpose({ show })
 .faq-list::-webkit-scrollbar-thumb:hover {
   background: var(--surface-400);
 }
+
+/* ===== УТИЛИТЫ ===== */
+.no-routers-message,
+.no-connection-section {
+  margin-top: 1rem;
+}
+
+.info-message {
+  margin-top: 1rem;
+}
+
 </style>

@@ -27,18 +27,19 @@
 
       <div class="header-actions">
         <Button 
-          :icon="cronEnabled ? 'pi pi-pause' : 'pi pi-play'" 
+          :icon="cronEnabled ? 'pi pi-times' : 'pi pi-stopwatch'" 
           class="cron-toggle"
           :class="{ 'cron-enabled': cronEnabled }"
           @click="$emit('toggle-cron')"
-          v-tooltip.top="cronEnabled ? 'Cron enabled' : 'Cron disabled'"
+          v-tooltip.bottom
+          ="cronEnabled ? 'Disable device auto-reset' : 'Enable device auto-reset'"
         />
         
         <Button 
           icon="pi pi-sync" 
           class="day-toggle"
           @click="$emit('toggle-day')"
-          v-tooltip.top="'Toggle password day'"
+          v-tooltip.bottom="'Toggle password day'"
         />
       </div>
     </div>

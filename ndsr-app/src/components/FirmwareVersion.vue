@@ -95,6 +95,10 @@ const props = defineProps({
   device: Object,
   currentUserId: [String, Number],
   todayPassword: String,
+  autoCheckEnabled: {
+    type: Boolean,
+    default: true
+  }
 })
 
 const emit = defineEmits(['firmwareUpdated'])

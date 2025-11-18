@@ -124,7 +124,6 @@
   
         <Message v-if="showWarning && !userCanClose" severity="warn" class="warning-message">
           <div class="message-content">
-            <i class="pi pi-info-circle"></i>
             <div>
               <div><strong>Operation in progress</strong></div>
               <div>Closing this window will not cancel the operation</div>
@@ -205,22 +204,44 @@
   const hasErrors = ref(false)
   const operationLog = ref([])
   
-  // Configuration for different operation types
+
   const operationConfigs = {
     mwsConnection: {
-      title: 'MWS Connection',
-      icon: 'pi pi-link',
-      badgeClass: 'connect-badge',
-      steps: [
-        { id: 'initializing', title: 'Initializing', description: 'Validating devices and parameters' },
-        { id: 'switch_config', title: 'Switch Configuration', description: 'Setting up VLANs and ports' },
-        { id: 'port_forwarding', title: 'Port Forwarding', description: 'Configuring firewall rules' },
-        { id: 'ap_dhcp', title: 'AP DHCP Setup', description: 'Waiting for IP assignment' },
-        { id: 'device_reboot', title: 'Device Reboot', description: 'Restarting device' },
-        { id: 'verification', title: 'Verification', description: 'Checking connection status' },
-        { id: 'completed', title: 'Completed', description: 'Operation finished' }
-      ],
-      successMessage: 'MWS connection established successfully'
+        title: 'MWS Connection',
+        icon: 'pi pi-link',
+        badgeClass: 'connect-badge',
+        getSteps: (operationData) => {
+            console.log('🔍 ProgressModal operationData:', operationData); // ДЛЯ ОТЛАДКИ
+            
+            const isDisconnect = operationData?.action === 'disconnect';
+            
+            if (isDisconnect) {
+                console.log('🔧 Setting up steps for DISCONNECT');
+                return [
+                    { id: 'initializing', title: 'Initializing', description: 'Validating devices and parameters' },
+                    { id: 'switch_config', title: 'Switch Configuration', description: 'Setting up VLANs and ports' },
+                    { id: 'port_forwarding', title: 'Port Forwarding', description: 'Removing firewall rules' },
+                    { id: 'device_reboot', title: 'Device Reboot', description: 'Restarting device with new settings' },
+                    { id: 'verification', title: 'Verification', description: 'Checking device status' },
+                    { id: 'completed', title: 'Completed', description: 'Disconnection finished' }
+                ];
+            } else {
+                console.log('🔧 Setting up steps for CONNECT');
+                return [
+                    { id: 'initializing', title: 'Initializing', description: 'Validating devices and parameters' },
+                    { id: 'switch_config', title: 'Switch Configuration', description: 'Setting up VLANs and ports' },
+                    { id: 'port_forwarding', title: 'Port Forwarding', description: 'Configuring firewall rules' },
+                    { id: 'ap_dhcp', title: 'AP DHCP Setup', description: 'Waiting for IP assignment' },
+                    { id: 'verification', title: 'Verification', description: 'Checking connection status' },
+                    { id: 'completed', title: 'Completed', description: 'Connection established' }
+                ];
+            }
+        },
+        successMessage: (operationData) => {
+            return operationData?.action === 'disconnect' 
+                ? 'Device disconnected successfully' 
+                : 'MWS connection established successfully';
+        }
     },
     modeChange: {
       title: 'Mode Change',
@@ -236,8 +257,8 @@
       ],
       successMessage: 'Device mode changed successfully'
     }
-  }
-  
+}
+
   // Computed properties
   const mobileView = computed(() => window.innerWidth <= 768)
   
@@ -273,14 +294,21 @@
   })
   
   const currentSteps = computed(() => {
-    return operationConfig.value.steps.map(step => ({
-      ...step,
-      completed: false,
-      progress: 0,
-      error: null,
-      details: null
-    }))
-  })
+    const config = operationConfig.value;
+    const steps = typeof config.getSteps === 'function' 
+        ? config.getSteps(props.operationData)
+        : config.steps;
+    
+    return steps.map(step => ({
+        ...step,
+        completed: false,
+        progress: 0,
+        error: null,
+        details: null
+    }));
+});
+
+
   
   const statusIcon = computed(() => {
     if (hasErrors.value) return 'pi pi-exclamation-triangle'
@@ -337,8 +365,11 @@
   })
   
   const successMessage = computed(() => {
-    return operationConfig.value.successMessage
-  })
+    const config = operationConfig.value;
+    return typeof config.successMessage === 'function'
+        ? config.successMessage(props.operationData)
+        : config.successMessage;
+});
   
   const footerButtonClass = computed(() => {
     if (hasErrors.value) return 'p-button-warning'
@@ -419,26 +450,35 @@
   })
 }
 
-// ✅ ОБНОВИТЬ МЕТОД updateProgress ДЛЯ ПРАВИЛЬНОЙ ОБРАБОТКИ
 const updateProgress = (newProgress, step, details = null) => {
-  progress.value = Math.max(progress.value, newProgress)
+  console.log('📥 ProgressModal received progress:', { 
+    newProgress, 
+    step, 
+    details,
+    currentStepId: currentStepId.value,
+    operationData: props.operationData 
+  });
   
+  progress.value = Math.max(progress.value, newProgress);
+  
+  // ✅ ВАЖНОЕ ИСПРАВЛЕНИЕ: Всегда обновляем currentStepId при получении step
   if (step && step !== currentStepId.value) {
-    currentStepId.value = step
-    addLog('info', `Started: ${getStepTitle(step)}`)
+    console.log(`🔄 Switching step: ${currentStepId.value} -> ${step}`);
+    currentStepId.value = step;
+    addLog('info', `Started: ${getStepTitle(step)}`);
   }
   
   // Обновляем детали шага если есть
   if (details) {
-    addLog('info', details)
+    addLog('info', details);
   }
   
   // Проверяем завершение
   if (newProgress >= 100) {
-    completeOperation()
+    console.log('🎉 Operation completed!');
+    completeOperation();
   }
 }
-  
   const getStepTitle = (stepId) => {
     const step = currentSteps.value.find(s => s.id === stepId)
     return step?.title || stepId

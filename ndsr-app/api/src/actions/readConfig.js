@@ -27,7 +27,7 @@ export async function resetConfig(deviceId, maxRetries = 3) {
       host: JEROME_HOST,
       port: process.env.JEROME_PORT,
       negotiationMandatory: false,
-      timeout: 10000, // Увеличили таймаут
+      timeout: 10000,
       sendTimeout: 5000,
       execTimeout: 10000,
     };
@@ -47,9 +47,9 @@ export async function resetConfig(deviceId, maxRetries = 3) {
       });
       console.log("[RESET] Result Down:", res);
 
-      // Ждем 10 секунд для полного сброса устройства
+      // Ждем 12 секунд для полного сброса устройства
       console.log("[RESET] Waiting 10 seconds for device reset...");
-      await new Promise(resolve => setTimeout(resolve, 10000));
+      await new Promise(resolve => setTimeout(resolve, 12000));
 
       // ВЫКЛЮЧАЕМ порт (завершаем reset)
       console.log(`[RESET] Setting reset port ${device.resetPort} to 0`);

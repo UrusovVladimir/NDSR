@@ -60,7 +60,7 @@ const authenticate = async (ip, login, password) => {
       sessionId: sessionId ? 'получен' : 'отсутствует'
     });
 
-    // Вычисляем хэши
+    //  хэши
     const md5Hash = crypto.createHash('md5')
       .update(`${login}:${realm}:${password}`)
       .digest('hex');
@@ -69,7 +69,7 @@ const authenticate = async (ip, login, password) => {
       .update(challenge + md5Hash)
       .digest('hex');
 
-    // Отправляем запрос авторизации
+    //  запрос авторизации
     const authData = {
       login,
       password: sha256Hash,
@@ -98,7 +98,7 @@ const authenticate = async (ip, login, password) => {
 
     console.log('✅ Авторизация успешна пройдена!');
     
-    // Сохраняем сессию в кэш
+    //  сессия в кэш
     sessionManager.setSession(ip, login, sessionCookie);
     
     return sessionCookie;
@@ -111,7 +111,7 @@ const authenticate = async (ip, login, password) => {
         data: error.response.data
       });
       
-      // ✅ ЕСЛИ ПОЛУЧИЛИ 200 - УСТРОЙСТВО УЖЕ АВТОРИЗОВАНО
+      // ✅ ЕСЛИ 200 - УСТРОЙСТВО УЖЕ АВТОРИЗОВАНО
       if (error.response.status === 200) {
         console.log('✅ Устройство уже авторизовано (в catch блоке)');
         return 'ALREADY_AUTHENTICATED';

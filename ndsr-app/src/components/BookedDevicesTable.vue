@@ -95,7 +95,7 @@
                             :device="data"
                             :current-user-id="deviceStore.currentUserId"
                             :today-password="todayPassword"
-                            :key="`fw-${data.id}-${data.statusCode}-${data.booking?.expiresAt || 'no-booking'}`"
+                            :key="`fw-${data.id}-${data.firmwareVersion || 'unknown'}-${data.statusCode}`"
                             @firmware-updated="handleFirmwareUpdated"
                             
                         />
@@ -530,7 +530,7 @@
                 <h4>Network Information</h4>
                 <div class="horizontal-grid">
                     <div class="field-group">
-                        <label class="field-label">IP Address</label>
+                        <label class="field-label">IP Address Container</label>
                         <div class="field-value-group">
                             <span class="field-value">{{ selectedDevice.ip || 'N/A' }}</span>
                             <Button 
@@ -567,6 +567,18 @@
                     </div>
                     <div class="field-group">
                         <label class="field-label">SSH Container</label>
+                        <div class="field-value-group">
+                            <span class="field-value">{{ selectedDevice.sshContainer || 'N/A' }}</span>
+                            <Button 
+                                v-if="selectedDevice.sshContainer"
+                                icon="pi pi-copy" 
+                                class="p-button-text p-button-sm copy-btn"
+                                @click="copyToClipboard(selectedDevice.sshContainer, 'SSH Container')"
+                            />
+                        </div>
+                    </div>
+                    <div class="field-group">
+                        <label class="field-label">SSH Connection to Device</label>
                         <div class="field-value-group">
                             <span class="field-value">{{ selectedDevice.sshContainer || 'N/A' }}</span>
                             <Button 
@@ -1234,7 +1246,7 @@
             '=== PORTS & CONFIGURATION ==='
         ];
 
-        // Добавляем порты и конфигурацию
+        //  порты и конфигурация
         const portFields = [
             { label: 'Console Port', value: device.consolePort },
             { label: 'Reset Port', value: device.resetPort },

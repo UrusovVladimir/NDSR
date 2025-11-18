@@ -268,7 +268,7 @@
               <div class="flex align-items-center">
                 <i class="pi pi-check-circle text-green-600 mr-2"></i>
                 <span class="text-green-700">
-                  Will use device password: <strong>{{ devicePassword ? '••••••••' : 'Not set' }}</strong>
+                  Will use device password: <strong>{{ devicePassword ? devicePassword : 'Not set' }}</strong>
                 </span>
               </div>
             </div>
@@ -749,20 +749,21 @@ const show = async (password, source = 'global') => {
 
 // ✅ ДОБАВЬТЕ ЭТУ ФУНКЦИЮ ДЛЯ АВТОВЫБОРА ДЕЙСТВИЯ
 const autoSelectActionBasedOnMode = (modeInfo) => {
-    if (!modeInfo) return;
-    
-    const mode = modeInfo.mode;
-    const hasConnection = modeInfo.routerId;
-    
-    // console.log('🤖 Auto-selecting action based on mode:', { mode, hasConnection });
-    
-    if (mode === 'router' && !hasConnection) {
-        selectedAction.value = 'router';
-    } else if (mode === 'extender' && !hasConnection) {
-        selectedAction.value = 'extender';
-    } else if (mode === 'extender_connect' || (mode === 'extender' && hasConnection)) {
-        selectedAction.value = 'disconnectRouter';
-    }
+  if (!modeInfo) return;
+  
+  const mode = modeInfo.mode;
+  const hasConnection = modeInfo.routerId;
+  
+  // console.log('🤖 Auto-selecting action based on mode:', { mode, hasConnection });
+  
+  // ✅ ЕСЛИ УСТРОЙСТВО В РЕЖИМЕ EXTENDER_CONNECT - ВЫБИРАЕМ DISCONNECT ПО УМОЛЧАНИЮ
+  if (mode === 'extender_connect' || (mode === 'extender' && hasConnection)) {
+    selectedAction.value = 'disconnectRouter';
+  } else if (mode === 'router' && !hasConnection) {
+    selectedAction.value = 'router';
+  } else if (mode === 'extender' && !hasConnection) {
+    selectedAction.value = 'extender';
+  }
 }
 
 const loadCurrentMode = async () => {
@@ -1094,7 +1095,6 @@ const availableBookedRoutersFormatted = computed(() => {
     }));
 });
 
-// ✅ 2.   ЛОГИКА ОТОБРАЖЕНИЯ ДЕЙСТВИЙ
 const shouldShowAction = (action) => {
   if (!hasValidPassword.value || authError.value) return true;
   
@@ -1110,6 +1110,22 @@ const shouldShowAction = (action) => {
   //   modeInfo: currentDeviceModeInfo.value
   // });
   
+  // ✅ ЕСЛИ УСТРОЙСТВО В РЕЖИМЕ EXTENDER_CONNECT - ПОКАЗЫВАЕМ ТОЛЬКО DISCONNECT
+  if (baseMode === 'extender_connect' || (baseMode === 'extender' && hasConnection)) {
+    switch (action) {
+      case 'disconnectRouter':
+        return true; // ✅ ПОКАЗЫВАЕМ ТОЛЬКО DISCONNECT
+      case 'router':
+        return false; // ❌ СКРЫВАЕМ ROUTER MODE
+      case 'extender':
+      case 'extenderConnect':
+        return false; // ❌ СКРЫВАЕМ EXTENDER И EXTENDER_CONNECT
+      default:
+        return false;
+    }
+  }
+  
+  // ✅ СТАНДАРТНАЯ ЛОГИКА ДЛЯ ДРУГИХ РЕЖИМОВ
   switch (action) {
     case 'router':
       // Скрываем Router если уже в router без подключения
@@ -1188,7 +1204,6 @@ const statusSteps = computed(() => [
   }
 ])
 
-// ✅ ИСПРАВЛЕННЫЕ computed ДЛЯ ОТОБРАЖЕНИЯ РЕЖИМА
 const modeStatusClass = computed(() => {
   if (!hasValidPassword.value) return 'status-unknown'
   if (authError.value) return 'status-error'
@@ -1255,30 +1270,42 @@ const canConfirm = computed(() => {
 })
 
 const confirmButtonText = computed(() => {
-  if (authError.value) return 'Try Change Mode Anyway'
+  if (authError.value) return 'Try Change Mode Anyway';
   
-  const baseMode = currentDeviceBaseMode.value
-  const hasConnection = hasRouterConnection.value
+  const baseMode = currentDeviceBaseMode.value;
+  const hasConnection = hasRouterConnection.value;
   
+  // ✅ ЕСЛИ УСТРОЙСТВО В РЕЖИМЕ EXTENDER_CONNECT - СПЕЦИАЛЬНЫЕ ТЕКСТЫ
+  if (baseMode === 'extender_connect' || (baseMode === 'extender' && hasConnection)) {
+    switch (selectedAction.value) {
+      case 'disconnectRouter':
+        return 'Disconnect & Switch to Router';
+      case 'router':
+        return 'Switch to Router Mode';
+      default:
+        return 'Confirm';
+    }
+  }
+  
+  // ✅ СТАНДАРТНЫЕ ТЕКСТЫ ДЛЯ ДРУГИХ РЕЖИМОВ
   switch (selectedAction.value) {
     case 'router': 
       return baseMode === 'router' && !hasConnection
         ? 'Device is already in Router Mode' 
-        : 'Switch to Router Mode'
+        : 'Switch to Router Mode';
     case 'extender': 
       return baseMode === 'extender' && !hasConnection
         ? 'Device is already in Extender Mode' 
-        : 'Switch to Extender Mode'
+        : 'Switch to Extender Mode';
     case 'extenderConnect': 
       return baseMode === 'extender_connect' && hasConnection
         ? 'Reconnect Extender to Router' 
-        : 'Switch to Extender & Connect'
+        : 'Switch to Extender & Connect';
     case 'disconnectRouter':
-      return 'Disconnect & Switch to Router'
-    default: return 'Confirm'
+      return 'Disconnect & Switch to Router';
+    default: return 'Confirm';
   }
-})
-
+});
 const showWarning = computed(() => {
   if (!hasValidPassword.value || authError.value || operationInProgress.value || modeCheckInProgress.value || isLoading.value) return false
   

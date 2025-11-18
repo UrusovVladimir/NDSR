@@ -1,4 +1,4 @@
-<template>
+  <template>
   <div class="devices-management">
     <BookedDevicesTable 
       :loading="deviceStore.loading"
@@ -70,12 +70,12 @@
                       <i class="pi pi-times"></i>
                     </button>
                   </span>
+                  
                 </div>
               </div>
             </div>
           </div>
         </template>
-
         <Column field="statusCode" header="Status" :sortable="true" class="status-column">
           <template #body="{ data }">
             <StatusIndicator :status="data.statusCode" :type="data.type" />
@@ -97,12 +97,14 @@
           </template>
         </Column>
 
-        <Column field="firmwareVersion" header="Firmware" class="firmware-column">
+        <Column field="firmwareVersion" header="Firmware" bodyClass="firmware-column">
           <template #body="{ data }">
             <FirmwareVersion 
               :device="data"
               :current-user-id="deviceStore.currentUserId"
               :today-password="todayPassword"
+              :auto-check-enabled="false"
+              @firmware-updated="handleFirmwareUpdated"
             />
           </template>
         </Column>
@@ -389,12 +391,12 @@ const progressModal = ref(null)
 
 const handleMwsSave = async (deviceId, routerId, action, routerPassword = null, useDevicePassword = true) => {
   return new Promise((resolve, reject) => {
-    // ✅ Убедитесь что модалка прогресса показывается ДО отправки запроса
+    // ✅ ИСПРАВЛЕНИЕ: ПРАВИЛЬНО ПЕРЕДАЕМ operationData С action
     const device = deviceStore.devices.find(d => d.id === deviceId)
     if (device && progressModal.value) {
       progressModal.value.show('mwsConnection', device, {
-        routerId: routerId,
-        action: action
+        action: action, 
+        routerId: routerId
       })
     }
     
@@ -406,6 +408,8 @@ const handleMwsSave = async (deviceId, routerId, action, routerPassword = null, 
       useDevicePassword
     }
     
+    console.log('🔗 Sending MWS operation:', mwsData);
+    
     socket.emit('device:mwsConnected', mwsData, (response) => {
       if (!response) {
         reject(new Error('No response from server'))
@@ -413,75 +417,22 @@ const handleMwsSave = async (deviceId, routerId, action, routerPassword = null, 
       }
       
       if (response?.status === 'ok') {
-        // Прогресс будет завершен автоматически через мониторинг статуса
+        console.log('✅ MWS operation completed successfully');
         resolve()
       } else {
+        console.error('❌ MWS operation failed:', response.error);
         reject(new Error(response?.error || 'MWS operation failed'))
       }
     })
     
+    // ✅ УВЕЛИЧИВАЕМ ТАЙМАУТ ДО 120 СЕКУНД ДЛЯ DISCONNECT
+    const timeoutDuration = action === 'disconnect' ? 120000 : 60000;
+    
     setTimeout(() => {
-      reject(new Error('Request timeout - device is slow to respond'))
-    }, 20000)
+      reject(new Error(`Request timeout - device is slow to respond (${timeoutDuration/1000}s)`))
+    }, timeoutDuration)
   })
 }
-// ✅ ОБНОВЛЕННЫЙ метод handleMwsSave
-// const handleMwsSave = async (deviceId, routerId, action, routerPassword = null, useDevicePassword = true) => {
-//   return new Promise((resolve, reject) => {
-//     mwsOperationInProgress.value = true
-    
-//     console.log('🔗 MWS Operation request:', {
-//       deviceId,
-//       routerId, 
-//       action,
-//       hasRouterPassword: !!routerPassword,
-//       useDevicePassword
-//     })
-    
-//     // ✅ ПРАВИЛЬНЫЙ ФОРМАТ ДАННЫХ ДЛЯ СЕРВЕРА
-//     const mwsData = {
-//       deviceId,
-//       routerId, 
-//       action,
-//       routerPassword,
-//       useDevicePassword
-//     }
-    
-//     socket.emit('device:mwsConnected', mwsData, (response) => {
-//       mwsOperationInProgress.value = false
-      
-//       if (!response) {
-//         return reject(new Error('No response from server'))
-//       }
-      
-//       if (response?.status === 'ok') {
-//         console.log('✅ MWS operation successful')
-//         return resolve()
-//       }
-      
-//       // ✅ БОЛЕЕ ИНФОРМАТИВНЫЕ СООБЩЕНИЯ ОБ ОШИБКАХ
-//       let errorMessage = response?.error || 'MWS operation failed'
-      
-//       // ✅ СПЕЦИФИЧНЫЕ ОШИБКИ
-//       if (errorMessage.includes('vlanLocal')) {
-//         errorMessage = 'Network configuration error: missing VLAN settings'
-//       } else if (errorMessage.includes('device not found')) {
-//         errorMessage = 'Device not found or unavailable'
-//       } else if (errorMessage.includes('authentication')) {
-//         errorMessage = 'Authentication failed. Please check device passwords.'
-//       } else if (errorMessage.includes('timeout')) {
-//         errorMessage = 'Operation timeout. Device may be offline.'
-//       }
-      
-//       reject(new Error(errorMessage))
-//     })
-    
-//     setTimeout(() => {
-//       mwsOperationInProgress.value = false
-//       reject(new Error('Request timeout - device is slow to respond'))
-//     }, 20000) // Увеличиваем таймаут до 20 секунд
-//   })
-// }
 
 const handleModalSave = async ({ value, type, action, routerPassword, useDevicePassword, callback }) => {
   if (!selectedDevice.value) {

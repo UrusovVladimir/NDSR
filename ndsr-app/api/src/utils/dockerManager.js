@@ -117,7 +117,7 @@ export class DockerManager {
             }
             
             // ✅ ПРОВЕРЯЕМ КОНТЕЙНЕР
-            const checkContainerCmd = `sudo docker ps --filter "name=${containerName}" --format "{{.Names}}"`;
+            const checkContainerCmd = `docker ps --filter "name=${containerName}" --format "{{.Names}}" | grep -Ex "${containerName}"`
             const containerCheck = await this.sshManager.executeCommand(checkContainerCmd);
             const isContainerRunning = containerCheck.stdout.trim() === containerName;
             
@@ -172,6 +172,54 @@ export class DockerManager {
         }
     }
 
+    async waitForAPInDHCP(routerId, apMac, routerPassword = null, maxAttempts = 15, delay = 5000) {
+        console.log(`⏳ Ожидание появления AP ${apMac} в DHCP bindings...`);
+        
+        for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+            try {
+                console.log(`🔍 Попытка ${attempt}/${maxAttempts} поиска AP в DHCP...`);
+                
+                const router = getParamRouter(routerId);
+                const dhcpBindings = await makeAuthenticatedRequest(
+                    router.URL,
+                    'admin',
+                    routerPassword,
+                    '/rci/show/ip/dhcp/bindings',
+                    'GET'
+                );
+    
+                const normalizedMac = apMac.toLowerCase().replace(/:/g, '');
+                const apBinding = dhcpBindings?.lease?.find(binding => {
+                    if (!binding.mac) return false;
+                    const bindingMac = binding.mac.toLowerCase().replace(/:/g, '');
+                    return bindingMac === normalizedMac;
+                });
+    
+                if (apBinding && apBinding.ip) {
+                    console.log(`✅ AP найден в DHCP: ${apBinding.ip}`);
+                    return apBinding.ip;
+                }
+    
+                console.log(`⌛ AP еще не появился в DHCP bindings...`);
+                
+                if (attempt === maxAttempts) {
+                    throw new Error(`AP не появился в DHCP bindings после ${maxAttempts} попыток`);
+                }
+                
+                await new Promise(resolve => setTimeout(resolve, delay));
+                
+            } catch (error) {
+                console.log(`⚠️ Ошибка поиска AP в DHCP (попытка ${attempt}): ${error.message}`);
+                
+                if (attempt === maxAttempts) {
+                    throw error;
+                }
+                
+                await new Promise(resolve => setTimeout(resolve, delay));
+            }
+        }
+    }
+
     async setupPortForwarding(deviceId, routerId, device, routerPassword = null) {
         try {
             console.log(`🔧 Полная настройка проброса портов для extender'а ${deviceId} к роутеру ${routerId}`);
@@ -188,30 +236,51 @@ export class DockerManager {
                 routerId: routerId, 
                 routerIp: routerIp,
                 deviceMac: device.macAddress,
-                deviceIp: device.ip // ← Добавляем device.ip в логи
+                deviceIp: device.ip,
+                deviceType: device.type,
+                isAP: device.type === 'AP'
             });
-            // ✅ 1. ПОЛУЧАЕМ РЕАЛЬНЫЙ IP EXTENDER'А ИЗ DHCP ИЛИ ARP
+    
+            // ✅ ОПРЕДЕЛЯЕМ ТИП УСТРОЙСТВА
+            const isAPDevice = device.type === 'AP' && device.hWtype === 'true';
             let extenderIp;
-            try {
-                // Используем комбинированный метод с передачей device
-                extenderIp = await this.getExtenderIpCombined(routerId, device.macAddress, routerPassword, device);
-                console.log(`🔍 ОТЛАДКА IP:`);
-                console.log(`   - Полученный IP: ${extenderIp}`);
-                console.log(`   - IP роутера: ${routerIp}`);
-                console.log(`   - IP устройства из конфига: ${device.ip}`);
-                console.log(`   - Это IP роутера? ${extenderIp === routerIp}`);
-                console.log(`   - Это IP устройства? ${extenderIp === device.ip?.split('/')[0]}`);
+    
+            if (isAPDevice) {
+                // ✅ ДЛЯ AP УСТРОЙСТВ: ЖДЕМ DHCP И ПОЛУЧАЕМ ДИНАМИЧЕСКИЙ IP
+                console.log(`📡 AP устройство - ожидаем получение IP из DHCP...`);
                 
-            } catch (ipError) {
-                console.error(`❌ Не удалось получить IP экстендера: ${ipError.message}`);
-                
-                // ✅ ИСПРАВЛЕНИЕ: Сначала используем device.ip, потом router.ip
-                if (device && device.ip) {
-                    extenderIp = device.ip.split('/')[0];
-                    console.log(`🔄 Используем IP устройства из конфигурации: ${extenderIp}`);
-                } else {
-                    console.log(`🔄 Используем IP роутера как fallback: ${routerIp}`);
-                    extenderIp = routerIp;
+                try {
+                    // Ждем появления в DHCP
+                    extenderIp = await this.waitForAPInDHCP(routerId, device.macAddress, routerPassword);
+                    console.log(`✅ AP получил IP из DHCP: ${extenderIp}`);
+                    
+                } catch (dhcpError) {
+                    console.warn(`⚠️ Не удалось получить IP AP из DHCP: ${dhcpError.message}`);
+                    
+                    // Fallback: используем device.ip или router.ip
+                    if (device && device.ip) {
+                        extenderIp = device.ip.split('/')[0];
+                        console.log(`🔄 Используем IP устройства из конфигурации: ${extenderIp}`);
+                    } else {
+                        console.log(`🔄 Используем IP роутера как fallback: ${routerIp}`);
+                        extenderIp = routerIp;
+                    }
+                }
+            } else {
+                // ✅ ДЛЯ ОБЫЧНЫХ УСТРОЙСТВ: стандартная логика
+                try {
+                    extenderIp = await this.getExtenderIpCombined(routerId, device.macAddress, routerPassword, device);
+                    console.log(`✅ Получен IP устройства: ${extenderIp}`);
+                } catch (ipError) {
+                    console.error(`❌ Не удалось получить IP экстендера: ${ipError.message}`);
+                    
+                    if (device && device.ip) {
+                        extenderIp = device.ip.split('/')[0];
+                        console.log(`🔄 Используем IP устройства из конфигурации: ${extenderIp}`);
+                    } else {
+                        console.log(`🔄 Используем IP роутера как fallback: ${routerIp}`);
+                        extenderIp = routerIp;
+                    }
                 }
             }
     
@@ -221,20 +290,22 @@ export class DockerManager {
             
             console.log(`💾 Сохранены IP:`, {
                 extenderIp: extenderIp,
-                routerIp: routerIp
+                routerIp: routerIp,
+                deviceType: isAPDevice ? 'AP' : 'Standard'
             });
     
             // ✅ 2. НАСТРАИВАЕМ ПРОБРОС НА ХОСТЕ НА IP РОУТЕРА
             console.log(`🔧 ХОСТ: порт ${deviceId} -> ${routerIp}`);
             await this.manageHostFirewall(deviceId, routerIp, 'setup');
     
-            // ✅ 3. НАСТРАИВАЕМ ПРОБРОС В КОНТЕЙНЕРЕ НА РЕАЛЬНЫЙ IP EXTENDER'А
+            // ✅ 3. НАСТРАИВАЕМ ПРОБРОС В КОНТЕЙНЕРЕ НА РЕАЛЬНЫЙ IP УСТРОЙСТВА
             console.log(`🔧 КОНТЕЙНЕР: порт ${deviceId} -> ${extenderIp}:80`);
             await this.manageContainerFirewall(router.hwId, deviceId, extenderIp, 'setup');
     
             console.log(`✅ Пробросы настроены:`);
             console.log(`   🏠 ХОСТ: ${deviceId} -> ${routerIp}`);
             console.log(`   🐳 КОНТЕЙНЕР ${router.hwId}: ${deviceId} -> ${extenderIp}:80`);
+            console.log(`   📡 ТИП: ${isAPDevice ? 'AP (динамический IP)' : 'Standard'}`);
             
             return extenderIp;
     

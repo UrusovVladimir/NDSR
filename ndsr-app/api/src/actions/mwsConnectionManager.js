@@ -2,10 +2,9 @@ import { SSHManager } from "../actions/sshManager.js";
 import { DockerManager } from "../utils/dockerManager.js";
 import { HOST_CONFIG } from "../utils/hostConfig.js";
 import { getDeviceById, getParamRouter } from "../devices.js";
-import { IpDiscoveryService } from "../utils/ipDiscovery.js"; // ✅ ПРАВИЛЬНЫЙ ИМПОРТ
+import { IpDiscoveryService } from "../utils/ipDiscovery.js"; 
 
 export class MWSConnectionManager {
-    // ✅ ТЕПЕРЬ ЭТИ МЕТОДЫ БУДУТ РАБОТАТЬ
     static async getExtenderIpFromRouter(routerId, extenderMac, routerPassword = null, maxAttempts = 10, delay = 5000) {
         return await IpDiscoveryService.getExtenderIpFromRouter(routerId, extenderMac, routerPassword, maxAttempts, delay);
     }
@@ -21,99 +20,165 @@ export class MWSConnectionManager {
     static normalizeMac(mac) {
         return IpDiscoveryService.normalizeMac(mac);
     }
-
-    // ✅ ОСТАВИТЬ ТОЛЬКО УНИКАЛЬНЫЕ МЕТОДЫ MWSConnectionManager:
-    
-
-static async setupMWSConnection(extenderId, routerId, devicePassword = null, routerPassword = null) {
-    let sshManager = null;
-    
-    try {
-        console.log(`🔗 Настройка MWS подключения: extender ${extenderId} -> router ${routerId}`);
+    static async setupMWSConnection(extenderId, routerId, devicePassword = null, routerPassword = null) {
+        let sshManager = null;
         
-        const device = getDeviceById(extenderId);
-        const router = getParamRouter(routerId);
-        
-        if (!device || !router) {
-            throw new Error(`Устройство или роутер не найдены`);
-        }
-
-        console.log(`📋 Параметры подключения:`, {
-            extender: device.hwId,
-            router: router.hwId,
-            extenderMac: device.macAddress
-        });
-
-        // ✅ РАЗДЕЛЯЕМ IP ДЛЯ ХОСТА И КОНТЕЙНЕРА
-        let hostTargetIp = router.ip.split('/')[0]; // IP роутера для хоста
-        let containerTargetIp; // Реальный IP устройства для контейнера
-
-        console.log(`🔧 Получаем реальный IP устройства для контейнера...`);
         try {
-            // ✅ ПОЛУЧАЕМ РЕАЛЬНЫЙ IP УСТРОЙСТВА ИЗ DHCP ДЛЯ КОНТЕЙНЕРА
-            containerTargetIp = await this.getExtenderIpFromRouter(routerId, device.macAddress, routerPassword, 5, 3000);
-            console.log(`✅ Получен реальный IP устройства для контейнера: ${containerTargetIp}`);
+            console.log(`🔗 Настройка MWS подключения: extender ${extenderId} -> router ${routerId}`);
             
-        } catch (ipError) {
-            console.warn(`⚠️ Не удалось получить реальный IP устройства: ${ipError.message}`);
-            console.log(`🔄 Используем IP роутера и для контейнера: ${hostTargetIp}`);
-            containerTargetIp = hostTargetIp;
-        }
-
-        console.log(`🎯 Финальные IP для пробросов:`, {
-            hostTarget: hostTargetIp,      // Для хоста - IP роутера
-            containerTarget: containerTargetIp // Для контейнера - реальный IP устройства
-        });
-
-        // ✅ ПОДКЛЮЧАЕМСЯ ПО SSH
-        sshManager = new SSHManager(
-            HOST_CONFIG.mainHost.host,
-            HOST_CONFIG.mainHost.port,
-            HOST_CONFIG.mainHost.username,
-            HOST_CONFIG.mainHost.privateKeyPath
-        );
-        
-        await sshManager.connect();
-        console.log(`✅ SSH подключение установлено`);
-        
-        // ✅ ИНИЦИАЛИЗИРУЕМ DOCKER MANAGER
-        const dockerManager = new DockerManager(sshManager);
-        console.log(`✅ DockerManager инициализирован`);
-
-        // ✅ ШАГ 1: НАСТРАИВАЕМ ПРОБРОС НА ХОСТЕ (на IP роутера)
-        console.log(`🔧 Настраиваем проброс портов на хосте...`);
-        console.log(`   → Хост: порт ${extenderId} -> ${hostTargetIp}:80`);
-        await dockerManager.manageHostFirewall(extenderId, hostTargetIp, 'setup', hostTargetIp);
-
-        // ✅ ШАГ 2: НАСТРАИВАЕМ ПРОБРОС В КОНТЕЙНЕРЕ (на реальный IP устройства)
-        console.log(`🔧 Настраиваем проброс портов в контейнере роутера...`);
-        console.log(`   → Контейнер: порт ${extenderId} -> ${containerTargetIp}:80`);
-        await dockerManager.manageContainerFirewall(router.hwId, extenderId, containerTargetIp, 'setup');
-
-        console.log(`✅ MWS подключение настроено:`);
-        console.log(`   - Хост: порт ${extenderId} -> ${hostTargetIp}:80`);
-        console.log(`   - Контейнер: порт ${extenderId} -> ${containerTargetIp}:80`);
-        
-        return {
-            success: true,
-            hostTargetIp: hostTargetIp,
-            containerTargetIp: containerTargetIp,
-            routerIp: router.ip,
-            port: extenderId,
-            routerContainer: router.hwId
-        };
-
-    } catch (error) {
-        console.error(`❌ Ошибка настройки MWS подключения:`, error);
-        throw error;
-    } finally {
-        if (sshManager) {
-            sshManager.disconnect();
-            console.log(`🔧 SSH подключение закрыто`);
+            const device = getDeviceById(extenderId);
+            const router = getParamRouter(routerId);
+            
+            if (!device || !router) {
+                throw new Error(`Устройство или роутер не найдены`);
+            }
+    
+            console.log(`📋 Параметры подключения:`, {
+                extender: device.hwId,
+                router: router.hwId,
+                extenderMac: device.macAddress,
+                deviceType: device.type,
+                isAP: device.type === 'AP'
+            });
+    
+            // ✅ ОПРЕДЕЛЯЕМ ТИП УСТРОЙСТВА
+            const isAPDevice = device.type === 'AP' && device.hWtype === 'true';
+            
+            let hostTargetIp = router.ip.split('/')[0]; // IP роутера для хоста
+            let containerTargetIp; // IP для контейнера
+    
+            console.log(`🔧 Получаем реальный IP устройства для контейнера...`);
+            
+            if (isAPDevice) {
+                // ✅ ДЛЯ AP УСТРОЙСТВ: ЖДЕМ ПОЛУЧЕНИЯ IP ИЗ DHCP
+                console.log(`📡 AP устройство - ожидаем получение IP из DHCP...`);
+                
+                try {
+                    // Ждем появления AP в DHCP bindings
+                    await this.waitForAPInDHCP(routerId, device.macAddress, routerPassword);
+                    
+                    // Получаем реальный IP AP из DHCP
+                    containerTargetIp = await this.getExtenderIpFromRouter(routerId, device.macAddress, routerPassword, 8, 5000);
+                    console.log(`✅ AP получил IP из DHCP: ${containerTargetIp}`);
+                    
+                } catch (dhcpError) {
+                    console.warn(`⚠️ Не удалось получить IP AP из DHCP: ${dhcpError.message}`);
+                    console.log(`🔄 Используем IP роутера для контейнера: ${hostTargetIp}`);
+                    containerTargetIp = hostTargetIp;
+                }
+            } else {
+                // ✅ ДЛЯ ОБЫЧНЫХ УСТРОЙСТВ: стандартная логика
+                try {
+                    containerTargetIp = await this.getExtenderIpFromRouter(routerId, device.macAddress, routerPassword, 5, 3000);
+                    console.log(`✅ Получен реальный IP устройства для контейнера: ${containerTargetIp}`);
+                } catch (ipError) {
+                    console.warn(`⚠️ Не удалось получить реальный IP устройства: ${ipError.message}`);
+                    console.log(`🔄 Используем IP роутера для контейнера: ${hostTargetIp}`);
+                    containerTargetIp = hostTargetIp;
+                }
+            }
+    
+            console.log(`🎯 Финальные IP для пробросов:`, {
+                hostTarget: hostTargetIp, 
+                containerTarget: containerTargetIp,
+                deviceType: isAPDevice ? 'AP' : 'Standard'
+            });
+    
+            // ✅ ПОДКЛЮЧАЕМСЯ ПО SSH
+            sshManager = new SSHManager(
+                HOST_CONFIG.mainHost.host,
+                HOST_CONFIG.mainHost.port,
+                HOST_CONFIG.mainHost.username,
+                HOST_CONFIG.mainHost.privateKeyPath
+            );
+            
+            await sshManager.connect();
+            console.log(`✅ SSH подключение установлено`);
+            
+            // ✅ ИНИЦИАЛИЗИРУЕМ DOCKER MANAGER
+            const dockerManager = new DockerManager(sshManager);
+            console.log(`✅ DockerManager инициализирован`);
+    
+            // ✅ ШАГ 1: НАСТРАИВАЕМ ПРОБРОС НА ХОСТЕ (на IP роутера)
+            console.log(`🔧 Настраиваем проброс портов на хосте...`);
+            console.log(`   → Хост: порт ${extenderId} -> ${hostTargetIp}:80`);
+            await dockerManager.manageHostFirewall(extenderId, hostTargetIp, 'setup');
+    
+            // ✅ ШАГ 2: НАСТРАИВАЕМ ПРОБРОС В КОНТЕЙНЕРЕ
+            console.log(`🔧 Настраиваем проброс портов в контейнере роутера...`);
+            console.log(`   → Контейнер: порт ${extenderId} -> ${containerTargetIp}:80`);
+            await dockerManager.manageContainerFirewall(router.hwId, extenderId, containerTargetIp, 'setup');
+    
+            console.log(`✅ MWS подключение настроено:`);
+            console.log(`   - Хост: порт ${extenderId} -> ${hostTargetIp}:80`);
+            console.log(`   - Контейнер: порт ${extenderId} -> ${containerTargetIp}:80`);
+            console.log(`   - Тип устройства: ${isAPDevice ? 'AP (динамический IP)' : 'Standard'}`);
+            
+            return {
+                success: true,
+                hostTargetIp: hostTargetIp,
+                containerTargetIp: containerTargetIp,
+                routerIp: router.ip,
+                port: extenderId,
+                routerContainer: router.hwId,
+                isAPDevice: isAPDevice
+            };
+    
+        } catch (error) {
+            console.error(`❌ Ошибка настройки MWS подключения:`, error);
+            throw error;
+        } finally {
+            if (sshManager) {
+                sshManager.disconnect();
+                console.log(`🔧 SSH подключение закрыто`);
+            }
         }
     }
-}
 
+
+    static async waitForAPInDHCP(routerId, apMac, routerPassword = null, maxAttempts = 15, delay = 5000) {
+        console.log(`⏳ Ожидание появления AP ${apMac} в DHCP bindings...`);
+        
+        for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+            try {
+                console.log(`🔍 Попытка ${attempt}/${maxAttempts} поиска AP в DHCP...`);
+                
+                const dhcpBindings = await IpDiscoveryService.getDhcpBindingsSmart(
+                    getParamRouter(routerId).URL, 
+                    routerPassword
+                );
+    
+                const normalizedMac = IpDiscoveryService.normalizeMac(apMac);
+                const apBinding = dhcpBindings?.lease?.find(binding => 
+                    binding.mac && IpDiscoveryService.normalizeMac(binding.mac) === normalizedMac
+                );
+    
+                if (apBinding && apBinding.ip) {
+                    console.log(`✅ AP найден в DHCP: ${apBinding.ip}`);
+                    return apBinding.ip;
+                }
+    
+                console.log(`⌛ AP еще не появился в DHCP bindings...`);
+                
+                if (attempt === maxAttempts) {
+                    throw new Error(`AP не появился в DHCP bindings после ${maxAttempts} попыток`);
+                }
+                
+                await new Promise(resolve => setTimeout(resolve, delay));
+                
+            } catch (error) {
+                console.log(`⚠️ Ошибка поиска AP в DHCP (попытка ${attempt}): ${error.message}`);
+                
+                if (attempt === maxAttempts) {
+                    throw error;
+                }
+                
+                await new Promise(resolve => setTimeout(resolve, delay));
+            }
+        }
+    }
+
+    
 static async removeMWSConnection(extenderId, routerId) {
     let sshManager = null;
     
