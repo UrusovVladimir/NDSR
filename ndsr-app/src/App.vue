@@ -1,6 +1,6 @@
 <template>
   <div class="app-container">
-    <Toast />
+    <Toast position="bottom-right" style="right:15px;" />
     <GlobalProgressDialog />
     <PrimeDeviceModal 
       ref="faqModal"

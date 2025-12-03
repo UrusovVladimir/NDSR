@@ -56,9 +56,6 @@ async function getDeviceStatusCode(device, customUrl = null) {
     return statusCode
 }
 
-// function getDeviceById(id) {
-//     return devices.find(device => device.id == String(id))
-// }
 function getDeviceById(id) {
     console.log('🔍 getDeviceById called with:', { id, type: typeof id });
     

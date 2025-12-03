@@ -36,10 +36,6 @@ io.on("connection", (socket) => {
     });
 });
 
-// ❌ УБРАТЬ ЭТУ СТРОКУ - сервер уже запущен при создании new Server(WS_PORT)
-// io.listen(WS_PORT);
-
-// ✅ БОЛЕЕ ЧАСТАЯ ПРОВЕРКА СТАТУСОВ
 const interval = setInterval(() => {
     try {
         broadcastDevicesStatus(io);

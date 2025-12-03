@@ -1,4 +1,3 @@
-// stores/useClipboardStore.js
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import { useToast } from 'primevue/usetoast'
