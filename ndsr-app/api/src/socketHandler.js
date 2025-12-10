@@ -1220,16 +1220,20 @@ socket.on('device:book', async (data, callback) => {
             sendMwsProgress(io, deviceId, 75, 'device_reboot'); // ← ЭТОТ ШАГ ДОЛЖЕН ОТПРАВЛЯТЬСЯ
             
             // ✅ ОТПРАВЛЯЕМ КОМАНДУ ПЕРЕЗАГРУЗКИ УСТРОЙСТВА
+            console.log(`Устройство перезагружается ${deviceId}`)
             try {
-                await makeAuthenticatedRequest(
-                    device.URL,
-                    'admin',
-                    devicePassword,
-                    '/rci/system/reboot',
-                    'POST',
-                    {}
-                );
-                console.log(`✅ Reboot command sent to device ${deviceId}`);
+            await rebootDevice(deviceId)
+
+                // await makeAuthenticatedRequest(
+                //     device.URL,
+                //     'admin',
+                //     devicePassword,
+                //     '/rci/system/reboot',
+                //     'POST',
+                //     {}
+                // );
+
+                console.log(`✅ Reboot command sent to device ${deviceId}`, `И его URL равен ${device.URL}`);
                 
                 // ✅ УВЕЛИЧИВАЕМ ВРЕМЯ ОЖИДАНИЯ ПЕРЕЗАГРУЗКИ ДО 60 СЕКУНД (1 МИНУТА)
                 console.log(`⏳ Waiting for device ${deviceId} to reboot (60 seconds)...`);
