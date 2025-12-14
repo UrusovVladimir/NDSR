@@ -9,6 +9,69 @@ import { DisconnectManager } from "../utils/disconnectManager.js";
 
 const universalPromptRegex = /.*[# ]/i;
 
+// ✅ ФУНКЦИЯ ДЛЯ ПОЛУЧЕНИЯ ПРАВИЛЬНОГО URL ДЛЯ УСТРОЙСТВА
+function getCorrectDeviceUrl(deviceId, scenario = 'status', targetMode = null) {
+    const device = getDeviceById(deviceId);
+    if (!device) {
+        console.error(`❌ Устройство ${deviceId} не найдено`);
+        return null;
+    }
+    
+    console.log(`🔍 Получение URL для устройства ${deviceId}:`);
+    console.log(`   - Сценарий: ${scenario}`);
+    console.log(`   - Целевой режим: ${targetMode || 'не указан'}`);
+    console.log(`   - CheckDeviceMode: ${device.checkDeviceMode}`);
+    console.log(`   - CheckUrl: ${device.checkUrl}`);
+    console.log(`   - URL: ${device.URL}`);
+    
+    // ✅ ЛОГИКА:
+    // 1. Для смены режима на 'router' -> ВСЕГДА используем прямой URL (checkDeviceMode)
+    // 2. Для смены режима на 'extender_connect' -> используем URL через роутер
+    // 3. Для проверки статуса -> в зависимости от текущего режима
+    
+    if (scenario === 'mode_change') {
+        if (targetMode === 'router') {
+            // ✅ ПЕРЕВОД В ROUTER: ВСЕГДА используем прямой URL
+            const directUrl = device.checkDeviceMode || device.checkUrl || device.URL;
+            console.log(`🔧 Для перевода в router используем прямой URL: ${directUrl}`);
+            return directUrl;
+        } else if (targetMode === 'extender_connect' || targetMode === 'extender_disconnect') {
+            // ✅ ДЛЯ ПОДКЛЮЧЕНИЯ/ОТКЛЮЧЕНИЯ: используем через роутер
+            // Предполагаем, что routerId есть в контексте, или нужно передать его
+            // Пока возвращаем стандартный URL, но эта логика должна быть дополнена
+            const defaultUrl = device.checkUrl || device.URL;
+            console.log(`🔧 Для ${targetMode} используем URL: ${defaultUrl}`);
+            return defaultUrl;
+        }
+    }
+    
+    // ✅ По умолчанию возвращаем стандартный URL
+    const defaultUrl = device.checkUrl || device.URL;
+    console.log(`🔧 Используем URL по умолчанию: ${defaultUrl}`);
+    return defaultUrl;
+}
+
+// ✅ ФУНКЦИЯ ДЛЯ ПОЛУЧЕНИЯ URL ЧЕРЕЗ РОУТЕР
+function getRouterUrlForDevice(deviceId, routerId) {
+    const device = getDeviceById(deviceId);
+    const router = getParamRouter(routerId);
+    
+    if (!device || !router) {
+        console.log(`❌ Устройство ${deviceId} или роутер ${routerId} не найдены`);
+        return null;
+    }
+    
+    if (router && router.ip) {
+        const routerIp = router.ip.split('/')[0];
+        const url = `http://${routerIp}:${deviceId}`;
+        console.log(`🔧 URL через роутер ${routerId} для устройства ${deviceId}: ${url}`);
+        return url;
+    }
+    
+    console.log(`⚠️ Роутер ${routerId} не имеет IP`);
+    return device.checkUrl || device.URL;
+}
+
 // ✅ ФУНКЦИЯ ДЛЯ ОТПРАВКИ СТАТУСА (принимает io как параметр)
 function broadcastDeviceStatus(io, deviceId, status) {
     try {
@@ -26,27 +89,6 @@ function broadcastDeviceStatus(io, deviceId, status) {
         console.error(`❌ Ошибка отправки статуса:`, error);
     }
 }
-
-// // ✅ ФУНКЦИЯ ДЛЯ ПОЛУЧЕНИЯ ПРАВИЛЬНОГО URL ДЛЯ УСТРОЙСТВА
-// function getCorrectDeviceUrl(deviceId, routerId = null) {
-//     const device = getDeviceById(deviceId);
-//     if (!device) {
-//         console.error(`❌ Устройство ${deviceId} не найдено`);
-//         return null;
-//     }
-    
-//     // ✅ Если указан роутер и режим предполагает подключение через него
-//     if (routerId) {
-//         const router = getParamRouter(routerId);
-//         if (router && router.ip) {
-//             const routerIp = router.ip.split('/')[0];
-//             return `http://${routerIp}:${deviceId}`;
-//         }
-//     }
-    
-//     // ✅ Иначе используем прямой URL устройства
-//     return device.URL;
-// }
 
 export const checkDeviceMode = async (url, login, password) => {
     try {
@@ -410,11 +452,11 @@ async function waitForDeviceBoot(io, deviceUrl, deviceId, routerId = null, mode 
 }
 
 // ✅ ОСНОВНАЯ ФУНКЦИЯ СМЕНЫ РЕЖИМА (принимает io)
-export const changeSystemMode = async (deviceId, routerId, mode, password, routerPassword = null, io = null) => {
+export const changeSystemMode = async (deviceId, routerId, mode, password, routerPassword = null, io = null, connectionType = 'direct', targetUrl = null) => {
     let currentMode;
     
     try {
-        console.log(`🔄 Смена режима для устройства ${deviceId} на ${mode}`);
+        console.log(`🔄 Смена режима для устройства ${deviceId} на ${mode} (connectionType: ${connectionType})`);
         
         const device = getDeviceById(deviceId);
         if (!device) {
@@ -423,6 +465,27 @@ export const changeSystemMode = async (deviceId, routerId, mode, password, route
 
         if (!password) {
             throw new Error(`Пароль устройства не указан`);
+        }
+
+        // ✅ ОПРЕДЕЛЯЕМ ПРАВИЛЬНЫЙ URL
+        let url;
+        if (targetUrl) {
+            // ✅ ЕСЛИ URL ПЕРЕДАН ЯВНО - ИСПОЛЬЗУЕМ ЕГО
+            url = targetUrl;
+            console.log(`🔧 Используем явно переданный URL: ${url}`);
+        } else if (connectionType === 'router' && routerId) {
+            // ✅ Используем URL через роутер
+            const router = getParamRouter(routerId);
+            if (!router || !router.ip) {
+                throw new Error(`Роутер ${routerId} не найден или не имеет IP`);
+            }
+            const routerIp = router.ip.split('/')[0];
+            url = `http://${routerIp}:${deviceId}`;
+            console.log(`🔧 Используем URL через роутер ${routerId}: ${url}`);
+        } else {
+            // ✅ Используем прямой URL
+            url = device.checkDeviceMode || device.checkUrl || device.URL;
+            console.log(`🔧 Используем прямой URL: ${url}`);
         }
 
         // ✅ ОТПРАВЛЯЕМ СТАТУС "В ПРОЦЕССЕ" ПЕРЕД НАЧАЛОМ ОПЕРАЦИИ
@@ -435,23 +498,10 @@ export const changeSystemMode = async (deviceId, routerId, mode, password, route
             finalRouterPassword = password;
         }
 
-        const url = device.URL;
         const login = 'admin';
 
         // ✅ ШАГ 1: Проверяем текущий режим
-        let initialCheckUrl = url;
-        const tempModeCheck = await checkDeviceMode(url, login, password);
-        if (tempModeCheck.success && tempModeCheck.mode === 'extender_connect' && routerId) {
-            const router = getParamRouter(routerId);
-            if (router && router.ip) {
-                const routerIp = router.ip.split('/')[0];
-                const extenderPort = deviceId;
-                initialCheckUrl = `http://${routerIp}:${extenderPort}`;
-                console.log(`🔧 Для проверки текущего режима extender+router используем URL: ${initialCheckUrl}`);
-            }
-        }
-
-        const currentModeResult = await checkDeviceMode(initialCheckUrl, login, password);
+        const currentModeResult = await checkDeviceMode(url, login, password);
         if (!currentModeResult.success) {
             throw new Error(`Не удалось проверить текущий режим: ${currentModeResult.message}`);
         }
@@ -478,9 +528,6 @@ export const changeSystemMode = async (deviceId, routerId, mode, password, route
 
         console.log(`🔄 Отправка команды перезагрузки...`);
         await makeAuthenticatedRequest(url, login, password, '/rci/system/reboot', 'POST', {});
-
-        // ✅ ОТПРАВЛЯЕМ СТАТУС "PENDING" ПОСЛЕ ПЕРЕЗАГРУЗКИ
-        broadcastDeviceStatus(io, deviceId, 0);
 
         // ✅ ШАГ 5: MWS ПОДКЛЮЧЕНИЕ ТОЛЬКО ЕСЛИ УКАЗАН ROUTER_ID ДЛЯ EXTENDER
         if (mode === 'extender' && routerId) {
@@ -523,37 +570,15 @@ export const changeSystemMode = async (deviceId, routerId, mode, password, route
         console.log(`⏳ Дополнительная пауза для стабилизации устройства...`);
         await new Promise(resolve => setTimeout(resolve, 5000));
 
-        // ✅ ШАГ 7: Ждем полной загрузки устройства С ПРАВИЛЬНЫМ URL
+        // ✅ ШАГ 7: Ждем полной загрузки устройства
         console.log(`⏳ Ожидание полной загрузки устройства...`);
         
-        // ✅ ОПРЕДЕЛЯЕМ ПРАВИЛЬНЫЙ URL ДЛЯ ПРОВЕРКИ ЗАГРУЗКИ
-        let bootCheckUrl = url;
-        if (mode === 'extender' && routerId) {
-            const router = getParamRouter(routerId);
-            if (router && router.ip) {
-                const routerIp = router.ip.split('/')[0];
-                bootCheckUrl = `http://${routerIp}:${deviceId}`;
-                console.log(`🔧 Для проверки загрузки экстендера используем URL: ${bootCheckUrl}`);
-            }
-        }
-        
-        await waitForDeviceBoot(io, bootCheckUrl, deviceId, routerId, mode, 30, 10000);
+        await waitForDeviceBoot(io, url, deviceId, routerId, mode, 30, 10000);
 
         // ✅ ШАГ 8: ФИНАЛЬНАЯ ПРОВЕРКА И ОТПРАВКА СТАТУСА
         console.log(`🔧 Финальная проверка статуса устройства...`);
         try {
-            // ✅ ИСПРАВЛЕНО: Используем ПРАВИЛЬНЫЙ URL для проверки статуса
-            let statusCheckUrl = url;
-            if (mode === 'extender' && routerId) {
-                const router = getParamRouter(routerId);
-                if (router && router.ip) {
-                    const routerIp = router.ip.split('/')[0];
-                    statusCheckUrl = `http://${routerIp}:${deviceId}`;
-                    console.log(`🔧 Проверка статуса экстендера через роутер: ${statusCheckUrl}`);
-                }
-            }
-            
-            const finalDeviceStatus = await getDeviceStatusCode(device, statusCheckUrl);
+            const finalDeviceStatus = await getDeviceStatusCode(device, url);
             console.log(`🎯 Финальный статус устройства: ${finalDeviceStatus}`);
             
             // ✅ ГАРАНТИРОВАННАЯ ОТПРАВКА ФИНАЛЬНОГО СТАТУСА
@@ -569,21 +594,10 @@ export const changeSystemMode = async (deviceId, routerId, mode, password, route
             broadcastDeviceStatus(io, deviceId, 0);
         }
 
-        // ✅ ШАГ 9: Проверяем новый режим после перезагрузки С ПРАВИЛЬНЫМ URL
+        // ✅ ШАГ 9: Проверяем новый режим после перезагрузки
         console.log(`🔧 Проверка нового режима после перезагрузки...`);
 
-        // ✅ ОПРЕДЕЛЯЕМ ПРАВИЛЬНЫЙ URL ДЛЯ ПРОВЕРКИ РЕЖИМА
-        let modeCheckUrl = url;
-        if (mode === 'extender' && routerId) {
-            const router = getParamRouter(routerId);
-            if (router && router.ip) {
-                const routerIp = router.ip.split('/')[0];
-                modeCheckUrl = `http://${routerIp}:${deviceId}`;
-                console.log(`🔧 Для проверки режима extender+router используем URL: ${modeCheckUrl}`);
-            }
-        }
-
-        const newModeResult = await checkDeviceMode(modeCheckUrl, login, password);
+        const newModeResult = await checkDeviceMode(url, login, password);
                 
         let finalMessage = `Режим успешно изменен на ${mode}. Устройство перезагружено.`;
 
@@ -615,13 +629,34 @@ export const changeSystemMode = async (deviceId, routerId, mode, password, route
     }
 };
 
-export const disconnectAndChangeToRouter = async (deviceId, routerId, password, routerPassword = null, io = null) => {
+export const disconnectAndChangeToRouter = async (deviceId, routerId, password, routerPassword = null, io = null, connectionType = 'router', targetUrl = null) => {
     try {
-        console.log(`🔄 Отключение экстендера ${deviceId} и перевод в режим router`);
+        console.log(`🔄 Отключение экстендера ${deviceId} и перевод в режим router (connectionType: ${connectionType})`);
         
         const device = getDeviceById(deviceId);
         if (!device) {
             throw new Error(`Устройство ${deviceId} не найдено`);
+        }
+
+        // ✅ ОПРЕДЕЛЯЕМ URL В ЗАВИСИМОСТИ ОТ ТИПА ПОДКЛЮЧЕНИЯ
+        let url;
+        if (targetUrl) {
+            // ✅ ЕСЛИ URL ПЕРЕДАН ЯВНО - ИСПОЛЬЗУЕМ ЕГО
+            url = targetUrl;
+            console.log(`🔧 Используем явно переданный URL: ${url}`);
+        } else if (connectionType === 'router' && routerId) {
+            // ✅ Используем URL через роутер
+            const router = getParamRouter(routerId);
+            if (!router || !router.ip) {
+                throw new Error(`Роутер ${routerId} не найден или не имеет IP`);
+            }
+            const routerIp = router.ip.split('/')[0];
+            url = `http://${routerIp}:${deviceId}`;
+            console.log(`🔧 Для отключения используем URL через роутер: ${url}`);
+        } else {
+            // ✅ Используем прямой URL
+            url = device.checkDeviceMode || device.checkUrl || device.URL;
+            console.log(`🔧 Для отключения используем прямой URL: ${url}`);
         }
 
         // ✅ ОТПРАВЛЯЕМ СТАТУС "В ПРОЦЕССЕ"
@@ -629,7 +664,7 @@ export const disconnectAndChangeToRouter = async (deviceId, routerId, password, 
 
         // ✅ ИСПОЛЬЗУЕМ ПОЛНОЕ ОТКЛЮЧЕНИЕ ИЗ DISCONNECT MANAGER
         console.log(`🔧 Запускаем полное отключение через DisconnectManager...`);
-        await DisconnectManager.fullDisconnect(deviceId, routerId, password);
+        await DisconnectManager.fullDisconnect(deviceId, routerId, password, url);
 
         // ✅ ВАЖНОЕ ИСПРАВЛЕНИЕ: ДАЕМ ВРЕМЯ НА ПЕРЕЗАГРУЗКУ ПЕРЕД ПРОВЕРКОЙ
         console.log(`⏳ Даем время на перезагрузку устройства (30 секунд)...`);
@@ -639,12 +674,29 @@ export const disconnectAndChangeToRouter = async (deviceId, routerId, password, 
         console.log(`⏳ Ожидание полной загрузки устройства в режиме router...`);
         
         // ✅ ДЛЯ ROUTER РЕЖИМА ИСПОЛЬЗУЕМ ПРЯМОЙ URL
-        await waitForDeviceBoot(io, device.URL, deviceId, null, 'router', 30, 10000);
+        const directUrl = device.checkDeviceMode || device.checkUrl || device.URL;
+        
+        // ✅ УПРОЩЕННАЯ ПРОВЕРКА: делаем быструю проверку вместо долгого ожидания
+        let deviceOnline = false;
+        for (let attempt = 1; attempt <= 10; attempt++) {
+          try {
+            await new Promise(resolve => setTimeout(resolve, 5000));
+            const finalDeviceStatus = await getDeviceStatusCode(device, directUrl);
+            console.log(`📊 Проверка доступности ${deviceId} (${attempt}/10): ${finalDeviceStatus}`);
+            
+            if (finalDeviceStatus === 200) {
+              deviceOnline = true;
+              console.log(`✅ Устройство ${deviceId} доступно после отключения`);
+              break;
+            }
+          } catch (error) {
+            console.log(`⚠️ Проверка ${attempt} не удалась:`, error.message);
+          }
+        }
 
-        // ✅ ДОПОЛНИТЕЛЬНАЯ ПРОВЕРКА И ОТПРАВКА СТАТУСА
-        console.log(`🔧 Финальная проверка статуса устройства...`);
+        // ✅ ОТПРАВЛЯЕМ ФИНАЛЬНЫЙ СТАТУС
         try {
-            const finalDeviceStatus = await getDeviceStatusCode(device);
+            const finalDeviceStatus = deviceOnline ? 200 : 0;
             console.log(`🎯 Финальный статус устройства: ${finalDeviceStatus}`);
             
             broadcastDeviceStatus(io, deviceId, finalDeviceStatus);
@@ -676,7 +728,8 @@ export const disconnectAndChangeToRouter = async (deviceId, routerId, password, 
             newMode: 'router',
             mwsConnected: false,
             modeChanged: true,
-            rebooted: true
+            rebooted: true,
+            deviceOnline: deviceOnline // ✅ ВАЖНО: сообщаем что устройство онлайн
         };
 
     } catch (error) {
@@ -691,6 +744,7 @@ export const disconnectAndChangeToRouter = async (deviceId, routerId, password, 
                 previousMode: 'extender', 
                 newMode: 'router',
                 mwsConnected: false,
+                deviceOnline: false, // ✅ Устройство еще не online
                 warning: 'Device is rebooting'
             };
         }

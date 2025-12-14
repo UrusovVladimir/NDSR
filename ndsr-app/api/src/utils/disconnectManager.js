@@ -14,38 +14,52 @@ export class DisconnectManager {
     /**
      * ПРАВИЛЬНЫЙ порядок отключения extender'а
      */
-    static async fullDisconnect(deviceId, routerId, devicePassword = null, deviceURL = null) {
+    static async fullDisconnect(deviceId, routerId, password, deviceUrl = null) {
+        console.log(`🔧 Полное отключение extender'а ${deviceId} от роутера ${routerId}`);
+        
+        const device = getDeviceById(deviceId);
+        const router = getParamRouter(routerId);
+        
+        if (!device || !router) {
+            throw new Error(`Устройство ${deviceId} или роутер ${routerId} не найдены`);
+        }
+        
+        // ✅ Используем переданный URL или получаем стандартный
+        let finalDeviceUrl = deviceUrl;
+        if (!finalDeviceUrl) {
+            finalDeviceUrl = device.checkDeviceMode || device.checkUrl || device.URL;
+            console.log(`🔧 URL не передан, используем из конфига: ${finalDeviceUrl}`);
+        } else {
+            console.log(`🔧 Используем переданный URL для отключения: ${finalDeviceUrl}`);
+        }
+        
+        // ✅ ПОЛУЧАЕМ ПАРОЛЬ УСТРОЙСТВА
+        let devicePassword = password;
+        if (!devicePassword) {
+            throw new Error(`Пароль устройства не указан для отключения`);
+        }
+            
+        console.log(`📋 Device info:`, {
+            id: device.id,
+            deviceURL: finalDeviceUrl, // ✅ Переданный URL
+            checkDeviceMode: device.checkDeviceMode, // Из конфига (10.10.19.2:4910)
+            checkUrl: device.checkUrl, // Из конфига (172.16.78.254:4910)
+            URL: device.URL, // Из конфига
+            macAddress: device.macAddress,
+            vlanLocal: device.vlanLocal,
+            switchPortLan: device.switchPortLan
+        });
+
         try {
-            console.log(`🔧 Полное отключение extender'а ${deviceId} от роутера ${routerId}`);
-            
-            const device = getDeviceById(deviceId);
-            const router = getParamRouter(routerId);
-            
-            if (!device || !router) {
-                throw new Error(`Устройство или роутер не найдены`);
-            }
-    
-            console.log(`📋 Device info:`, {
-                id: device.id,
-                deviceURL: deviceURL, // ✅ Переданный URL
-                checkDeviceMode: device.checkDeviceMode, // Из конфига (10.10.19.16)
-                checkUrl: device.checkUrl, // Из конфига (172.16.78.254)
-                URL: device.URL, // Из конфига
-                macAddress: device.macAddress,
-                vlanLocal: device.vlanLocal,
-                switchPortLan: device.switchPortLan
-            });
-    
-    
             // ✅ ШАГ 1: СНАЧАЛА ОТПРАВЛЯЕМ КОМАНДУ СМЕНЫ РЕЖИМА
             console.log(`🔄 ШАГ 1: Отправляем команду смены режима на устройство...`);
-            await this.sendModeChangeCommand(device, devicePassword, deviceURL);
+            await this.sendModeChangeCommand(device, devicePassword, finalDeviceUrl);
             
             // ✅ ШАГ 2: ЖДЕМ ГАРАНТИРОВАННОГО ПОЛУЧЕНИЯ КОМАНДЫ
             console.log(`⏳ ШАГ 2: Ждем гарантированного получения команды устройством... (15 секунд)`);
             await new Promise(resolve => setTimeout(resolve, 15000));
 
-            // ✅ ШАГ 3: ПЕРЕНАСТРАИВАЕМ СВИЧ (РАСКОММЕНТИРОВАТЬ!)
+            // ✅ ШАГ 3: ПЕРЕНАСТРАИВАЕМ СВИЧ
             console.log(`🔧 ШАГ 3: Перенастраиваем свич...`);
             await this.reconfigureSwitchWithLocalVlan(deviceId, routerId);
 
@@ -55,7 +69,10 @@ export class DisconnectManager {
 
             // ✅ ШАГ 5: ЖДЕМ ПОЛНОЙ ПЕРЕЗАГРУЗКИ УСТРОЙСТВА
             console.log(`⏳ ШАГ 5: Ожидаем полной перезагрузки устройства...`);
-            await this.verifyDeviceAvailability(deviceId, 20, 15000);
+            
+            // ✅ ДЛЯ ПРОВЕРКИ ДОСТУПНОСТИ ПОСЛЕ ОТКЛЮЧЕНИЯ ИСПОЛЬЗУЕМ ПРЯМОЙ URL
+            const directCheckUrl = device.checkDeviceMode || device.checkUrl || device.URL;
+            await this.verifyDeviceAvailability(deviceId, 20, 15000, directCheckUrl);
 
             console.log(`✅ Полное отключение extender'а ${deviceId} завершено`);
 
@@ -105,9 +122,8 @@ export class DisconnectManager {
             console.log(`🔄 Отправка команды смены режима...`);
             let changeResult;
             try {
-                // ⚠️ ИСПРАВЛЕНО: используем finalDeviceUrl вместо deviceUrl
                 changeResult = await makeAuthenticatedRequest(
-                    finalDeviceUrl, // ← ИСПРАВЛЕНО
+                    finalDeviceUrl,
                     'admin',
                     password,
                     '/rci/system/mode',
@@ -120,9 +136,8 @@ export class DisconnectManager {
                 console.log(`🔄 Повторная отправка команды смены режима...`);
                 // Повторная попытка
                 await new Promise(resolve => setTimeout(resolve, 3000));
-                // ⚠️ ИСПРАВЛЕНО: используем finalDeviceUrl вместо deviceUrl
                 changeResult = await makeAuthenticatedRequest(
-                    finalDeviceUrl, // ← ИСПРАВЛЕНО
+                    finalDeviceUrl,
                     'admin',
                     password,
                     '/rci/system/mode',
@@ -139,9 +154,8 @@ export class DisconnectManager {
             console.log(`🔄 Отправка команды перезагрузки...`);
             let rebootResult;
             try {
-                // ⚠️ ИСПРАВЛЕНО: используем finalDeviceUrl вместо deviceUrl
                 rebootResult = await makeAuthenticatedRequest(
-                    finalDeviceUrl, // ← ИСПРАВЛЕНО
+                    finalDeviceUrl,
                     'admin',
                     password,
                     '/rci/system/reboot', 
@@ -154,9 +168,8 @@ export class DisconnectManager {
                 console.log(`🔄 Повторная отправка команды перезагрузки...`);
                 // Повторная попытка
                 await new Promise(resolve => setTimeout(resolve, 3000));
-                // ⚠️ ИСПРАВЛЕНО: используем finalDeviceUrl вместо deviceUrl
                 rebootResult = await makeAuthenticatedRequest(
-                    finalDeviceUrl, // ← ИСПРАВЛЕНО
+                    finalDeviceUrl,
                     'admin',
                     password,
                     '/rci/system/reboot', 
@@ -178,7 +191,6 @@ export class DisconnectManager {
             throw new Error(`Не удалось отправить команды на устройство: ${error.message}`);
         }
     }
-
     static async reconfigureSwitchWithLocalVlan(deviceId, routerId) {
         try {
             console.log(`🔧 Перенастройка свича для отключения экстендера ${deviceId} от роутера ${routerId}`);
@@ -345,22 +357,25 @@ export class DisconnectManager {
             throw error;
         }
     }
-    static async verifyDeviceAvailability(deviceId, maxAttempts = 20, delay = 15000) {
+    static async verifyDeviceAvailability(deviceId, maxAttempts = 20, delay = 15000, deviceUrl = null) {
         const device = getDeviceById(deviceId);
         if (!device) {
             throw new Error(`Устройство ${deviceId} не найдено`);
         }
     
-        // ⚠️ ПРОБЛЕМА: использует device.URL, но нужно использовать checkDeviceMode
-        const deviceUrl = device.checkDeviceMode || device.URL || device.url; // ← ИСПРАВЛЕНО
+        // ✅ ИСПОЛЬЗУЕМ ПЕРЕДАННЫЙ URL ИЛИ checkDeviceMode
+        let checkUrl = deviceUrl;
+        if (!checkUrl) {
+            checkUrl = device.checkDeviceMode || device.URL || device.url;
+        }
         
-        console.log(`⏳ Ожидание доступности устройства ${deviceId} (${deviceUrl})...`);
+        console.log(`⏳ Ожидание доступности устройства ${deviceId} (${checkUrl})...`);
         
         for (let attempt = 1; attempt <= maxAttempts; attempt++) {
             try {
                 console.log(`🔍 Попытка ${attempt}/${maxAttempts}: проверка доступности...`);
                 
-                const isAccessible = await this.simpleAvailabilityCheck(deviceUrl);
+                const isAccessible = await this.simpleAvailabilityCheck(checkUrl);
                 if (isAccessible) {
                     console.log(`✅ Устройство ${deviceId} доступно! (попытка ${attempt}/${maxAttempts})`);
                     return true;

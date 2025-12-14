@@ -23,11 +23,10 @@ const io = new Server(WS_PORT, {
 
 initPasswordSystem(io);
 
-// ✅ ТОЛЬКО ОДИН ОБРАБОТЧИК CONNECTION (убрать дубликат)
 io.on("connection", (socket) => {
     console.log(`🔌 New client connected. Total: ${io.engine.clientsCount}`);
     
-    // ✅ ОТПРАВЛЯЕМ ДАННЫЕ СРАЗУ ПРИ ПОДКЛЮЧЕНИИ
+    //  ДАННЫЕ СРАЗУ ПРИ ПОДКЛЮЧЕНИИ
     setupEvents(socket, io);
     sendInitData(socket);
     

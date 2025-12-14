@@ -38,10 +38,10 @@ const consoleUrlCache = new Map();
 
 // ✅ ГЛОБАЛЬНАЯ СИСТЕМА УПРАВЛЕНИЯ НАГРУЗКОЙ
 let activeStatusRequests = 0;
-const MAX_CONCURRENT_REQUESTS = 15; // Максимум для ВСЕХ клиентов вместе
+const MAX_CONCURRENT_REQUESTS = 15;
 const requestQueue = [];
 let lastGlobalStatusUpdate = 0;
-const STATUS_CACHE_DURATION = 8000; // 8 секунд кэширования
+const STATUS_CACHE_DURATION = 8000;
 let isBackgroundUpdateRunning = false;
 
 // ✅ КЭШ СТАТУСОВ ДЛЯ БЫСТРОЙ ЗАГРУЗКИ
@@ -68,32 +68,105 @@ let dailyPasswords = {
 
 const universalPromptRegex = /.*[# ]/i;
 
-function getDeviceCheckUrl(deviceId) {
+function getDeviceUrl(deviceId, scenario = 'status') {
   const device = getDeviceById(deviceId);
   if (!device) {
       console.log(`❌ Устройство ${deviceId} не найдено`);
       return null;
   }
   
-  // ✅ ПРОВЕРЯЕМ РЕЖИМ ИЗ currentModes
   const modeInfo = currentModes.get(deviceId);
   
-  if (modeInfo && modeInfo.mode === 'extender_connect' && modeInfo.routerId) {
-      // ✅ Устройство в режиме extender_connect - используем URL через роутер
-      const router = getParamRouter(modeInfo.routerId);
-      if (router && router.ip) {
+  console.log(`🔍 Получение URL для устройства ${deviceId}:`);
+  console.log(`   - Сценарий: ${scenario}`);
+  console.log(`   - Текущий режим: ${modeInfo?.mode || 'не установлен'}`);
+  console.log(`   - Router ID: ${modeInfo?.routerId || 'нет'}`);
+  console.log(`   - CheckDeviceMode: ${device.checkDeviceMode}`);
+  console.log(`   - CheckUrl: ${device.checkUrl}`);
+  console.log(`   - URL: ${device.URL}`);
+  
+  // ✅ УЛУЧШЕННАЯ ЛОГИКА:
+  // 1. Для проверки статуса: если устройство В РЕЖИМЕ extender_connect -> через роутер
+  // 2. Для других сценариев: соответствующие URL
+  
+  switch(scenario) {
+    case 'status':
+      // ✅ ДЛЯ ПРОВЕРКИ СТАТУСА: если устройство в режиме extender_connect - через роутер
+      if (modeInfo && modeInfo.mode === 'extender_connect' && modeInfo.routerId) {
+        const router = getParamRouter(modeInfo.routerId);
+        if (router && router.ip) {
           const routerIp = router.ip.split('/')[0];
           const url = `http://${routerIp}:${deviceId}`;
-          console.log(`🔧 Для экстендера ${deviceId} используем URL через роутер ${modeInfo.routerId}: ${url}`);
+          console.log(`🔧 Для проверки статуса экстендера ${deviceId} используем URL через роутер ${modeInfo.routerId}: ${url}`);
           return url;
+        }
       }
+      // Иначе используем стандартный URL
+      const statusUrl = device.checkUrl || device.URL;
+      console.log(`🔧 Для проверки статуса устройства ${deviceId} используем URL: ${statusUrl}`);
+      return statusUrl;
+      
+    case 'mode_change':
+      // ✅ ДЛЯ СМЕНЫ РЕЖИМА: ВСЕГДА используем прямой URL (checkDeviceMode)
+      const modeChangeUrl = device.checkDeviceMode || device.checkUrl || device.URL;
+      console.log(`🔧 Для смены режима устройства ${deviceId} ВСЕГДА используем прямой URL: ${modeChangeUrl}`);
+      return modeChangeUrl;
+      
+    case 'auth':
+      // ✅ ДЛЯ АВТОРИЗАЦИИ: используем стандартный URL
+      const authUrl = device.checkUrl || device.URL;
+      console.log(`🔧 Для авторизации устройства ${deviceId} используем URL: ${authUrl}`);
+      return authUrl;
+      
+    default:
+      const defaultUrl = device.checkUrl || device.URL;
+      console.log(`🔧 Для устройства ${deviceId} используем URL по умолчанию: ${defaultUrl}`);
+      return defaultUrl;
   }
-  
-  // ✅ Обычный режим - используем checkUrl из конфига
-  console.log(`🔧 Для устройства ${deviceId} используем стандартный URL: ${device.checkUrl}`);
-  return device.checkUrl;
 }
 
+// ✅ ФУНКЦИЯ ДЛЯ НЕМЕДЛЕННОЙ ПРОВЕРКИ СТАТУСА
+async function checkAndUpdateDeviceStatusImmediately(io, deviceId) {
+  try {
+    const device = getDeviceById(deviceId);
+    if (!device) {
+      console.log(`❌ Устройство ${deviceId} не найдено`);
+      return 0;
+    }
+    
+    const url = getDeviceUrl(deviceId, 'status');
+    if (!url) {
+      return 0;
+    }
+    
+    const status = await getDeviceStatusCode(device, url);
+    console.log(`📊 Немедленная проверка статуса устройства ${deviceId}: ${status} (URL: ${url})`);
+    
+    // ✅ ОБНОВЛЯЕМ КЭШ
+    deviceStatusCache.set(deviceId, status);
+    lastGlobalStatusUpdate = Date.now();
+    
+    // ✅ ОТПРАВЛЯЕМ ВСЕМ КЛИЕНТАМ
+    io.emit('device:status', {
+      deviceId: deviceId,
+      status: status
+    });
+    
+    return status;
+  } catch (error) {
+    console.error(`❌ Ошибка немедленной проверки статуса ${deviceId}:`, error.message);
+    
+    deviceStatusCache.set(deviceId, 0);
+    lastGlobalStatusUpdate = Date.now();
+    
+    io.emit('device:status', {
+      deviceId: deviceId,
+      status: 0
+    });
+    
+    return 0;
+  }
+}
 
 async function getDeviceStatusWithMode(deviceId) {
   try {
@@ -103,23 +176,73 @@ async function getDeviceStatusWithMode(deviceId) {
           return 0;
       }
       
-      // Получаем правильный URL
-      const checkUrl = getDeviceCheckUrl(deviceId);
-      if (!checkUrl) {
+      // ✅ ВАЖНО: Проверяем режим устройства
+      const modeInfo = currentModes.get(deviceId);
+      
+      // ✅ ЕСЛИ УСТРОЙСТВО В РЕЖИМЕ EXTENDER_CONNECT - ПРОВЕРЯЕМ ЧЕРЕЗ РОУТЕР
+      if (modeInfo && modeInfo.mode === 'extender_connect' && modeInfo.routerId) {
+        const router = getParamRouter(modeInfo.routerId);
+        if (router && router.ip) {
+          const routerIp = router.ip.split('/')[0];
+          const url = `http://${routerIp}:${deviceId}`;
+          console.log(`🔍 Проверка статуса экстендера ${deviceId} через роутер ${modeInfo.routerId}: ${url}`);
+          
+          try {
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 10000);
+            
+            const response = await fetch(url, {
+                method: 'HEAD',
+                signal: controller.signal,
+                timeout: 8000
+            });
+            
+            clearTimeout(timeoutId);
+            const status = response.status;
+            console.log(`📊 Статус экстендера ${deviceId} через роутер: ${status} (URL: ${url})`);
+            return status;
+          } catch (fetchError) {
+            clearTimeout(timeoutId);
+            console.log(`⚠️ Не удалось проверить статус через роутер:`, fetchError.message);
+          }
+        }
+      }
+      
+      // ✅ ЕСЛИ НЕ В РЕЖИМЕ EXTENDER_CONNECT ИЛИ ОШИБКА - ПРОВЕРЯЕМ ЧЕРЕЗ ПРЯМОЙ URL
+      const directUrl = device.checkUrl || device.URL;
+      console.log(`🔍 Проверка статуса устройства ${deviceId} по прямому URL: ${directUrl}`);
+      
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 10000);
+      
+      try {
+          const response = await fetch(directUrl, {
+              method: 'HEAD',
+              signal: controller.signal,
+              timeout: 8000
+          });
+          
+          clearTimeout(timeoutId);
+          const status = response.status;
+          console.log(`📊 Статус устройства ${deviceId}: ${status} (URL: ${directUrl})`);
+          return status;
+          
+      } catch (fetchError) {
+          clearTimeout(timeoutId);
+          
+          if (fetchError.name === 'AbortError') {
+              console.log(`⏰ Таймаут проверки статуса устройства ${deviceId}`);
+          } else {
+              console.error(`❌ Ошибка fetch для устройства ${deviceId}:`, fetchError.message);
+          }
           return 0;
       }
       
-      // Вызываем стандартную функцию с правильным URL
-      const status = await getDeviceStatusCode(device, checkUrl);
-      console.log(`📊 Статус устройства ${deviceId} (${checkUrl}): ${status}`);
-      return status;
-      
   } catch (error) {
-      console.error(`❌ Ошибка проверки статуса устройства ${deviceId}:`, error.message);
+      console.error(`❌ Критическая ошибка проверки статуса устройства ${deviceId}:`, error.message);
       return 0;
   }
 }
-
 
 const syncMwsStatusesToClient = (socket) => {
   console.log('🔄 Syncing MWS statuses to client');
@@ -139,7 +262,6 @@ const syncMwsStatusesToClient = (socket) => {
   });
   console.log(`✅ Synced ${sentCount} MWS statuses to client`);
 };
-
 
 // ✅ ОТДЕЛЬНЫЕ ФУНКЦИИ ДЛЯ РАЗНЫХ ОПЕРАЦИЙ
 function sendMwsProgress(io, deviceId, progress, step = null) {
@@ -164,7 +286,6 @@ function sendModeChangeProgress(io, deviceId, progress, step = null) {
   });
 }
 
-// ✅ СУЩЕСТВУЮЩАЯ ФУНКЦИЯ ДЛЯ ОБЩИХ ОПЕРАЦИЙ (reboot, reset и т.д.)
 function sendOperationProgress(io, deviceId, progress, operationType) {
   console.log(`📤 Operation Progress: ${deviceId}, ${operationType}, ${progress}%`)
   io.emit('device:operationProgress', {
@@ -230,7 +351,6 @@ async function executeWithLimit(fn) {
   return new Promise((resolve, reject) => {
     const execute = async () => {
       if (activeStatusRequests >= MAX_CONCURRENT_REQUESTS) {
-        // ✅ Ставим в очередь если достигли лимита
         requestQueue.push(execute);
         return;
       }
@@ -243,10 +363,9 @@ async function executeWithLimit(fn) {
         reject(error);
       } finally {
         activeStatusRequests--;
-        // ✅ Запускаем следующий из очереди
         if (requestQueue.length > 0) {
           const next = requestQueue.shift();
-          setTimeout(next, 10); // Небольшая задержка для стабильности
+          setTimeout(next, 10);
         }
       }
     };
@@ -274,7 +393,6 @@ async function getAllDevicesStatus() {
     })
   );
 
-  // ✅ Увеличиваем батч, т.к. глобальный лимит защищает от перегрузки
   const batchSize = 8;
   const results = [];
   
@@ -283,7 +401,6 @@ async function getAllDevicesStatus() {
     const batchResults = await Promise.allSettled(batch);
     results.push(...batchResults);
     
-    // ✅ Короткая пауза между батчами
     if (i + batchSize < statusPromises.length) {
       await new Promise(resolve => setTimeout(resolve, 20));
     }
@@ -310,7 +427,6 @@ async function getAllDevicesStatus() {
 async function getCachedDevicesStatus() {
   const now = Date.now();
   
-  // ✅ Возвращаем кэш если не старше 8 секунд
   if (statusCacheInitialized && (now - lastGlobalStatusUpdate < STATUS_CACHE_DURATION)) {
     console.log('⚡ Using cached statuses for client');
     return Array.from(deviceStatusCache.entries()).map(([deviceId, status]) => ({
@@ -319,7 +435,6 @@ async function getCachedDevicesStatus() {
     }));
   }
   
-  // ✅ Обновляем кэш для всех
   console.log('🔄 Updating global status cache');
   const freshStatuses = await getAllDevicesStatus();
   return freshStatuses;
@@ -366,39 +481,25 @@ async function sendInitData(socket) {
     });
   
     socket.emit('device:list', devicesWithBookings);
-  
-    // ✅ ОТПРАВЛЯЕМ КЭШИРОВАННЫЕ СТАТУСЫ МГНОВЕННО
-    const statuses = await getCachedDevicesStatus();
-    socket.emit('device:statuses:initial', statuses);
-    console.log('✅ Sent statuses to client');
-  
-    // ✅ Отправляем остальные данные
 
-// ✅ ОТПРАВЛЯЕМ MWS ПОДКЛЮЧЕНИЯ ПРИ ИНИЦИАЛИЗАЦИИ
-devices.forEach(device => {
-  const wanInfo = currentWanTypes[device.id] || {};
-  socket.emit('device:currentWanType', device.id, {
-    vlanId: wanInfo.vlanId || null,
-    type: wanInfo.type || null
-  });
-  
-  // ✅ ОТПРАВЛЯЕМ MWS СТАТУС ДЛЯ КАЖДОГО УСТРОЙСТВА
-  const modeInfo = currentModes.get(device.id);
-  if (modeInfo && modeInfo.mode === 'extender_connect' && modeInfo.routerId) {
-    socket.emit('device:mwsStatusUpdated', {
-      deviceId: device.id,
-      routerId: modeInfo.routerId,
-      status: 'connected',
-      timestamp: modeInfo.timestamp
+    // ✅ ОТПРАВЛЯЕМ MWS СТАТУС ДЛЯ КАЖДОГО УСТРОЙСТВА
+    devicesWithBookings.forEach(device => {
+      const modeInfo = currentModes.get(device.id);
+      if (modeInfo && modeInfo.mode === 'extender_connect' && modeInfo.routerId) {
+        socket.emit('device:mwsStatusUpdated', {
+          deviceId: device.id,
+          routerId: modeInfo.routerId,
+          status: 'connected',
+          timestamp: modeInfo.timestamp
+        });
+      }
     });
-  }
-});
 
-// ✅ ОТПРАВЛЯЕМ ОБЩУЮ ИНФОРМАЦИЮ О MWS
-const routerInfo = Object.keys(currentMwsRouter).length
-  ? currentMwsRouter
-  : { status: "None" };
-socket.emit('device:currentMwsRouter', routerInfo, connectDisconnectAp);
+    // ✅ ОТПРАВЛЯЕМ ОБЩУЮ ИНФОРМАЦИЮ О MWS
+    const routerInfo = Object.keys(currentMwsRouter).length
+      ? currentMwsRouter
+      : { status: "None" };
+    socket.emit('device:currentMwsRouter', routerInfo, connectDisconnectAp);
   
     currentFirmwareVersion.forEach((fw, deviceId) => {
       socket.emit('device:currentFW', deviceId, {
@@ -406,132 +507,113 @@ socket.emit('device:currentMwsRouter', routerInfo, connectDisconnectAp);
       });
     });
   
-    // ✅ ОТПРАВЛЯЕМ РЕЖИМЫ ТОЛЬКО ОДИН РАЗ - через syncAllModesToClient
+    // ✅ ОТПРАВЛЯЕМ РЕЖИМЫ
     syncAllModesToClient(socket);
+    
+    // ✅ ВАЖНО: ОТПРАВЛЯЕМ НАЧАЛЬНЫЕ СТАТУСЫ ИЗ КЭША
+    const initialStatuses = Array.from(deviceStatusCache.entries()).map(([deviceId, status]) => ({
+      deviceId,
+      status
+    }));
+    
+    console.log(`📡 Отправляем начальные статусы клиенту (${initialStatuses.length} устройств)`);
+    socket.emit('device:statuses:initial', initialStatuses);
   
     const endTime = Date.now();
     console.log(`✅ sendInitData completed in ${endTime - startTime}ms`);
+    
+    // ✅ Синхронизируем MWS статусы
     syncMwsStatusesToClient(socket);
     
-    // ✅ ФОНОВАЯ СИНХРОНИЗАЦИЯ ТОЛЬКО ЕСЛИ НЕ ЗАПУЩЕНА
-    if (!isBackgroundUpdateRunning) {
-      isBackgroundUpdateRunning = true;
-      setTimeout(async () => {
-        try {
-          console.log('🔄 Starting background status sync...');
-          const freshStatuses = await getAllDevicesStatus();
-          
-          // ✅ Рассылаем обновления ВСЕМ подключенным клиентам
-          const updatedStatuses = Array.from(deviceStatusCache.entries()).map(([deviceId, status]) => ({
-            deviceId,
-            status
-          }));
-          
-          // ✅ ИСПРАВЛЕННАЯ СТРОКА: Отправляем всем клиентам кроме текущего
-          socket.broadcast.emit('device:statuses:initial', updatedStatuses);
-          
-          // ✅ Получаем количество клиентов безопасно
-          const clientCount = socket.server?.engine?.clientsCount || 0;
-          console.log(`✅ Background sync completed. Sent to ${clientCount - 1} clients`);
-          
-        } catch (error) {
-          console.error('❌ Background sync failed:', error);
-        } finally {
-          isBackgroundUpdateRunning = false;
-        }
-      }, 3000);
-    }
   } catch (error) {
     const endTime = Date.now();
     console.error(`❌ sendInitData failed after ${endTime - startTime}ms:`, error);
   }
+}
+
+async function broadcastDevicesStatus(io) {
+  if (!io || io.engine.clientsCount === 0) {
+    return;
   }
-  async function broadcastDevicesStatus(io) {
-    if (io.engine.clientsCount === 0) {
-      return;
+  
+  const now = Date.now();
+  const checkPromises = [];
+
+  for (const device of devices) {
+    const lastCheck = lastStatusCheckTime.get(device.id) || 0;
+    
+    if (now - lastCheck < 30000) {
+      continue;
     }
     
-    const now = Date.now();
-    const checkPromises = [];
-  
-    for (const device of devices) {
-      const lastCheck = lastStatusCheckTime.get(device.id) || 0;
-      
-      // ✅ Проверяем статус не чаще чем раз в 30 секунд
-      if (now - lastCheck < 30000) {
-        continue;
-      }
-      
-      lastStatusCheckTime.set(device.id, now);
-      
-      checkPromises.push(executeWithLimit(async () => {
-        try {
-          const oldStatus = deviceStatusCache.get(device.id);
+    lastStatusCheckTime.set(device.id, now);
+    
+    checkPromises.push(executeWithLimit(async () => {
+      try {
+        const oldStatus = deviceStatusCache.get(device.id);
+        
+        const newStatus = await getDeviceStatusWithMode(device.id);
+        
+        if (oldStatus !== newStatus) {
+          deviceStatusCache.set(device.id, newStatus);
+          lastGlobalStatusUpdate = now;
           
-          const newStatus = await getDeviceStatusWithMode(device.id);
-          
-          if (oldStatus !== newStatus) {
-            deviceStatusCache.set(device.id, newStatus);
-            lastGlobalStatusUpdate = Date.now();
+          io.emit('device:status', {
+            deviceId: device.id,
+            status: newStatus
+          });
+
+          // ✅ Автоматическая проверка прошивки
+          if (newStatus === 200 && oldStatus !== 200) {
+            const lastTrigger = lastFirmwareTriggerTime.get(device.id) || 0;
             
-            io.emit('device:status', {
-              deviceId: device.id,
-              status: newStatus
-            });
-  
-            // ✅ Автоматическая проверка прошивки
-            if (newStatus === 200 && oldStatus !== 200) {
-              const lastTrigger = lastFirmwareTriggerTime.get(device.id) || 0;
-              
-              if (now - lastTrigger < 60000) {
-                console.log(`⏳ Skipping firmware check - too soon for device ${device.id}`);
-                return;
-              }
-              
-              lastFirmwareTriggerTime.set(device.id, now);
-              console.log(`🔄 Device ${device.id} came online, triggering firmware check`);
-              
-              setTimeout(() => {
-                if (deviceStatusCache.get(device.id) === 200) {
-                  io.emit('device:checkFirmware', {
-                    deviceId: device.id,
-                    reason: 'status_change',
-                    oldStatus: oldStatus,
-                    newStatus: newStatus,
-                    timestamp: Date.now()
-                  });
-                  clearFirmwareCache(device.id);
-                }
-              }, 5000);
+            if (now - lastTrigger < 60000) {
+              console.log(`⏳ Skipping firmware check - too soon for device ${device.id}`);
+              return;
             }
-          }
-        } catch (error) {
-          const oldStatus = deviceStatusCache.get(device.id);
-          if (oldStatus !== 0) {
-            deviceStatusCache.set(device.id, 0);
-            lastGlobalStatusUpdate = Date.now();
-            io.emit('device:status', {
-              deviceId: device.id,
-              status: 0
-            });
-            clearFirmwareCache(device.id);
+            
+            lastFirmwareTriggerTime.set(device.id, now);
+            console.log(`🔄 Device ${device.id} came online, triggering firmware check`);
+            
+            setTimeout(() => {
+              if (deviceStatusCache.get(device.id) === 200) {
+                io.emit('device:checkFirmware', {
+                  deviceId: device.id,
+                  reason: 'status_change',
+                  oldStatus: oldStatus,
+                  newStatus: newStatus,
+                  timestamp: Date.now()
+                });
+                clearFirmwareCache(device.id);
+              }
+            }, 5000);
           }
         }
-      }));
-    }
-  
-    // ✅ Ожидаем завершения всех проверок
-    if (checkPromises.length > 0) {
-      await Promise.allSettled(checkPromises);
-    }
+      } catch (error) {
+        const oldStatus = deviceStatusCache.get(device.id);
+        if (oldStatus !== 0) {
+          deviceStatusCache.set(device.id, 0);
+          lastGlobalStatusUpdate = now;
+          io.emit('device:status', {
+            deviceId: device.id,
+            status: 0
+          });
+          clearFirmwareCache(device.id);
+        }
+      }
+    }));
   }
+
+  if (checkPromises.length > 0) {
+    await Promise.allSettled(checkPromises);
+  }
+}
 
 const syncAllModesToClient = (socket) => {
   console.log('🔄 Syncing all device modes to client');
   
   let sentCount = 0;
   currentModes.forEach((modeInfo, deviceId) => {
-      // ✅ ЗАЩИТА ОТ ДУБЛИРОВАНИЯ - отправляем только если есть валидные данные
       if (modeInfo && modeInfo.mode) {
           socket.emit('device:modeUpdated', {
               deviceId: deviceId,
@@ -568,9 +650,7 @@ function clearFirmwareCache(deviceId) {
   }
 }
 
-// Инициализируем систему статусов при загрузке модуля
 initializeStatusSystem();
-
 
 const handleBatchRelease = async (socket, data, callback) => {
   try {
@@ -579,7 +659,6 @@ const handleBatchRelease = async (socket, data, callback) => {
 
       console.log(`🔄 Batch release requested by user ${userId} for ${deviceIds.length} devices`);
 
-      // ✅ ПАРАЛЛЕЛЬНАЯ ОБРАБОТКА ВСЕХ УСТРОЙСТВ
       const releasePromises = deviceIds.map(async (deviceId) => {
           try {
               const device = getDeviceById(deviceId);
@@ -592,7 +671,6 @@ const handleBatchRelease = async (socket, data, callback) => {
                   };
               }
 
-              // Проверяем права пользователя
               const currentBooking = deviceBookings.get(deviceId);
               if (!currentBooking || currentBooking.bookedBy !== userId) {
                   return { 
@@ -602,7 +680,6 @@ const handleBatchRelease = async (socket, data, callback) => {
                   };
               }
 
-              // Освобождаем устройство
               deviceBookings.delete(deviceId);
 
               return { 
@@ -620,10 +697,8 @@ const handleBatchRelease = async (socket, data, callback) => {
           }
       });
 
-      // ✅ ЖДЕМ ЗАВЕРШЕНИЯ ВСЕХ ОПЕРАЦИЙ
       const results = await Promise.allSettled(releasePromises);
 
-      // ✅ АНАЛИЗИРУЕМ РЕЗУЛЬТАТЫ
       const successfulReleases = [];
       const failedReleases = [];
 
@@ -648,7 +723,6 @@ const handleBatchRelease = async (socket, data, callback) => {
 
       console.log(`✅ Batch release completed: ${successfulReleases.length} successful, ${failedReleases.length} failed`);
 
-      // ✅ ОТПРАВЛЯЕМ BATCH УВЕДОМЛЕНИЕ
       if (successfulReleases.length > 0) {
           socket.emit('device:batchBookingUpdated', {
               action: 'release',
@@ -667,7 +741,6 @@ const handleBatchRelease = async (socket, data, callback) => {
           });
       }
 
-      // ✅ ОТВЕТ КЛИЕНТУ
       callback({
           success: true,
           released: successfulReleases.length,
@@ -695,7 +768,6 @@ const handleBatchFirmwareCheck = async (socket, data, callback) => {
 
     console.log(`🔄 Batch firmware check for ${deviceIds.length} devices by user ${userId}`);
 
-    // ✅ ПАРАЛЛЕЛЬНАЯ ПРОВЕРКА ПРОШИВОК
     const checkPromises = deviceIds.map(async (deviceId) => {
       try {
         const device = getDeviceById(deviceId);
@@ -708,7 +780,6 @@ const handleBatchFirmwareCheck = async (socket, data, callback) => {
           };
         }
 
-        // Проверяем что устройство онлайн
         const deviceStatus = await getDeviceStatusWithMode(deviceId);
         if (deviceStatus !== 200) {
           return { 
@@ -718,7 +789,6 @@ const handleBatchFirmwareCheck = async (socket, data, callback) => {
           };
         }
 
-        // Получаем пароль (из переданных или из бронирования)
         let password = passwords[deviceId];
         if (!password) {
           const booking = deviceBookings.get(deviceId);
@@ -737,9 +807,10 @@ const handleBatchFirmwareCheck = async (socket, data, callback) => {
           };
         }
 
-        // Проверяем прошивку
+        // ✅ ДЛЯ АВТОРИЗАЦИИ ИСПОЛЬЗУЕМ СЦЕНАРИЙ 'auth'
+        const authUrl = getDeviceUrl(deviceId, 'auth');
         const versionData = await keeneticAuth(
-          device.checkUrl,
+          authUrl,
           'admin',
           password
         );
@@ -754,7 +825,6 @@ const handleBatchFirmwareCheck = async (socket, data, callback) => {
 
         const firmwareVersion = versionData.release;
         
-        // Обновляем кэш на сервере
         currentFirmwareVersion.set(deviceId, {
           version: firmwareVersion,
           timestamp: Date.now()
@@ -776,10 +846,8 @@ const handleBatchFirmwareCheck = async (socket, data, callback) => {
       }
     });
 
-    // ✅ ЖДЕМ ЗАВЕРШЕНИЯ ВСЕХ ПРОВЕРОК
     const results = await Promise.allSettled(checkPromises);
 
-    // ✅ АНАЛИЗИРУЕМ РЕЗУЛЬТАТЫ
     const successfulChecks = [];
     const failedChecks = [];
 
@@ -807,7 +875,6 @@ const handleBatchFirmwareCheck = async (socket, data, callback) => {
 
     console.log(`✅ Batch firmware check completed: ${successfulChecks.length} successful, ${failedChecks.length} failed`);
 
-    // ✅ ОТПРАВЛЯЕМ BATCH УВЕДОМЛЕНИЕ
     if (successfulChecks.length > 0) {
       socket.emit('device:batchFirmwareUpdated', {
         action: 'check',
@@ -826,7 +893,6 @@ const handleBatchFirmwareCheck = async (socket, data, callback) => {
       });
     }
 
-    // ✅ ОТВЕТ КЛИЕНТУ
     callback({
       success: true,
       checked: successfulChecks.length,
@@ -852,14 +918,15 @@ function setupEvents(socket, io) {
                   socket.handshake.headers['x-forwarded-for']?.split(',')[0] || 
                   socket.handshake.address?.replace(/^::ffff:/, '') || 
                   'unknown';
-                  console.log('🔗 Client connected:', {
-                    ip: socket.clientIp,
-                    headers: {
-                      'x-real-ip': socket.handshake.headers['x-real-ip'],
-                      'x-forwarded-for': socket.handshake.headers['x-forwarded-for'],
-                      'forwarded': socket.handshake.headers['forwarded']
-                    }
-                  });
+                  
+  console.log('🔗 Client connected:', {
+    ip: socket.clientIp,
+    headers: {
+      'x-real-ip': socket.handshake.headers['x-real-ip'],
+      'x-forwarded-for': socket.handshake.headers['x-forwarded-for'],
+      forwarded: socket.handshake.headers['forwarded']
+    }
+  });
   
   socket.emit('CLIENT_IP', socket.clientIp);
 
@@ -871,6 +938,7 @@ function setupEvents(socket, io) {
       callback?.({ success: false, error: error.message })
     })
   })
+  
   socket.on('cron:toggle', (newStatus, callback) => {
     console.log("Статус крона:",newStatus)
     if (typeof newStatus !== 'boolean') {
@@ -889,7 +957,6 @@ function setupEvents(socket, io) {
     }
     
     io.emit('cron:status', isCronEnabled);
-
   });
 
   socket.on('cron:get-status', (callback) => {
@@ -899,92 +966,92 @@ function setupEvents(socket, io) {
       socket.emit('cron:status', isCronEnabled);
     }
   });
-  // ✅ ДОБАВЛЯЕМ ОБРАБОТЧИК ДЛЯ ПОЛУЧЕНИЯ ТЕКУЩЕГО MWS ПОДКЛЮЧЕНИЯ
-socket.on('device:getMwsConnection', (deviceId, callback) => {
-  try {
-    console.log('🔗 Requested MWS connection for device:', deviceId);
-    
-    // ✅ ИЩЕМ ПОДКЛЮЧЕНИЕ В currentModes
-    const modeInfo = currentModes.get(deviceId);
-    
-    if (modeInfo && modeInfo.mode === 'extender_connect' && modeInfo.routerId) {
-      const router = getDeviceById(modeInfo.routerId);
-      const connection = {
-        routerId: modeInfo.routerId,
-        routerName: router ? `${router.hwId} ${router.shortName}` : `Router ${modeInfo.routerId}`,
-        status: 'connected',
-        connectedSince: modeInfo.timestamp || Date.now(),
-        signalStrength: 85 // Можно добавить реальные данные сигнала если есть
-      };
+  
+  socket.on('device:getMwsConnection', (deviceId, callback) => {
+    try {
+      console.log('🔗 Requested MWS connection for device:', deviceId);
       
-      console.log('🔗 Found MWS connection:', connection);
-      callback({ 
-        success: true, 
-        connection: connection 
-      });
-    } else {
-      console.log('🔗 No MWS connection found for device:', deviceId);
-      callback({ 
-        success: true, 
-        connection: null 
-      });
-    }
-  } catch (error) {
-    console.error('❌ Error getting MWS connection:', error);
-    callback({ 
-      success: false, 
-      error: error.message 
-    });
-  }
-});
-socket.on('device:book', async (data, callback) => {
-  try {
-    const { deviceId, duration } = data;
-    const bookedBy = socket.clientIp;
-    
-    if (!deviceId || !duration) {
-      throw new Error('Device ID and duration are required');
-    }
-
-    const existingBooking = deviceBookings.get(deviceId);
-    if (existingBooking && existingBooking.bookedBy !== bookedBy) {
-      const errorMsg = 'Device is already booked by another user';
-      return callback?.({ success: false, message: errorMsg });
-    }
-
-    const expiresAt = Math.floor(Date.now() / 1000) + duration;
-    const remainingTime = duration;
-    
-    deviceBookings.set(deviceId, {
-      bookedBy: bookedBy,
-      expiresAt,
-      accessPassword: dailyPasswords.today.value
-    });
-
-    const response = { 
-      success: true, 
-      expiresAt, 
-      accessPassword: dailyPasswords.today.value 
-    };
-
-    callback?.(response);
-
-
-    io.emit('device:bookingUpdated', {
-      deviceId: deviceId,
-      booking: {
-        isBooked: true,
-        bookedBy: bookedBy,
-        accessPassword: dailyPasswords.today.value,
-        expiresAt: expiresAt,
-        remainingTime: remainingTime
+      const modeInfo = currentModes.get(deviceId);
+      
+      if (modeInfo && modeInfo.mode === 'extender_connect' && modeInfo.routerId) {
+        const router = getDeviceById(modeInfo.routerId);
+        const connection = {
+          routerId: modeInfo.routerId,
+          routerName: router ? `${router.hwId} ${router.shortName}` : `Router ${modeInfo.routerId}`,
+          status: 'connected',
+          connectedSince: modeInfo.timestamp || Date.now(),
+          signalStrength: 85
+        };
+        
+        console.log('🔗 Found MWS connection:', connection);
+        callback({ 
+          success: true, 
+          connection: connection 
+        });
+      } else {
+        console.log('🔗 No MWS connection found for device:', deviceId);
+        callback({ 
+          success: true, 
+          connection: null 
+        });
       }
-    });
+    } catch (error) {
+      console.error('❌ Error getting MWS connection:', error);
+      callback({ 
+        success: false, 
+        error: error.message 
+      });
+    }
+  });
+  
+  socket.on('device:book', async (data, callback) => {
+    try {
+      const { deviceId, duration } = data;
+      const bookedBy = socket.clientIp;
+      
+      if (!deviceId || !duration) {
+        throw new Error('Device ID and duration are required');
+      }
 
-  } catch (error) {
-    callback?.({ success: false, error: error.message });
-  }
-});
+      const existingBooking = deviceBookings.get(deviceId);
+      if (existingBooking && existingBooking.bookedBy !== bookedBy) {
+        const errorMsg = 'Device is already booked by another user';
+        return callback?.({ success: false, message: errorMsg });
+      }
+
+      const expiresAt = Math.floor(Date.now() / 1000) + duration;
+      const remainingTime = duration;
+      
+      deviceBookings.set(deviceId, {
+        bookedBy: bookedBy,
+        expiresAt,
+        accessPassword: dailyPasswords.today.value
+      });
+
+      const response = { 
+        success: true, 
+        expiresAt, 
+        accessPassword: dailyPasswords.today.value 
+      };
+
+      callback?.(response);
+
+      io.emit('device:bookingUpdated', {
+        deviceId: deviceId,
+        booking: {
+          isBooked: true,
+          bookedBy: bookedBy,
+          accessPassword: dailyPasswords.today.value,
+          expiresAt: expiresAt,
+          remainingTime: remainingTime
+        }
+      });
+
+    } catch (error) {
+      callback?.({ success: false, error: error.message });
+    }
+  });
+  
   socket.on('device:extend', (data, callback) => {
     try {
       const { deviceId, additionalDuration } = data;
@@ -1113,272 +1180,274 @@ socket.on('device:book', async (data, callback) => {
     handleBatchRelease(socket, data, callback);
   });
 
-
   socket.on('device:mwsConnected', async (data, callback) => {
     try {
-        const { 
-            deviceId, 
-            routerId, 
-            action, 
-            routerPassword, 
-            useDevicePassword = true 
-        } = data;
+      const { 
+        deviceId, 
+        routerId, 
+        action, 
+        routerPassword, 
+        useDevicePassword = true 
+      } = data;
+      
+      // ✅ ОЧИЩАЕМ КЭШ СТАТУСА
+      deviceStatusCache.delete(deviceId);
+      console.log(`🧹 Очищен кэш статуса для устройства ${deviceId} при MWS ${action}`);
         
-        console.log('🔗 MWS Connection request received:', { 
-            deviceId, 
-            routerId, 
-            action,
-            hasRouterPassword: !!routerPassword,
-            useDevicePassword
+      console.log('🔗 MWS Connection request received:', { 
+          deviceId, 
+          routerId, 
+          action,
+          hasRouterPassword: !!routerPassword,
+          useDevicePassword
+      });
+      
+      if (!deviceId || !routerId) {
+          const errorMsg = 'Missing required parameters: deviceId or routerId';
+          console.error('❌', errorMsg);
+          if (typeof callback === 'function') {
+              callback({ status: 'error', error: errorMsg });
+          }
+          return;
+      }
+      
+      const device = getDeviceById(deviceId);
+      const router = getParamRouter(routerId);
+      
+      if (!device) {
+          const errorMsg = `Device with ID ${deviceId} not found`;
+          console.error('❌', errorMsg);
+          if (typeof callback === 'function') {
+              callback({ status: 'error', error: errorMsg });
+          }
+          return;
+      }
+      
+      if (!router) {
+          const errorMsg = `Router with ID ${routerId} not found`;
+          console.error('❌', errorMsg);
+          if (typeof callback === 'function') {
+              callback({ status: 'error', error: errorMsg });
+          }
+          return;
+      }
+      
+      console.log('✅ Found devices:', {
+          device: device.hwId,
+          router: router.hwId,
+          deviceType: device.type,
+          hwType: device.hWtype,
+          action: action
+      });
+      
+      // ✅ ПОЛУЧАЕМ ПАРОЛЬ РОУТЕРА
+      let finalRouterPassword = routerPassword;
+      
+      if (useDevicePassword && !routerPassword) {
+          const routerBooking = deviceBookings.get(routerId);
+          finalRouterPassword = routerBooking?.accessPassword || dailyPasswords.today.value;
+          console.log('🔑 Using device password for router:', finalRouterPassword ? '••••••••' : 'None');
+      }
+      
+      // ✅ ПОЛУЧАЕМ ПАРОЛЬ УСТРОЙСТВА
+      const deviceBooking = deviceBookings.get(deviceId);
+      const devicePassword = deviceBooking?.accessPassword || dailyPasswords.today.value;
+      
+      // ✅ ПОДГОТАВЛИВАЕМ ДАННЫЕ ДЛЯ connectToMws
+      const mwsData = {
+          deviceId,
+          routerId, 
+          action,
+          routerPassword: finalRouterPassword,
+          useDevicePassword
+      };
+      
+      console.log('🔧 Calling connectToMws with data:', mwsData);
+      
+      // ✅ НАЧАЛО ОПЕРАЦИИ
+      sendMwsProgress(io, deviceId, 10, 'initializing');
+      
+      // ✅ ВЫЗЫВАЕМ connectToMws ДЛЯ НАСТРОЙКИ СВИТЧА
+      sendMwsProgress(io, deviceId, 20, 'switch_config');
+      await connectToMws(mwsData, universalPromptRegex);
+      console.log('✅ connectToMws completed successfully');
+      sendMwsProgress(io, deviceId, 40, 'switch_config');
+
+      if (action === 'connect') {
+        currentModes.set(deviceId, {
+          mode: 'extender_connect',
+          routerId: routerId,
+          timestamp: Date.now()
         });
         
-        // ✅ ПРОВЕРКА ОБЯЗАТЕЛЬНЫХ ПОЛЕЙ
-        if (!deviceId || !routerId) {
-            const errorMsg = 'Missing required parameters: deviceId or routerId';
-            console.error('❌', errorMsg);
-            if (typeof callback === 'function') {
-                callback({ status: 'error', error: errorMsg });
-            }
-            return;
-        }
+        console.log(`🔧 Режим устройства ${deviceId} обновлен: extender_connect к роутеру ${routerId}`);
         
-        // ✅ ПРОВЕРКА ЧТО УСТРОЙСТВА СУЩЕСТВУЮТ
-        const device = getDeviceById(deviceId);
-        const router = getParamRouter(routerId);
-        
-        if (!device) {
-            const errorMsg = `Device with ID ${deviceId} not found`;
-            console.error('❌', errorMsg);
-            if (typeof callback === 'function') {
-                callback({ status: 'error', error: errorMsg });
-            }
-            return;
-        }
-        
-        if (!router) {
-            const errorMsg = `Router with ID ${routerId} not found`;
-            console.error('❌', errorMsg);
-            if (typeof callback === 'function') {
-                callback({ status: 'error', error: errorMsg });
-            }
-            return;
-        }
-        
-        console.log('✅ Found devices:', {
-            device: device.hwId,
-            router: router.hwId,
-            deviceType: device.type,
-            hwType: device.hWtype,
-            action: action
+        io.emit('device:modeUpdated', {
+          deviceId: deviceId,
+          mode: 'extender_connect',
+          routerId: routerId,
+          timestamp: Date.now(),
+          source: 'mws_connect'
         });
         
-        // ✅ ПОЛУЧАЕМ ПАРОЛЬ РОУТЕРА
-        let finalRouterPassword = routerPassword;
-        
-        if (useDevicePassword && !routerPassword) {
-            const routerBooking = deviceBookings.get(routerId);
-            finalRouterPassword = routerBooking?.accessPassword || dailyPasswords.today.value;
-            console.log('🔑 Using device password for router:', finalRouterPassword ? '••••••••' : 'None');
-        }
-        
-        // ✅ ПОЛУЧАЕМ ПАРОЛЬ УСТРОЙСТВА
-        const deviceBooking = deviceBookings.get(deviceId);
-        const devicePassword = deviceBooking?.accessPassword || dailyPasswords.today.value;
-        
-        // ✅ ПОДГОТАВЛИВАЕМ ДАННЫЕ ДЛЯ connectToMws
-        const mwsData = {
-            deviceId,
-            routerId, 
-            action,
-            routerPassword: finalRouterPassword,
-            useDevicePassword
-        };
-        
-        console.log('🔧 Calling connectToMws with data:', mwsData);
-        
-        // ✅ НАЧАЛО ОПЕРАЦИИ
-        sendMwsProgress(io, deviceId, 10, 'initializing');
-        
-        // ✅ ВЫЗЫВАЕМ connectToMws ДЛЯ НАСТРОЙКИ СВИТЧА
-        sendMwsProgress(io, deviceId, 20, 'switch_config');
-        await connectToMws(mwsData, universalPromptRegex);
-        console.log('✅ connectToMws completed successfully');
-        sendMwsProgress(io, deviceId, 40, 'switch_config');
-        
-        // ✅ ВЫЗЫВАЕМ CALLBACK СРАЗУ ПОСЛЕ УСПЕХА СВИТЧА
-        if (typeof callback === 'function') {
-            callback({ status: 'ok' });
-        }
-        
-        // ✅ ДАЛЕЕ ВЫПОЛНЯЕМ ДОПОЛНИТЕЛЬНЫЕ ОПЕРАЦИИ (ПРОБРОСЫ)
-        try {
-          if (action === 'disconnect') {
-            // ✅ ОТКЛЮЧЕНИЕ - УДАЛЯЕМ ПРОБРОСЫ
-            console.log(`🔧 Removing port forwarding for device ${deviceId}`);
-            sendMwsProgress(io, deviceId, 50, 'port_forwarding');
-            await MWSConnectionManager.removeMWSConnection(deviceId, routerId);
-            sendMwsProgress(io, deviceId, 70, 'port_forwarding');
+        // ✅ НЕМЕДЛЕННАЯ ПРОВЕРКА СТАТУСА
+        setTimeout(() => {
+          checkAndUpdateDeviceStatusImmediately(io, deviceId);
+        }, 2000);
+      }
+      
+      // ✅ ДАЛЕЕ ВЫПОЛНЯЕМ ДОПОЛНИТЕЛЬНЫЕ ОПЕРАЦИИ
+      try {
+        if (action === 'disconnect') {
+          console.log(`🔧 Removing port forwarding for device ${deviceId}`);
+          sendMwsProgress(io, deviceId, 50, 'port_forwarding');
+          await MWSConnectionManager.removeMWSConnection(deviceId, routerId);
+          sendMwsProgress(io, deviceId, 70, 'port_forwarding');
+          
+          console.log(`🔧 Rebooting device ${deviceId} after disconnect`);
+          sendMwsProgress(io, deviceId, 75, 'device_reboot');
+          
+          try {
+            // ✅ ДЛЯ ПЕРЕЗАГРУЗКИ ИСПОЛЬЗУЕМ СЦЕНАРИЙ 'mode_change' (прямой URL)
+            const rebootUrl = getDeviceUrl(deviceId, 'mode_change');
+            const deviceForReboot = {
+              ...device,
+              URL: rebootUrl
+            };
             
-            // ✅ ДОБАВЛЯЕМ ПЕРЕЗАГРУЗКУ УСТРОЙСТВА ДЛЯ ОТКЛЮЧЕНИЯ
-            console.log(`🔧 Rebooting device ${deviceId} after disconnect`);
-            sendMwsProgress(io, deviceId, 75, 'device_reboot'); // ← ЭТОТ ШАГ ДОЛЖЕН ОТПРАВЛЯТЬСЯ
+            await rebootDevice(deviceForReboot);
+            console.log(`✅ Reboot command sent to device ${deviceId} via ${rebootUrl}`);
             
-            // ✅ ОТПРАВЛЯЕМ КОМАНДУ ПЕРЕЗАГРУЗКИ УСТРОЙСТВА
-            console.log(`Устройство перезагружается ${deviceId}`)
-            try {
-            await rebootDevice(deviceId)
-
-                // await makeAuthenticatedRequest(
-                //     device.URL,
-                //     'admin',
-                //     devicePassword,
-                //     '/rci/system/reboot',
-                //     'POST',
-                //     {}
-                // );
-
-                console.log(`✅ Reboot command sent to device ${deviceId}`, `И его URL равен ${device.URL}`);
+            console.log(`⏳ Waiting for device ${deviceId} to reboot (60 seconds)...`);
+            await new Promise(resolve => setTimeout(resolve, 60000));
+            
+            let deviceOnline = false;
+            let attempts = 0;
+            const maxAttempts = 12;
+            
+            while (attempts < maxAttempts && !deviceOnline) {
+                attempts++;
+                await new Promise(resolve => setTimeout(resolve, 5000));
                 
-                // ✅ УВЕЛИЧИВАЕМ ВРЕМЯ ОЖИДАНИЯ ПЕРЕЗАГРУЗКИ ДО 60 СЕКУНД (1 МИНУТА)
-                console.log(`⏳ Waiting for device ${deviceId} to reboot (60 seconds)...`);
-                await new Promise(resolve => setTimeout(resolve, 60000));
-                
-                // ✅ ПРОВЕРЯЕМ СТАТУС УСТРОЙСТВА ПОСЛЕ ПЕРЕЗАГРУЗКИ
-                let deviceOnline = false;
-                let attempts = 0;
-                const maxAttempts = 12;
-                
-                while (attempts < maxAttempts && !deviceOnline) {
-                    attempts++;
-                    await new Promise(resolve => setTimeout(resolve, 5000));
-                    
-                    try {
-                      const status = await getDeviceStatusWithMode(device.id);
-                        console.log(`📊 Device ${deviceId} status check ${attempts}/${maxAttempts}: ${status}`);
-                        
-                        if (status === 200) {
-                            deviceOnline = true;
-                            console.log(`✅ Device ${deviceId} is back online after reboot`);
-                            sendMwsProgress(io, deviceId, 90, 'device_reboot'); // ← И ЭТОТ ТОЖЕ
-                            break;
-                        }
-                    } catch (error) {
-                        console.log(`⚠️ Status check ${attempts} failed:`, error.message);
-                    }
+                try {
+                  const status = await getDeviceStatusWithMode(device.id);
+                  console.log(`📊 Device ${deviceId} status check ${attempts}/${maxAttempts}: ${status}`);
+                  
+                  if (status === 200) {
+                      deviceOnline = true;
+                      console.log(`✅ Device ${deviceId} is back online after reboot`);
+                      sendMwsProgress(io, deviceId, 90, 'device_reboot');
+                      break;
+                  }
+                } catch (error) {
+                    console.log(`⚠️ Status check ${attempts} failed:`, error.message);
                 }
-                
-                if (!deviceOnline) {
-                    console.warn(`⚠️ Device ${deviceId} did not come back online within timeout`);
-                    sendMwsProgress(io, deviceId, 90, 'device_reboot');
-                }
-                
-            } catch (rebootError) {
-                console.warn(`⚠️ Reboot command failed: ${rebootError.message}`);
+            }
+            
+            if (!deviceOnline) {
+                console.warn(`⚠️ Device ${deviceId} did not come back online within timeout`);
                 sendMwsProgress(io, deviceId, 90, 'device_reboot');
             }
-                
-                // ✅ ОБНОВЛЯЕМ РЕЖИМ (ТОЛЬКО ДЛЯ ОТОБРАЖЕНИЯ)
-                if (device.type === 'AP' && device.hWtype === 'true') {
-                    // AP устройства остаются в режиме extender
-                    currentModes.set(deviceId, {
-                        mode: 'extender',
-                        routerId: null,
-                        timestamp: Date.now()
-                    });
-                } else {
-                    // Обычные устройства переходят в router
-                    currentModes.set(deviceId, {
-                        mode: 'router',
-                        routerId: null,
-                        timestamp: Date.now()
-                    });
-                }
-                
-                console.log(`🔗 Successfully disconnected device ${deviceId} from router`);
-                
-            } else {
-                // ✅ ПОДКЛЮЧЕНИЕ - НАСТРАИВАЕМ ПРОБРОСЫ
-                console.log(`🔧 Setting up port forwarding for device ${deviceId} -> router ${routerId}`);
-                sendMwsProgress(io, deviceId, 50, 'port_forwarding');
-                
-                // ✅ ДЛЯ AP УСТРОЙСТВ - ПОЛНЫЙ ПРОЦЕСС С ПОЛУЧЕНИЕМ IP ИЗ DHCP
-                if (device.type === 'AP' && device.hWtype === 'true') {
-                  console.log(`🔧 AP device detected - специальная настройка...`);
-                  sendMwsProgress(io, deviceId, 60, 'ap_config');
-                  
-                  // ✅ ИСПОЛЬЗУЕМ СТАНДАРТНУЮ НАСТРОЙКУ ДЛЯ AP
-                  await MWSConnectionManager.setupMWSConnection(
-                      deviceId, 
-                      routerId, 
-                      devicePassword,
-                      finalRouterPassword
-                  );
-                  sendMwsProgress(io, deviceId, 80, 'port_forwarding');
-              }
-                else {
-                    // ✅ ДЛЯ ОБЫЧНЫХ УСТРОЙСТВ - СТАНДАРТНАЯ НАСТРОЙКА
-                    await MWSConnectionManager.setupMWSConnection(
-                        deviceId, 
-                        routerId, 
-                        devicePassword,
-                        finalRouterPassword
-                    );
-                    sendMwsProgress(io, deviceId, 80, 'port_forwarding');
-                }
-                
-                // ✅ ОБНОВЛЯЕМ РЕЖИМ (ТОЛЬКО ДЛЯ ОТОБРАЖЕНИЯ)
-                currentModes.set(deviceId, {
-                    mode: 'extender_connect',
-                    routerId: routerId,
-                    timestamp: Date.now()
-                });
-                
-                console.log(`🔗 Successfully connected device ${deviceId} to router ${routerId}`);
-            }
-        } catch (error) {
-            console.error('❌ Port forwarding operations error:', error);
-            // НЕ вызываем callback снова - уже вызвали успех для свитча
+          } catch (rebootError) {
+              console.warn(`⚠️ Reboot command failed: ${rebootError.message}`);
+              sendMwsProgress(io, deviceId, 90, 'device_reboot');
+          }
+          
+          // ✅ ОБНОВЛЯЕМ РЕЖИМ
+          if (device.type === 'AP' && device.hWtype === 'true') {
+              currentModes.set(deviceId, {
+                  mode: 'extender',
+                  routerId: null,
+                  timestamp: Date.now()
+              });
+          } else {
+              currentModes.set(deviceId, {
+                  mode: 'router',
+                  routerId: null,
+                  timestamp: Date.now()
+              });
+          }
+          
+          console.log(`🔗 Successfully disconnected device ${deviceId} from router`);
+          
+        } else {
+          // ✅ ПОДКЛЮЧЕНИЕ - НАСТРАИВАЕМ ПРОБРОСЫ
+          console.log(`🔧 Setting up port forwarding for device ${deviceId} -> router ${routerId}`);
+          sendMwsProgress(io, deviceId, 50, 'port_forwarding');
+          
+          if (device.type === 'AP' && device.hWtype === 'true') {
+            console.log(`🔧 AP device detected - специальная настройка...`);
+            sendMwsProgress(io, deviceId, 60, 'ap_config');
+            
+            await MWSConnectionManager.setupMWSConnection(
+                deviceId, 
+                routerId, 
+                devicePassword,
+                finalRouterPassword
+            );
+            sendMwsProgress(io, deviceId, 80, 'port_forwarding');
+          }
+          else {
+            await MWSConnectionManager.setupMWSConnection(
+                deviceId, 
+                routerId, 
+                devicePassword,
+                finalRouterPassword
+            );
+            sendMwsProgress(io, deviceId, 80, 'port_forwarding');
+          }
+          
+          currentModes.set(deviceId, {
+              mode: 'extender_connect',
+              routerId: routerId,
+              timestamp: Date.now()
+          });
+          
+          console.log(`🔗 Successfully connected device ${deviceId} to router ${routerId}`);
         }
-        
-        // ✅ ФИНАЛЬНЫЙ ПРОГРЕСС
-        sendMwsProgress(io, deviceId, 95, 'verification');
-        sendMwsProgress(io, deviceId, 100, 'completed');
-        
-        // ✅ ОТПРАВЛЯЕМ ОБНОВЛЕНИЯ КЛИЕНТАМ
-        try {
-            const updatedDevice = getDeviceById(deviceId);
-            if (updatedDevice) {
-                const immediateStatus = await getDeviceStatusWithMode(deviceId);
-                console.log(`📊 Device status after MWS ${action}: ${immediateStatus}`);
-                
-                io.emit('device:status', {
-                    deviceId: deviceId,
-                    status: immediateStatus
-                });
-            }
-        } catch (statusError) {
-            console.log(`⚠️ Quick status check failed: ${statusError.message}`);
-        }
-        
-        // ✅ УВЕДОМЛЯЕМ ОБ ИЗМЕНЕНИИ MWS СТАТУСА
-        io.emit('device:mwsStatusUpdated', {
-            deviceId: deviceId,
-            routerId: routerId,
-            status: action === 'disconnect' ? 'disconnected' : 'connected',
-            timestamp: Date.now()
-        });
-        
-        // ✅ ОТПРАВЛЯЕМ ОБНОВЛЕНИЕ РЕЖИМА
-        io.emit('device:modeUpdated', {
-            deviceId: deviceId,
-            mode: action === 'disconnect' 
-                ? (device.type === 'AP' && device.hWtype === 'true' ? 'extender' : 'router')
-                : 'extender_connect',
-            routerId: action === 'disconnect' ? null : routerId,
-            timestamp: Date.now(),
-            source: `mws_${action}`
-        });
-        
+      } catch (error) {
+          console.error('❌ Port forwarding operations error:', error);
+      }
+      
+      // ✅ ФИНАЛЬНЫЙ ПРОГРЕСС
+      sendMwsProgress(io, deviceId, 95, 'verification');
+      sendMwsProgress(io, deviceId, 100, 'completed');
+      
+      // ✅ ОТПРАВЛЯЕМ ОБНОВЛЕНИЯ КЛИЕНТАМ
+      try {
+          const updatedDevice = getDeviceById(deviceId);
+          if (updatedDevice) {
+              const immediateStatus = await getDeviceStatusWithMode(deviceId);
+              console.log(`📊 Device status after MWS ${action}: ${immediateStatus}`);
+              
+              io.emit('device:status', {
+                  deviceId: deviceId,
+                  status: immediateStatus
+              });
+          }
+      } catch (statusError) {
+          console.log(`⚠️ Quick status check failed: ${statusError.message}`);
+      }
+      
+      // ✅ УВЕДОМЛЯЕМ ОБ ИЗМЕНЕНИИ MWS СТАТУСА
+      io.emit('device:mwsStatusUpdated', {
+          deviceId: deviceId,
+          routerId: routerId,
+          status: action === 'disconnect' ? 'disconnected' : 'connected',
+          timestamp: Date.now()
+      });
+      
+      // ✅ ОТПРАВЛЯЕМ ОБНОВЛЕНИЕ РЕЖИМА
+      io.emit('device:modeUpdated', {
+          deviceId: deviceId,
+          mode: action === 'disconnect' 
+              ? (device.type === 'AP' && device.hWtype === 'true' ? 'extender' : 'router')
+              : 'extender_connect',
+          routerId: action === 'disconnect' ? null : routerId,
+          timestamp: Date.now(),
+          source: `mws_${action}`
+      });
+      
     } catch (error) {
         console.error('❌ MWS connection error:', error);
         sendMwsProgress(io, deviceId, 0, 'error');
@@ -1387,173 +1456,120 @@ socket.on('device:book', async (data, callback) => {
         }
     }
   });
-  
 
-
-async function startAggressiveStatusCheck(deviceId, device) {
-  console.log(`🔍 Starting aggressive status monitoring for ${deviceId}`);
-  
-  const maxAttempts = 12; // 1 минута проверок (12 * 5 секунд)
-  const checkInterval = 5000; // 5 секунд
-  
-  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+  socket.on('device:forceStatusCheck', (deviceId, callback) => {
+    console.log(`🔍 Force status check requested for ${deviceId}`);
+    
     try {
-      await new Promise(resolve => setTimeout(resolve, checkInterval));
-      
-      const status = await getDeviceStatusWithMode(device.id);
-      console.log(`📊 Status check ${attempt}/${maxAttempts} for ${deviceId}: ${status}`);
-      
-      // Отправляем обновление статуса
-      io.emit('device:status', {
-        deviceId: deviceId,
-        status: status
-      });
-      
-      // Если устройство онлайн, можно остановить агрессивную проверку
-      if (status === 200) {
-        console.log(`✅ Device ${deviceId} is back online`);
-        break;
+      const device = getDeviceById(deviceId);
+      if (!device) {
+        if (typeof callback === 'function') {
+          return callback({ success: false, error: 'Device not found' });
+        }
+        return;
       }
-      
-      // Если это последняя попытка и устройство все еще оффлайн
-      if (attempt === maxAttempts && status !== 200) {
-        console.log(`⚠️ Device ${deviceId} remains offline after ${maxAttempts} checks`);
-      }
-      
-    } catch (error) {
-      console.log(`⚠️ Status check attempt ${attempt} failed:`, error.message);
-      
-      // При ошибке все равно отправляем статус 0 (оффлайн)
-      io.emit('device:status', {
-        deviceId: deviceId,
-        status: 0
-      });
-    }
-  }
-}
-socket.on('device:forceStatusCheck', (deviceId, callback) => {
-  console.log(`🔍 Force status check requested for ${deviceId}`);
-  
-  try {
-    const device = getDeviceById(deviceId);
-    if (!device) {
-      if (typeof callback === 'function') {
-        return callback({ success: false, error: 'Device not found' });
-      }
-      return;
-    }
 
-    // ✅ ФУНКЦИЯ ДЛЯ ПРОВЕРКИ СТАТУСА С ПОВТОРЕНИЯМИ
-    const checkStatusWithRetry = async (maxAttempts = 4, delay = 5000) => {
-      let lastStatus = null;
-      
-      for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-        try {
-          console.log(`🔍 Status check attempt ${attempt}/${maxAttempts} for ${deviceId}`);
-          
-          const status = await getDeviceStatusWithMode(device.id);
-          console.log(`📊 Status check result for ${deviceId}: ${status} (attempt ${attempt})`);
-          
-          // ✅ ОТПРАВЛЯЕМ СТАТУС ВСЕМ КЛИЕНТАМ КАЖДЫЙ РАЗ
-          io.emit('device:status', {
-            deviceId: deviceId,
-            status: status
-          });
-          
-          // ✅ ЕСЛИ СТАТУС 200 - ВОЗВРАЩАЕМ УСПЕХ
-          if (status === 200) {
-            console.log(`✅ Device ${deviceId} is online after ${attempt} attempt(s)`);
-            return { success: true, status: status, attempts: attempt };
+      const checkStatusWithRetry = async (maxAttempts = 4, delay = 5000) => {
+        let lastStatus = null;
+        
+        for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+          try {
+            console.log(`🔍 Status check attempt ${attempt}/${maxAttempts} for ${deviceId}`);
+            
+            const status = await getDeviceStatusWithMode(device.id);
+            console.log(`📊 Status check result for ${deviceId}: ${status} (attempt ${attempt})`);
+            
+            io.emit('device:status', {
+              deviceId: deviceId,
+              status: status
+            });
+            
+            if (status === 200) {
+              console.log(`✅ Device ${deviceId} is online after ${attempt} attempt(s)`);
+              return { success: true, status: status, attempts: attempt };
+            }
+            
+            lastStatus = status;
+            
+            if (attempt < maxAttempts && status === 500) {
+              console.log(`⏳ Device ${deviceId} returned 500, waiting ${delay/1000}s before retry...`);
+              await new Promise(resolve => setTimeout(resolve, delay));
+              continue;
+            }
+            
+            return { 
+              success: status !== 500, 
+              status: status, 
+              attempts: attempt,
+              warning: status === 500 ? 'Device returned 500 after all attempts' : null
+            };
+            
+          } catch (error) {
+            console.error(`❌ Status check attempt ${attempt} failed for ${deviceId}:`, error.message);
+            lastStatus = 0;
+            
+            io.emit('device:status', {
+              deviceId: deviceId,
+              status: 0
+            });
+            
+            if (attempt < maxAttempts) {
+              await new Promise(resolve => setTimeout(resolve, delay));
+            }
           }
+        }
+        
+        return { 
+          success: false, 
+          status: lastStatus || 0, 
+          attempts: maxAttempts,
+          error: 'All status check attempts failed'
+        };
+      };
+
+      checkStatusWithRetry()
+        .then(result => {
+          console.log(`📋 Final status check result for ${deviceId}:`, result);
           
-          lastStatus = status;
-          
-          // ✅ ЕСЛИ НЕ ПОСЛЕДНЯЯ ПОПЫТКА И СТАТУС 500 - ЖДЕМ И ПОВТОРЯЕМ
-          if (attempt < maxAttempts && status === 500) {
-            console.log(`⏳ Device ${deviceId} returned 500, waiting ${delay/1000}s before retry...`);
-            await new Promise(resolve => setTimeout(resolve, delay));
-            continue;
+          if (typeof callback === 'function') {
+            callback(result);
           }
+        })
+        .catch(error => {
+          console.error(`❌ Force status check failed for ${deviceId}:`, error);
           
-          // ✅ ЕСЛИ ДРУГОЙ СТАТУС ИЛИ ПОСЛЕДНЯЯ ПОПЫТКА - ВОЗВРАЩАЕМ ТЕКУЩИЙ СТАТУС
-          return { 
-            success: status !== 500, 
-            status: status, 
-            attempts: attempt,
-            warning: status === 500 ? 'Device returned 500 after all attempts' : null
-          };
-          
-        } catch (error) {
-          console.error(`❌ Status check attempt ${attempt} failed for ${deviceId}:`, error.message);
-          lastStatus = 0; // offline
-          
-          // ✅ ОТПРАВЛЯЕМ СТАТУС ОФФЛАЙН ПРИ ОШИБКЕ
           io.emit('device:status', {
             deviceId: deviceId,
             status: 0
           });
           
-          if (attempt < maxAttempts) {
-            await new Promise(resolve => setTimeout(resolve, delay));
+          if (typeof callback === 'function') {
+            callback({ 
+              success: false, 
+              status: 0, 
+              error: error.message 
+            });
           }
-        }
-      }
-      
-      // ✅ ЕСЛИ ВСЕ ПОПЫТКИ ИСЧЕРПАНЫ
-      return { 
-        success: false, 
-        status: lastStatus || 0, 
-        attempts: maxAttempts,
-        error: 'All status check attempts failed'
-      };
-    };
-
-    // ✅ ВЫПОЛНЯЕМ ПРОВЕРКУ С ПОВТОРЕНИЯМИ
-    checkStatusWithRetry()
-      .then(result => {
-        console.log(`📋 Final status check result for ${deviceId}:`, result);
-        
-        // ✅ БЕЗОПАСНЫЙ ВЫЗОВ CALLBACK
-        if (typeof callback === 'function') {
-          callback(result);
-        }
-      })
-      .catch(error => {
-        console.error(`❌ Force status check failed for ${deviceId}:`, error);
-        
-        // ✅ ОТПРАВЛЯЕМ СТАТУС ОФФЛАЙН ПРИ КРИТИЧЕСКОЙ ОШИБКЕ
-        io.emit('device:status', {
-          deviceId: deviceId,
-          status: 0
         });
         
-        if (typeof callback === 'function') {
-          callback({ 
-            success: false, 
-            status: 0, 
-            error: error.message 
-          });
-        }
+    } catch (error) {
+      console.error('❌ Force status check error:', error);
+      
+      io.emit('device:status', {
+        deviceId: deviceId,
+        status: 0
       });
       
-  } catch (error) {
-    console.error('❌ Force status check error:', error);
-    
-    // ✅ ОТПРАВЛЯЕМ СТАТУС ОФФЛАЙН ПРИ ОШИБКЕ
-    io.emit('device:status', {
-      deviceId: deviceId,
-      status: 0
-    });
-    
-    if (typeof callback === 'function') {
-      callback({ 
-        success: false, 
-        status: 0,
-        error: error.message 
-      });
+      if (typeof callback === 'function') {
+        callback({ 
+          success: false, 
+          status: 0,
+          error: error.message 
+        });
+      }
     }
-  }
-});
+  });
+  
   socket.on('device:checkMultipleFirmwares', (data, callback) => {
     handleBatchFirmwareCheck(socket, data, callback);
   });
@@ -1591,7 +1607,7 @@ socket.on('device:forceStatusCheck', (deviceId, callback) => {
       type: wanInfo.type === null ? 'ISP not configured' : wanInfo.type 
     });
   });
-
+  
   function startStatusMonitoring(deviceId, callback, operationType = 'reboot', timeout = 120000) {
     const device = getDeviceById(deviceId);
     const startTime = Date.now();
@@ -1602,13 +1618,11 @@ socket.on('device:forceStatusCheck', (deviceId, callback) => {
       try {
         const status = await getDeviceStatusWithMode(device.id);
         
-        // ✅ Отправляем промежуточный статус всем клиентам
         io.emit('device:status', {
           deviceId: deviceId,
           status: status
         });
         
-        // ✅ Устройство вернулось онлайн - завершаем операцию
         if (status === 200) {
           clearInterval(checkInterval);
           console.log(`✅ Device ${deviceId} is back online after ${operationType}`);
@@ -1620,22 +1634,20 @@ socket.on('device:forceStatusCheck', (deviceId, callback) => {
           });
         }
         
-        // ✅ Таймаут
         if (Date.now() - startTime > timeout) {
           clearInterval(checkInterval);
           console.log(`❌ Device ${deviceId} did not come online within timeout after ${operationType}`);
           callback({ 
-            status: 'ok', // команда выполнена, но устройство не вернулось
+            status: 'ok',
             deviceStatus: 'timeout',
             operation: operationType,
             warning: `Device ${operationType} completed but did not come back online within expected time`
           });
         }
       } catch (error) {
-        // Продолжаем попытки при ошибках проверки
         console.log(`⚠️ Status check error for ${deviceId}:`, error.message);
       }
-    }, 5000); // Проверяем каждые 5 секунд
+    }, 5000);
   }
 
   function setupDeviceOperation(socketEvent, operationType, operationFunction, timeout = 120000) {
@@ -1667,11 +1679,9 @@ socket.on('device:forceStatusCheck', (deviceId, callback) => {
 
   socket.on('device:resetConfig', setupDeviceOperation('device:resetConfig', 'resetting', resetConfig, 180000));
 
-
   socket.on('device:resetDslLine', (deviceId, callback) => {
     let progress = 0;
     
-    // ✅ Отправляем начальный прогресс
     sendOperationProgress(io, deviceId, 0, 'resettingDsl');
     
     const progressInterval = setInterval(() => {
@@ -1681,7 +1691,6 @@ socket.on('device:forceStatusCheck', (deviceId, callback) => {
     
     resetDslLine(deviceId)
       .then(() => {
-        // ✅ Финальный прогресс
         clearInterval(progressInterval);
         sendOperationProgress(io, deviceId, 100, 'resettingDsl');
         
@@ -1696,140 +1705,132 @@ socket.on('device:forceStatusCheck', (deviceId, callback) => {
       });
   });
 
+  socket.on('device:init', async (data, callback) => {
+    console.log("🔧 ПОЛУЧЕНО ТЕЛО СООБЩЕНИЯ:", JSON.stringify(data, null, 2))
 
-  
-socket.on('device:init', async (data, callback) => {
-  console.log("🔧 ПОЛУЧЕНО ТЕЛО СООБЩЕНИЯ:", JSON.stringify(data, null, 2))
-
-  const { url, body, deviceId } = data;
-  
-  if (!deviceId) {
-    if (typeof callback === 'function') {
-      callback({ success: false, error: 'Device ID is required' });
-    }
-    return;
-  }
-
-  let progress = 0;
-  
-  // ✅ Отправляем начальный прогресс
-  sendOperationProgress(io, deviceId, 0, 'initializing');
-  
-  const progressInterval = setInterval(() => {
-    progress = Math.min(progress + 15, 90);
-    sendOperationProgress(io, deviceId, progress, 'initializing');
-  }, 1500);
-  
-  try {
-    console.log('🌐 Making POST request to:', url);
-    console.log('📦 Request body:', JSON.stringify(body, null, 2));
-
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 25000); // 25 секунд таймаут
-
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: { 
-        'Content-Type': 'application/json',
-        'Accept': 'application/json'
-      },
-      body: JSON.stringify(body),
-      signal: controller.signal
-    });
-
-    clearTimeout(timeoutId);
-
-    console.log('📡 Response status:', response.status);
-    console.log('📡 Response status text:', response.statusText);
-
-    let responseData = null;
-    let responseText = '';
+    const { url, body, deviceId } = data;
     
-    try {
-      responseText = await response.text();
-      console.log('📡 Raw response text:', responseText);
-      
-      if (responseText) {
-        responseData = JSON.parse(responseText);
-        console.log('📡 Parsed response data:', responseData);
-      } else {
-        console.log('📡 Response is empty');
-      }
-    } catch (e) {
-      console.log('⚠️ Response is not JSON:', e.message);
-      responseData = { rawText: responseText };
-    }
-
-    if (!response.ok) {
-      clearInterval(progressInterval);
-      sendOperationProgress(io, deviceId, 0, 'initializing');
-      
-      console.error('❌ HTTP Error:', {
-        status: response.status,
-        statusText: response.statusText,
-        responseData: responseData,
-        responseText: responseText
-      });
-      
+    if (!deviceId) {
       if (typeof callback === 'function') {
-        callback({ 
-          success: false, 
-          error: `HTTP ${response.status}: ${responseData?.message || response.statusText || 'No details'}`,
-          status: response.status
-        });
+        callback({ success: false, error: 'Device ID is required' });
       }
       return;
     }
 
-    // ✅ Финальный прогресс
-    clearInterval(progressInterval);
-    sendOperationProgress(io, deviceId, 100, 'initializing');
+    let progress = 0;
     
-    console.log('✅ Initialization successful!');
-    
-    setTimeout(() => {
-      if (typeof callback === 'function') {
-        callback({ 
-          success: true, 
-          data: responseData || {} 
-        });
-      }
-    }, 500);
-
-  } catch (err) {
-    clearInterval(progressInterval);
     sendOperationProgress(io, deviceId, 0, 'initializing');
     
-    console.error('❌ Initialization error:', {
-      name: err.name,
-      message: err.message,
-      code: err.code,
-      stack: err.stack
-    });
+    const progressInterval = setInterval(() => {
+      progress = Math.min(progress + 15, 90);
+      sendOperationProgress(io, deviceId, progress, 'initializing');
+    }, 1500);
     
-    if (typeof callback === 'function') {
-      let errorMessage = err.message;
-      
-      if (err.name === 'AbortError') {
-        errorMessage = 'Request timeout - device is not responding';
-      } else if (err.code === 'ECONNREFUSED') {
-        errorMessage = 'Connection refused - device may be offline';
-      } else if (err.code === 'ENOTFOUND') {
-        errorMessage = 'Device host not found';
-      }
-      
-      callback({ 
-        success: false, 
-        error: errorMessage,
-        code: err.code
-      });
-    }
-    
-    // ✅ ОТПРАВЛЯЕМ РЕЖИМЫ ТОЛЬКО ПРИ ОШИБКЕ (если нужно)
-    // syncAllModesToClient(socket);
+    try {
+      console.log('🌐 Making POST request to:', url);
+      console.log('📦 Request body:', JSON.stringify(body, null, 2));
 
-  }
-});
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 25000);
+
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+          'Accept': 'application/json'
+        },
+        body: JSON.stringify(body),
+        signal: controller.signal
+      });
+
+      clearTimeout(timeoutId);
+
+      console.log('📡 Response status:', response.status);
+      console.log('📡 Response status text:', response.statusText);
+
+      let responseData = null;
+      let responseText = '';
+      
+      try {
+        responseText = await response.text();
+        console.log('📡 Raw response text:', responseText);
+        
+        if (responseText) {
+          responseData = JSON.parse(responseText);
+          console.log('📡 Parsed response data:', responseData);
+        } else {
+          console.log('📡 Response is empty');
+        }
+      } catch (e) {
+        console.log('⚠️ Response is not JSON:', e.message);
+        responseData = { rawText: responseText };
+      }
+
+      if (!response.ok) {
+        clearInterval(progressInterval);
+        sendOperationProgress(io, deviceId, 0, 'initializing');
+        
+        console.error('❌ HTTP Error:', {
+          status: response.status,
+          statusText: response.statusText,
+          responseData: responseData,
+          responseText: responseText
+        });
+        
+        if (typeof callback === 'function') {
+          callback({ 
+            success: false, 
+            error: `HTTP ${response.status}: ${responseData?.message || response.statusText || 'No details'}`,
+            status: response.status
+          });
+        }
+        return;
+      }
+
+      clearInterval(progressInterval);
+      sendOperationProgress(io, deviceId, 100, 'initializing');
+      
+      console.log('✅ Initialization successful!');
+      
+      setTimeout(() => {
+        if (typeof callback === 'function') {
+          callback({ 
+            success: true, 
+            data: responseData || {} 
+          });
+        }
+      }, 500);
+
+    } catch (err) {
+      clearInterval(progressInterval);
+      sendOperationProgress(io, deviceId, 0, 'initializing');
+      
+      console.error('❌ Initialization error:', {
+        name: err.name,
+        message: err.message,
+        code: err.code,
+        stack: err.stack
+      });
+      
+      if (typeof callback === 'function') {
+        let errorMessage = err.message;
+        
+        if (err.name === 'AbortError') {
+          errorMessage = 'Request timeout - device is not responding';
+        } else if (err.code === 'ECONNREFUSED') {
+          errorMessage = 'Connection refused - device may be offline';
+        } else if (err.code === 'ENOTFOUND') {
+          errorMessage = 'Device host not found';
+        }
+        
+        callback({ 
+          success: false, 
+          error: errorMessage,
+          code: err.code
+        });
+      }
+    }
+  });
 
   socket.on('device:getCurrentFW', async ({ deviceId, login, password }, callback) => {
     const cached = currentFirmwareVersion.get(deviceId);
@@ -1859,8 +1860,10 @@ socket.on('device:init', async (data, callback) => {
         throw new Error('Device is offline');
       }
 
+      // ✅ ДЛЯ АВТОРИЗАЦИИ ИСПОЛЬЗУЕМ СЦЕНАРИЙ 'auth'
+      const authUrl = getDeviceUrl(deviceId, 'auth');
       const versionData = await keeneticAuth(
-        device.checkUrl,
+        authUrl,
         login || 'admin',
         password
       );
@@ -1937,34 +1940,30 @@ socket.on('device:init', async (data, callback) => {
   function getUserNameByIp(ip) {
     if (!ip || ip === 'unknown') return 'Unknown User';
     
-    // Ищем пользователя в массиве users
     const user = users.find(u => u.ip === ip);
     if (user && user.name) {
       return user.name;
     }
     
-    // Если пользователь не найден, создаем имя из IP
     const ipParts = ip.split('.');
     const lastPart = ipParts.length > 0 ? ipParts[ipParts.length - 1] : 'Unknown';
-    return `User_${lastPart}`; // Используем подчеркивание вместо пробела
+    return `User_${lastPart}`;
   }
   
-  // Используйте эту функцию везде где нужно
   socket.on('chat_message', (messageData) => {
-
     const clientIp = socket.clientIp || 'unknown';
     const senderName = getUserNameByIp(clientIp);
     console.log('📨 Creating message:', {
       clientIp: clientIp,
       senderName: senderName,
       text: messageData.text,
-      users: users.length // Проверьте что массив users не пустой
+      users: users.length
     });
     const message = {
       id: Date.now().toString() + Math.random().toString(36).substr(2, 9),
       text: messageData.text,
       senderType: messageData.senderType || 'user',
-      senderName: senderName, // ✅ Используем правильное имя
+      senderName: senderName,
       senderIp: clientIp,
       timestamp: new Date(),
       clientIp: clientIp,
@@ -1998,7 +1997,6 @@ socket.on('device:init', async (data, callback) => {
 
   onlineUsers.add(socket.clientIp)
 
-  // Получаем имя пользователя для системного сообщения
   const user = users.find(u => u.ip === socket.clientIp);
   const userName = user ? user.name : `User_${socket.clientIp?.split('.')?.pop() || 'Unknown'}`;
 
@@ -2023,7 +2021,7 @@ socket.on('device:init', async (data, callback) => {
     })
     
     io.emit('system_message', {
-      text: `${userName} отключился от чата. Онлайн: ${onlineUsers.size}`
+      text: `${userName} отключился от чату. Онлайн: ${onlineUsers.size}`
     })
   })
 
@@ -2067,33 +2065,85 @@ socket.on('device:init', async (data, callback) => {
     }
   });
 
-
   socket.on('device:changeMode', async (data, callback) => {
     try {
       const { deviceId, mode, routerId, password, routerPassword } = data;
   
       console.log(`🔄 Processing mode change: ${mode} for device ${deviceId}, router: ${routerId}`);
-  
-      // ✅ ОТПРАВЛЯЕМ НАЧАЛЬНЫЙ ПРОГРЕСС ДЛЯ СМЕНЫ РЕЖИМА
+      
+      // ✅ СРАЗУ СОХРАНЯЕМ РЕЖИМ В ПАМЯТИ (даже до начала операции)
+      if (mode === 'extender_connect' && routerId) {
+        currentModes.set(deviceId, {
+          mode: 'extender_connect',
+          routerId: routerId,
+          timestamp: Date.now()
+        });
+        console.log(`💾 Режим ${deviceId} предварительно сохранен как extender_connect к роутеру ${routerId}`);
+      } else if (mode === 'extender_disconnect') {
+        // ✅ Для отключения сразу удаляем режим
+        currentModes.delete(deviceId);
+        console.log(`🧹 Режим ${deviceId} удален из currentModes для отключения`);
+      }
+      
+      // ✅ ОЧИЩАЕМ КЭШ СТАТУСА
+      deviceStatusCache.delete(deviceId);
+      console.log(`🧹 Очищен кэш статуса для устройства ${deviceId} при изменении режима на ${mode}`);
+      
       sendModeChangeProgress(io, deviceId, 10, 'initializing');
   
       let result;
   
-      // ✅ ОТПРАВЛЯЕМ ПРОГРЕСС ПЕРЕД ПРИМЕНЕНИЕМ КОНФИГУРАЦИИ
       sendModeChangeProgress(io, deviceId, 30, 'applying_config');
+  
+      // ✅ ОПРЕДЕЛЯЕМ ПРАВИЛЬНЫЙ URL ДЛЯ КАЖДОЙ ОПЕРАЦИИ
+      const device = getDeviceById(deviceId);
+      if (!device) {
+        throw new Error(`Device ${deviceId} not found`);
+      }
+  
+      let connectionType = 'direct';
+      let targetUrl = device.checkDeviceMode || device.checkUrl || device.URL;
+  
+      // ✅ ЛОГИКА ВЫБОРА URL:
+      // 1. Для отключения экстендера (extender_disconnect) -> URL через роутер
+      // 2. Для подключения к роутеру (extender_connect) -> прямой URL (устройство еще в router)
+      // 3. Для перевода в router -> прямой URL
+      // 4. Для перевода в extender -> прямой URL
+  
+      if (mode === 'extender_disconnect' && routerId) {
+        // ✅ ДЛЯ ОТКЛЮЧЕНИЯ: используем URL через роутер
+        const router = getParamRouter(routerId);
+        if (router && router.ip) {
+          const routerIp = router.ip.split('/')[0];
+          targetUrl = `http://${routerIp}:${deviceId}`;
+          connectionType = 'router';
+          console.log(`🔧 Для отключения используем URL через роутер: ${targetUrl}`);
+        }
+      } else if (mode === 'extender_connect' && routerId) {
+        // ✅ ДЛЯ ПОДКЛЮЧЕНИЯ: используем прямой URL (устройство еще в router/extender)
+        targetUrl = device.checkDeviceMode || device.checkUrl || device.URL;
+        connectionType = 'direct';
+        console.log(`🔧 Для подключения используем прямой URL: ${targetUrl}`);
+      } else {
+        // ✅ ДЛЯ ДРУГИХ РЕЖИМОВ: прямой URL
+        targetUrl = device.checkDeviceMode || device.checkUrl || device.URL;
+        connectionType = 'direct';
+        console.log(`🔧 Для режима ${mode} используем прямой URL: ${targetUrl}`);
+      }
   
       switch (mode) {
         case 'router':
-          result = await changeSystemMode(deviceId, null, 'router', password, null, io);
+          result = await changeSystemMode(deviceId, null, 'router', password, null, io, 'direct', targetUrl);
           break;
         case 'extender':
-          result = await changeSystemMode(deviceId, null, 'extender', password, null, io);
+          result = await changeSystemMode(deviceId, null, 'extender', password, null, io, 'direct', targetUrl);
           break;
         case 'extender_connect':
-          result = await changeSystemMode(deviceId, routerId, 'extender', password, routerPassword, io);
+          result = await changeSystemMode(deviceId, routerId, 'extender', password, routerPassword, io, 'direct', targetUrl);
           break;
         case 'extender_disconnect':
-          result = await disconnectAndChangeToRouter(deviceId, routerId, password, routerPassword, io);
+          // ✅ ПЕРЕДАЕМ ПРАВИЛЬНЫЙ URL ДЛЯ ОТКЛЮЧЕНИЯ
+          result = await disconnectAndChangeToRouter(deviceId, routerId, password, routerPassword, io, 'router', targetUrl);
           break;
         default:
           throw new Error(`Unknown mode: ${mode}`);
@@ -2105,15 +2155,31 @@ socket.on('device:init', async (data, callback) => {
         
         console.log(`⏳ Waiting for device ${deviceId} to reboot...`);
         
-        // ✅ ЖДЕМ ПЕРЕЗАГРУЗКИ УСТРОЙСТВА (примерно 10-15 секунд)
+        // ✅ ЖДЕМ ПЕРЕЗАГРУЗКИ УСТРОЙСТВА
         await new Promise(resolve => setTimeout(resolve, 15000));
         
-        // ✅ ОТПРАВЛЯЕМ ПРОГРЕСС - ЖДЕМ КОГДА УСТРОЙСТВО ВЕРНЕТСЯ ОНЛАЙН
+        // ✅ ОТПРАВЛЯЕМ ПРОГРЕСС - ПРОВЕРЯЕМ КОГДА УСТРОЙСТВО ВЕРНЕТСЯ ОНЛАЙН
         sendModeChangeProgress(io, deviceId, 80, 'waiting_online');
         
         console.log(`🔍 Checking if device ${deviceId} is back online...`);
         
-        // ✅ ЖДЕМ КОГДА УСТРОЙСТВО ВЕРНЕТСЯ ОНЛАЙН (макс 2 минуты)
+        // ✅ ВАЖНО: ПРИ ПОДКЛЮЧЕНИИ К РОУТЕРУ ПРОВЕРЯЕМ ЧЕРЕЗ РОУТЕР
+        let checkUrl;
+        if (mode === 'extender_connect' && routerId) {
+          // ✅ ДЛЯ ПОДКЛЮЧЕНИЯ: проверяем через роутер
+          const router = getParamRouter(routerId);
+          if (router && router.ip) {
+            const routerIp = router.ip.split('/')[0];
+            checkUrl = `http://${routerIp}:${deviceId}`;
+            console.log(`🔍 Для проверки подключения используем URL через роутер: ${checkUrl}`);
+          }
+        } else {
+          // ✅ ДЛЯ ДРУГИХ РЕЖИМОВ: проверяем через прямой URL
+          checkUrl = device.checkDeviceMode || device.checkUrl || device.URL;
+          console.log(`🔍 Для проверки используем прямой URL: ${checkUrl}`);
+        }
+        
+        // ✅ ПРОВЕРЯЕМ СТАТУС УСТРОЙСТВА (макс 2 минуты)
         let deviceOnline = false;
         let attempts = 0;
         const maxAttempts = 24; // 2 минуты (24 * 5 секунд)
@@ -2123,41 +2189,36 @@ socket.on('device:init', async (data, callback) => {
           await new Promise(resolve => setTimeout(resolve, 5000)); // Ждем 5 секунд
           
           try {
-            const device = getDeviceById(deviceId);
-            if (device) {
-              const status = await getDeviceStatusWithMode(device.id);
-              console.log(`📊 Device ${deviceId} status check ${attempts}/${maxAttempts}: ${status}`);
+            console.log(`🔍 Проверка статуса ${deviceId} (${attempts}/${maxAttempts}) через ${checkUrl}`);
+            const status = await getDeviceStatusCode(device, checkUrl);
+            console.log(`📊 Device ${deviceId} status check ${attempts}/${maxAttempts}: ${status}`);
+            
+            if (status === 200) {
+              deviceOnline = true;
+              console.log(`✅ Device ${deviceId} is back online!`);
+              sendModeChangeProgress(io, deviceId, 95, 'finalizing');
               
-              if (status === 200) {
-                deviceOnline = true;
-                console.log(`✅ Device ${deviceId} is back online!`);
-                break;
-              }
+              // ✅ ДАЕМ ВРЕМЯ НА ПРИМЕНЕНИЕ НАСТРОЕК
+              await new Promise(resolve => setTimeout(resolve, 3000));
+              
+              sendModeChangeProgress(io, deviceId, 100, 'completed');
+              break;
             }
           } catch (error) {
             console.log(`⚠️ Status check ${attempts} failed:`, error.message);
-            // Продолжаем попытки при ошибках
           }
         }
         
-        if (deviceOnline) {
-          // ✅ УСТРОЙСТВО ОНЛАЙН - ФИНАЛИЗИРУЕМ
-          sendModeChangeProgress(io, deviceId, 95, 'finalizing');
-          
-          // ✅ ДАЕМ ВРЕМЯ НА ПРИМЕНЕНИЕ НАСТРОЕК
-          await new Promise(resolve => setTimeout(resolve, 3000));
-          
-          sendModeChangeProgress(io, deviceId, 100, 'completed');
-        } else {
+        if (!deviceOnline) {
           // ✅ УСТРОЙСТВО НЕ ВЕРНУЛОСЬ ОНЛАЙН, НО ОПЕРАЦИЯ ВЫПОЛНЕНА
           console.warn(`⚠️ Device ${deviceId} did not come back online within timeout, but operation completed`);
           sendModeChangeProgress(io, deviceId, 100, 'completed_with_warning');
         }
   
+        // ✅ ОКОНЧАТЕЛЬНО ОБНОВЛЯЕМ РЕЖИМ НА КЛИЕНТЕ
         let finalMode = mode;
         let finalRouterId = null;
         
-        // ✅ ИСПРАВЛЕННАЯ ЛОГИКА ДЛЯ ОТКЛЮЧЕНИЯ
         if (mode === 'extender_disconnect') {
             finalMode = 'router';
             finalRouterId = null;
@@ -2169,18 +2230,19 @@ socket.on('device:init', async (data, callback) => {
             finalRouterId = mode === 'extender' ? null : routerId;
         }
   
+        // ✅ ОБНОВЛЯЕМ РЕЖИМ В ПАМЯТИ
         currentModes.set(deviceId, {
-            mode: finalMode, // ✅ ПРАВИЛЬНЫЙ РЕЖИМ
+            mode: finalMode,
             routerId: finalRouterId,
             timestamp: Date.now()
         });
   
-        console.log(`💾 Saved mode for device ${deviceId}:`, {
+        console.log(`💾 Final mode saved for device ${deviceId}:`, {
             mode: finalMode,
             routerId: finalRouterId
         });
   
-        // ✅ ОТПРАВЛЯЕМ ПРАВИЛЬНЫЙ РЕЖИМ
+        // ✅ ОТПРАВЛЯЕМ ОБНОВЛЕНИЕ РЕЖИМА ВСЕМ КЛИЕНТАМ
         io.emit('device:modeUpdated', {
             deviceId,
             mode: finalMode,
@@ -2233,129 +2295,157 @@ socket.on('device:init', async (data, callback) => {
     }
   });
 
-socket.on('device:getCurrentMode', async (data, callback) => {
-  try {
-      const { deviceId, login, password } = data;
-      
-      if (!deviceId) {
-          return callback({ 
-              success: false, 
-              error: 'Device ID is required' 
-          });
-      }
-
-      const device = getDeviceById(deviceId);
-      if (!device) {
-          return callback({ 
-              success: false, 
-              error: `Device ${deviceId} not found` 
-          });
-      }
-
-      if (!device.URL) {
-          return callback({ 
-              success: false, 
-              error: 'Device URL is not configured' 
-          });
-      }
-
-      const modeResult = await checkDeviceMode(device.URL, login || 'admin', password);
-      
-      if (modeResult.success) {
-          // ✅ ОТПРАВЛЯЕМ ДОПОЛНИТЕЛЬНУЮ ИНФОРМАЦИЮ О ПОДКЛЮЧЕНИЯХ
-          callback({ 
-              success: true, 
-              mode: modeResult.mode,
-              hasMwsConnections: modeResult.hasMwsConnections || false
-          });
-      } else {
-          callback({ 
-              success: false, 
-              error: modeResult.message || 'Failed to detect mode' 
-          });
-      }
-
-  } catch (error) {
-      callback({ 
-          success: false, 
-          error: error.message 
-      });
-  }
-});
-
-socket.on('device:disconnectExtender', async (data, callback) => {
-  try {
-    const { deviceId, routerId, password } = data;
-
-    console.log(`🔧 Прямое отключение экстендера ${deviceId} от роутера ${routerId}`);
-
-    // ✅ ОПРЕДЕЛЯЕМ ПРАВИЛЬНЫЙ URL В ЗАВИСИМОСТИ ОТ РЕЖИМА
-    const device = getDeviceById(deviceId);
-    const router = getParamRouter(routerId);
-    
-    let correctDeviceUrl = null;
-    
-    // Проверяем текущий режим устройства
-    const modeInfo = currentModes.get(deviceId);
-    
-    if (modeInfo && modeInfo.mode === 'extender_connect' && modeInfo.routerId) {
-        // ✅ Устройство подключено как экстендер - используем URL через роутер
-        if (router && router.ip) {
-            const routerIp = router.ip.split('/')[0];
-            correctDeviceUrl = `http://${routerIp}:${deviceId}`;
-            console.log(`🔧 Экстендер ${deviceId} подключен к роутеру ${routerId}`);
-            console.log(`   Используем URL через роутер: ${correctDeviceUrl}`);
+  socket.on('device:getCurrentMode', async (data, callback) => {
+    try {
+        const { deviceId, login, password } = data;
+        
+        if (!deviceId) {
+            return callback({ 
+                success: false, 
+                error: 'Device ID is required' 
+            });
         }
+
+        const device = getDeviceById(deviceId);
+        if (!device) {
+            return callback({ 
+                success: false, 
+                error: `Device ${deviceId} not found` 
+            });
+        }
+
+        if (!device.URL) {
+            return callback({ 
+                success: false, 
+                error: 'Device URL is not configured' 
+            });
+        }
+
+        // ✅ ДЛЯ ПРОВЕРКИ РЕЖИМА ИСПОЛЬЗУЕМ СЦЕНАРИЙ 'auth'
+        const checkUrl = getDeviceUrl(deviceId, 'auth');
+        const modeResult = await checkDeviceMode(checkUrl, login || 'admin', password);
+        
+        if (modeResult.success) {
+            callback({ 
+                success: true, 
+                mode: modeResult.mode,
+                hasMwsConnections: modeResult.hasMwsConnections || false
+            });
+        } else {
+            callback({ 
+                success: false, 
+                error: modeResult.message || 'Failed to detect mode' 
+            });
+        }
+
+    } catch (error) {
+        callback({ 
+            success: false, 
+            error: error.message 
+        });
     }
-    
-    // Если не нашли URL через роутер, используем checkDeviceMode из конфига
-    if (!correctDeviceUrl) {
-        correctDeviceUrl = device.checkDeviceMode || device.checkUrl || device.URL;
-        console.log(`🔧 Используем стандартный URL из конфига: ${correctDeviceUrl}`);
-    }
-
-    // ✅ ПЕРЕДАЕМ ПРАВИЛЬНЫЙ URL В DisconnectManager
-    await DisconnectManager.fullDisconnect(deviceId, routerId, password, correctDeviceUrl);
-
-    // ✅ ОБНОВЛЯЕМ РЕЖИМ
-    const newMode = (device.type === 'AP' && device.hWtype === 'true') ? 'extender' : 'router';
-    
-    currentModes.set(deviceId, {
-      mode: newMode,
-      routerId: null,
-      timestamp: Date.now()
-    });
-
-    // ✅ ОТПРАВЛЯЕМ ОБНОВЛЕНИЕ КЛИЕНТУ
-    io.emit('device:modeUpdated', {
-      deviceId: deviceId,
-      mode: newMode,
-      routerId: null,
-      timestamp: Date.now()
-    });
-
-    callback({ 
-      success: true, 
-      message: `Extender ${deviceId} полностью отключен от роутера ${routerId}` 
-    });
-
-  } catch (error) {
-    console.error('❌ Ошибка при отключении экстендера:', error);
-    callback({ 
-      success: false, 
-      error: error.message 
-    });
-  }
-});
-
-socket.on('device:getModeInfo', (deviceId, callback) => {
-  const modeInfo = currentModes.get(deviceId);
-  callback({
-      success: true,
-      modeInfo: modeInfo || null
   });
-});
 
+  socket.on('device:disconnectExtender', async (data, callback) => {
+    try {
+      const { deviceId, routerId, password } = data;
+  
+      console.log(`🔧 Прямое отключение экстендера ${deviceId} от роутера ${routerId}`);
+      
+      // ✅ ОЧИЩАЕМ КЭШ СТАТУСА
+      deviceStatusCache.delete(deviceId);
+      console.log(`🧹 Очищен кэш статуса для устройства ${deviceId} при отключении экстендера`);
+  
+      const device = getDeviceById(deviceId);
+      const router = getParamRouter(routerId);
+      
+      if (!device || !router) {
+        throw new Error(`Устройство ${deviceId} или роутер ${routerId} не найдены`);
+      }
+      
+      // ✅ ДЛЯ ОТКЛЮЧЕНИЯ ВСЕГДА ИСПОЛЬЗУЕМ URL ЧЕРЕЗ РОУТЕР
+      const routerIp = router.ip.split('/')[0];
+      const disconnectUrl = `http://${routerIp}:${deviceId}`;
+      console.log(`🔧 Для отключения экстендера используем URL через роутер: ${disconnectUrl}`);
+      
+      // ✅ УДАЛЯЕМ РЕЖИМ СРАЗУ
+      currentModes.delete(deviceId);
+      console.log(`🧹 Удален режим устройства ${deviceId} из currentModes`);
+  
+      // ✅ ПЕРЕДАЕМ ПРАВИЛЬНЫЙ URL В DisconnectManager
+      await DisconnectManager.fullDisconnect(deviceId, routerId, password, disconnectUrl);
+  
+      // ✅ ОБНОВЛЯЕМ РЕЖИМ НА router
+      const newMode = 'router';
+      
+      currentModes.set(deviceId, {
+        mode: newMode,
+        routerId: null,
+        timestamp: Date.now()
+      });
+  
+      // ✅ НЕМЕДЛЕННО ПРОВЕРЯЕМ СТАТУС (через прямой URL, так как теперь устройство в router)
+      setTimeout(async () => {
+        try {
+          const directUrl = device.checkDeviceMode || device.checkUrl || device.URL;
+          console.log(`🔍 Проверка статуса после отключения через прямой URL: ${directUrl}`);
+          
+          const controller = new AbortController();
+          const timeoutId = setTimeout(() => controller.abort(), 10000);
+          
+          try {
+            const response = await fetch(directUrl, {
+              method: 'HEAD',
+              signal: controller.signal,
+              timeout: 8000
+            });
+            
+            clearTimeout(timeoutId);
+            const status = response.status;
+            console.log(`📊 Статус устройства ${deviceId} после отключения: ${status}`);
+            
+            io.emit('device:status', {
+              deviceId: deviceId,
+              status: status
+            });
+          } catch (fetchError) {
+            clearTimeout(timeoutId);
+            console.log(`⚠️ Не удалось проверить статус после отключения:`, fetchError.message);
+          }
+        } catch (statusError) {
+          console.log(`⚠️ Ошибка при проверке статуса:`, statusError.message);
+        }
+      }, 10000); // Ждем 10 секунд после отключения
+  
+      // ✅ ОТПРАВЛЯЕМ ОБНОВЛЕНИЕ КЛИЕНТУ
+      io.emit('device:modeUpdated', {
+        deviceId: deviceId,
+        mode: newMode,
+        routerId: null,
+        timestamp: Date.now()
+      });
+  
+      callback({ 
+        success: true, 
+        message: `Extender ${deviceId} полностью отключен от роутера ${routerId}` 
+      });
+  
+    } catch (error) {
+      console.error('❌ Ошибка при отключении экстендера:', error);
+      callback({ 
+        success: false, 
+        error: error.message 
+      });
+    }
+  });
+
+  socket.on('device:getModeInfo', (deviceId, callback) => {
+    const modeInfo = currentModes.get(deviceId);
+    callback({
+        success: true,
+        modeInfo: modeInfo || null
+    });
+  });
 }
 
 setInterval(() => autoReleaseOldBookings(globalIO), 60 * 1000);
@@ -2368,5 +2458,6 @@ export {
   initPasswordSystem,
   getCronStatus,
   deviceBookings,
-  currentWanTypes
+  currentWanTypes,
+  currentModes
 }
