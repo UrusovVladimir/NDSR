@@ -14,9 +14,7 @@ export class DisconnectManager {
     /**
      * ПРАВИЛЬНЫЙ порядок отключения extender'а
      */
-    static async fullDisconnect(deviceId, routerId, devicePassword = null) {
-        let sshManager = null;
-        
+    static async fullDisconnect(deviceId, routerId, devicePassword = null, deviceURL = null) {
         try {
             console.log(`🔧 Полное отключение extender'а ${deviceId} от роутера ${routerId}`);
             
@@ -26,26 +24,22 @@ export class DisconnectManager {
             if (!device || !router) {
                 throw new Error(`Устройство или роутер не найдены`);
             }
-
+    
             console.log(`📋 Device info:`, {
                 id: device.id,
-                URL: device.URL,
+                deviceURL: deviceURL, // ✅ Переданный URL
+                checkDeviceMode: device.checkDeviceMode, // Из конфига (10.10.19.16)
+                checkUrl: device.checkUrl, // Из конфига (172.16.78.254)
+                URL: device.URL, // Из конфига
                 macAddress: device.macAddress,
                 vlanLocal: device.vlanLocal,
                 switchPortLan: device.switchPortLan
             });
-
-            console.log(`📋 Router info:`, {
-                id: router.id,
-                vlanLocal: router.vlanLocal,
-                switchPortLan: router.switchPortLan
-            });
-
-            // ✅ ПРАВИЛЬНЫЙ ПОРЯДОК:
-
+    
+    
             // ✅ ШАГ 1: СНАЧАЛА ОТПРАВЛЯЕМ КОМАНДУ СМЕНЫ РЕЖИМА
             console.log(`🔄 ШАГ 1: Отправляем команду смены режима на устройство...`);
-            await this.sendModeChangeCommand(device, devicePassword);
+            await this.sendModeChangeCommand(device, devicePassword, deviceURL);
             
             // ✅ ШАГ 2: ЖДЕМ ГАРАНТИРОВАННОГО ПОЛУЧЕНИЯ КОМАНДЫ
             console.log(`⏳ ШАГ 2: Ждем гарантированного получения команды устройством... (15 секунд)`);
@@ -71,39 +65,49 @@ export class DisconnectManager {
         }
     }
 
-    /**
-     * Улучшенная отправка команды с проверкой доставки
-     */
-    static async sendModeChangeCommand(device, password = null) {
+    static async sendModeChangeCommand(device, password = null, deviceURL = null) {
         try {
             console.log(`🔧 Отправка команды смены режима на устройство ${device.id}`);
             
-            if (!device.URL && !device.url) {
+            // ✅ ИСПОЛЬЗУЕМ ПЕРЕДАННЫЙ URL ИЛИ СТАНДАРТНЫЙ
+            let finalDeviceUrl;
+            
+            if (deviceURL) {
+                // ✅ Если URL передан явно - используем его
+                finalDeviceUrl = deviceURL;
+                console.log(`🔧 Используем переданный URL: ${finalDeviceUrl}`);
+            } else {
+                // ✅ Иначе используем checkDeviceMode из конфига
+                finalDeviceUrl = device.checkDeviceMode || device.checkUrl || device.URL;
+                console.log(`🔧 Используем стандартный URL из конфига: ${finalDeviceUrl}`);
+            }
+            
+            if (!finalDeviceUrl) {
                 throw new Error(`URL устройства ${device.id} не найден`);
             }
-
-            const deviceUrl = device.URL || device.url;
-            
+        
             if (!password) {
                 throw new Error(`Пароль устройства не указан для смены режима`);
             }
-
-            console.log(`🔧 Используем URL: ${deviceUrl}`);
-
-            // ✅ ДВОЙНАЯ ПРОВЕРКА ДОСТУПНОСТИ
+        
+            console.log(`🔧 Финальный URL для отправки: ${finalDeviceUrl}`);
+        
+            // ✅ ПРОВЕРКА ДОСТУПНОСТИ
             console.log(`🔍 Проверяем доступность устройства перед отправкой команды...`);
-            const isAccessible = await this.simpleAvailabilityCheck(deviceUrl);
+            const isAccessible = await this.simpleAvailabilityCheck(finalDeviceUrl);
             if (!isAccessible) {
+                console.error(`❌ Устройство ${device.id} недоступно по URL: ${finalDeviceUrl}`);
                 throw new Error(`Устройство ${device.id} недоступно перед отправкой команды`);
             }
             console.log(`✅ Устройство доступно, отправляем команды...`);
-
+    
             // ✅ ОТПРАВЛЯЕМ КОМАНДУ СМЕНЫ РЕЖИМА С ПОВТОРЕНИЕМ
             console.log(`🔄 Отправка команды смены режима...`);
             let changeResult;
             try {
+                // ⚠️ ИСПРАВЛЕНО: используем finalDeviceUrl вместо deviceUrl
                 changeResult = await makeAuthenticatedRequest(
-                    deviceUrl,
+                    finalDeviceUrl, // ← ИСПРАВЛЕНО
                     'admin',
                     password,
                     '/rci/system/mode',
@@ -116,8 +120,9 @@ export class DisconnectManager {
                 console.log(`🔄 Повторная отправка команды смены режима...`);
                 // Повторная попытка
                 await new Promise(resolve => setTimeout(resolve, 3000));
+                // ⚠️ ИСПРАВЛЕНО: используем finalDeviceUrl вместо deviceUrl
                 changeResult = await makeAuthenticatedRequest(
-                    deviceUrl,
+                    finalDeviceUrl, // ← ИСПРАВЛЕНО
                     'admin',
                     password,
                     '/rci/system/mode',
@@ -126,16 +131,17 @@ export class DisconnectManager {
                 );
                 console.log(`✅ Команда смены режима отправлена (повторно):`, changeResult);
             }
-
+    
             // ✅ КОРОТКАЯ ПАУЗА МЕЖДУ КОМАНДАМИ
             await new Promise(resolve => setTimeout(resolve, 2000));
-
+    
             // ✅ ОТПРАВЛЯЕМ КОМАНДУ ПЕРЕЗАГРУЗКИ С ПОВТОРЕНИЕМ
             console.log(`🔄 Отправка команды перезагрузки...`);
             let rebootResult;
             try {
+                // ⚠️ ИСПРАВЛЕНО: используем finalDeviceUrl вместо deviceUrl
                 rebootResult = await makeAuthenticatedRequest(
-                    deviceUrl,
+                    finalDeviceUrl, // ← ИСПРАВЛЕНО
                     'admin',
                     password,
                     '/rci/system/reboot', 
@@ -148,8 +154,9 @@ export class DisconnectManager {
                 console.log(`🔄 Повторная отправка команды перезагрузки...`);
                 // Повторная попытка
                 await new Promise(resolve => setTimeout(resolve, 3000));
+                // ⚠️ ИСПРАВЛЕНО: используем finalDeviceUrl вместо deviceUrl
                 rebootResult = await makeAuthenticatedRequest(
-                    deviceUrl,
+                    finalDeviceUrl, // ← ИСПРАВЛЕНО
                     'admin',
                     password,
                     '/rci/system/reboot', 
@@ -158,14 +165,14 @@ export class DisconnectManager {
                 );
                 console.log(`✅ Команда перезагрузки отправлена (повторно):`, rebootResult);
             }
-
+    
             // ✅ ПРОВЕРЯЕМ ЧТО КОМАНДЫ УСПЕШНО ОТПРАВЛЕНЫ
             console.log(`📋 Итог отправки команд:`);
             console.log(`   - Смена режима: ${changeResult ? 'Успешно' : 'Ошибка'}`);
             console.log(`   - Перезагрузка: ${rebootResult ? 'Успешно' : 'Ошибка'}`);
-
+    
             return { changeResult, rebootResult };
-
+    
         } catch (error) {
             console.error(`❌ Критическая ошибка отправки команды смены режима:`, error);
             throw new Error(`Не удалось отправить команды на устройство: ${error.message}`);
@@ -338,41 +345,42 @@ export class DisconnectManager {
             throw error;
         }
     }
-static async verifyDeviceAvailability(deviceId, maxAttempts = 20, delay = 15000) {
-    const device = getDeviceById(deviceId);
-    if (!device) {
-        throw new Error(`Устройство ${deviceId} не найдено`);
-    }
-
-    const deviceUrl = device.URL || device.url;
+    static async verifyDeviceAvailability(deviceId, maxAttempts = 20, delay = 15000) {
+        const device = getDeviceById(deviceId);
+        if (!device) {
+            throw new Error(`Устройство ${deviceId} не найдено`);
+        }
     
-    console.log(`⏳ Ожидание доступности устройства ${deviceId} (${deviceUrl})...`);
-    
-    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-        try {
-            console.log(`🔍 Попытка ${attempt}/${maxAttempts}: проверка доступности...`);
-            
-            const isAccessible = await this.simpleAvailabilityCheck(deviceUrl);
-            if (isAccessible) {
-                console.log(`✅ Устройство ${deviceId} доступно! (попытка ${attempt}/${maxAttempts})`);
-                return true;
+        // ⚠️ ПРОБЛЕМА: использует device.URL, но нужно использовать checkDeviceMode
+        const deviceUrl = device.checkDeviceMode || device.URL || device.url; // ← ИСПРАВЛЕНО
+        
+        console.log(`⏳ Ожидание доступности устройства ${deviceId} (${deviceUrl})...`);
+        
+        for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+            try {
+                console.log(`🔍 Попытка ${attempt}/${maxAttempts}: проверка доступности...`);
+                
+                const isAccessible = await this.simpleAvailabilityCheck(deviceUrl);
+                if (isAccessible) {
+                    console.log(`✅ Устройство ${deviceId} доступно! (попытка ${attempt}/${maxAttempts})`);
+                    return true;
+                }
+                
+                console.log(`⌛ Устройство еще не доступно...`);
+                
+            } catch (error) {
+                console.log(`⚠️ Ошибка проверки доступности: ${error.message}`);
             }
-            
-            console.log(`⌛ Устройство еще не доступно...`);
-            
-        } catch (error) {
-            console.log(`⚠️ Ошибка проверки доступности: ${error.message}`);
+    
+            if (attempt === maxAttempts) {
+                throw new Error(`Устройство ${deviceId} не стало доступным после ${maxAttempts} попыток`);
+            }
+    
+            const timeRemaining = ((maxAttempts - attempt) * delay) / 60000;
+            console.log(`💤 Ожидание ${delay/1000} сек... (осталось ~${timeRemaining.toFixed(1)} мин)`);
+            await new Promise(resolve => setTimeout(resolve, delay));
         }
-
-        if (attempt === maxAttempts) {
-            throw new Error(`Устройство ${deviceId} не стало доступным после ${maxAttempts} попыток`);
-        }
-
-        const timeRemaining = ((maxAttempts - attempt) * delay) / 60000;
-        console.log(`💤 Ожидание ${delay/1000} сек... (осталось ~${timeRemaining.toFixed(1)} мин)`);
-        await new Promise(resolve => setTimeout(resolve, delay));
     }
-}
 
 /**
  * Простая проверка доступности устройства

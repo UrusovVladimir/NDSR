@@ -93,6 +93,8 @@ function getDeviceCheckUrl(deviceId) {
   console.log(`🔧 Для устройства ${deviceId} используем стандартный URL: ${device.checkUrl}`);
   return device.checkUrl;
 }
+
+
 async function getDeviceStatusWithMode(deviceId) {
   try {
       const device = getDeviceById(deviceId);
@@ -117,6 +119,8 @@ async function getDeviceStatusWithMode(deviceId) {
       return 0;
   }
 }
+
+
 const syncMwsStatusesToClient = (socket) => {
   console.log('🔄 Syncing MWS statuses to client');
   
@@ -2285,25 +2289,44 @@ socket.on('device:disconnectExtender', async (data, callback) => {
 
     console.log(`🔧 Прямое отключение экстендера ${deviceId} от роутера ${routerId}`);
 
-    await DisconnectManager.fullDisconnect(deviceId, routerId, password);
-
-    // ✅ ИСПРАВЛЕНИЕ: Определяем правильный режим для устройства
+    // ✅ ОПРЕДЕЛЯЕМ ПРАВИЛЬНЫЙ URL В ЗАВИСИМОСТИ ОТ РЕЖИМА
     const device = getDeviceById(deviceId);
-    let newMode = 'router'; // по умолчанию
+    const router = getParamRouter(routerId);
     
-    if (device && device.type === 'AP' && device.hWtype === 'true') {
-      newMode = 'extender'; // AP устройства в режиме extender
-      console.log(`🔧 AP устройство ${deviceId} - режим после отключения: extender`);
+    let correctDeviceUrl = null;
+    
+    // Проверяем текущий режим устройства
+    const modeInfo = currentModes.get(deviceId);
+    
+    if (modeInfo && modeInfo.mode === 'extender_connect' && modeInfo.routerId) {
+        // ✅ Устройство подключено как экстендер - используем URL через роутер
+        if (router && router.ip) {
+            const routerIp = router.ip.split('/')[0];
+            correctDeviceUrl = `http://${routerIp}:${deviceId}`;
+            console.log(`🔧 Экстендер ${deviceId} подключен к роутеру ${routerId}`);
+            console.log(`   Используем URL через роутер: ${correctDeviceUrl}`);
+        }
+    }
+    
+    // Если не нашли URL через роутер, используем checkDeviceMode из конфига
+    if (!correctDeviceUrl) {
+        correctDeviceUrl = device.checkDeviceMode || device.checkUrl || device.URL;
+        console.log(`🔧 Используем стандартный URL из конфига: ${correctDeviceUrl}`);
     }
 
-    // ✅ ОБНОВЛЯЕМ ЗАПИСЬ О РЕЖИМЕ С ПРАВИЛЬНЫМ ТИПОМ
+    // ✅ ПЕРЕДАЕМ ПРАВИЛЬНЫЙ URL В DisconnectManager
+    await DisconnectManager.fullDisconnect(deviceId, routerId, password, correctDeviceUrl);
+
+    // ✅ ОБНОВЛЯЕМ РЕЖИМ
+    const newMode = (device.type === 'AP' && device.hWtype === 'true') ? 'extender' : 'router';
+    
     currentModes.set(deviceId, {
-      mode: newMode, // ✅ ПРАВИЛЬНЫЙ РЕЖИМ
+      mode: newMode,
       routerId: null,
       timestamp: Date.now()
     });
 
-    // ✅ ОТПРАВЛЯЕМ ПРАВИЛЬНЫЙ РЕЖИМ КЛИЕНТУ
+    // ✅ ОТПРАВЛЯЕМ ОБНОВЛЕНИЕ КЛИЕНТУ
     io.emit('device:modeUpdated', {
       deviceId: deviceId,
       mode: newMode,
