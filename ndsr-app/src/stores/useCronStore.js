@@ -83,7 +83,7 @@ export const useCronStore = defineStore('cron', () => {
   }
 
   const getCronStatus = () => {
-    console.log('🔄 Requesting cron status...')
+    // console.log('🔄 Requesting cron status...')
     socket.emit('cron:get-status')
   }
 

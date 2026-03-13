@@ -58,7 +58,11 @@ export const useDeviceStore = defineStore('devices', () => {
     const user = getUserByIp(userIp)
     return user?.name || `User ${userIp}`
   }
-
+  
+    const getDeviceWanType = (deviceId) => {
+      const device = devices.value.find(d => d.id === deviceId)
+      return device?.wanType || null
+    }
   // ✅ ДОБАВЛЕНА ФУНКЦИЯ для получения по ID (если нужно)
   const getUserById = (userId) => {
     if (!userId || !users.value.length) return null
@@ -307,6 +311,7 @@ export const useDeviceStore = defineStore('devices', () => {
     loadCollapsedState,
     releaseMultipleDevices,
     initializeSocketListeners,
-    cleanupSocketListeners
+    cleanupSocketListeners,
+    getDeviceWanType
   }
 })

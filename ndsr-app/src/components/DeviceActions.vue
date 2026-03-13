@@ -253,6 +253,7 @@ const confirmDslReset = () => {
   deviceActionsStore.resetDslLine(props.device)
 }
 
+
 // const handleInitialization = () => {
 //   console.log('🔄 Component: Starting initialization for', props.device.id)
 //   deviceActionsStore.initializationDevice(props.device, todayPassword.value)

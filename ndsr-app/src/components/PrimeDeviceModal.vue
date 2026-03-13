@@ -1,27 +1,55 @@
 <template>
   <Dialog 
-  v-model:visible="visible" 
-  :modal="true" 
-  :header="modalTitle"
-  :style="getModalStyle"
-  :breakpoints="{ '960px': '85vw', '641px': '95vw' }"
-  :contentStyle="{ padding: mobileView ? '1rem' : '1.5rem' }"
-  class="optimized-modal mws-connection-modal"
->
+    v-model:visible="visible" 
+    :modal="true" 
+    :header="modalTitle"
+    :style="getModalStyle"
+    :breakpoints="{ '960px': '85vw', '641px': '95vw' }"
+    :contentStyle="{ padding: mobileView ? '1rem' : '1.5rem' }"
+    :closable="!isLoading && !operationInProgress"
+    :closeOnEscape="!isLoading && !operationInProgress"
+    :dismissableMask="!isLoading && !operationInProgress"
+    class="optimized-modal mws-connection-modal"
+  >
+    <!-- Индикатор выполнения операции -->
+    <div v-if="isLoading || operationInProgress" class="operation-progress">
+      <ProgressBar mode="indeterminate" style="height: 6px; width: 100%"></ProgressBar>
+      <div class="progress-message">
+        <i class="pi pi-spin pi-spinner"></i>
+        <span>{{ progressMessage }}</span>
+      </div>
+    </div>
+
     <!-- WAN Types Modal -->
     <div v-if="modalType === 'wanTypes'" class="modal-content">
-      <div class="options-grid">
+      <!-- Индикатор выполнения для WAN операции -->
+      <div v-if="isWanOperationInProgress" class="wan-operation-progress">
+        <ProgressBar mode="indeterminate" style="height: 4px; width: 100%"></ProgressBar>
+        <div class="progress-message">
+          <i class="pi pi-spin pi-spinner"></i>
+          <span>{{ progressMessage }}</span>
+        </div>
+        <div class="progress-details">
+          <small class="text-color-secondary">
+            <i class="pi pi-info-circle mr-1"></i>
+            Connecting to switch via telnet...
+          </small>
+        </div>
+      </div>
+
+      <div class="options-grid" :class="{ 'opacity-50 pointer-events-none': isWanOperationInProgress }">
         <div 
           v-for="wan in filteredWanTypes" 
           :key="wan.vlanId" 
           class="option-item"
           :class="{ 'option-selected': modalValue === wan.vlanId }"
-          @click="modalValue = wan.vlanId"
+          @click="!isWanOperationInProgress && (modalValue = wan.vlanId)"
         >
           <RadioButton 
             v-model="modalValue" 
             :value="wan.vlanId" 
             :inputId="'wan_' + wan.vlanId"
+            :disabled="isLoading || operationInProgress"
           />
           <label :for="'wan_' + wan.vlanId" class="option-label">{{ wan.type }}</label>
         </div>
@@ -105,6 +133,7 @@
                   name="passwordSource"
                   :value="true"
                   class="password-radio"
+                  :disabled="isLoading || operationInProgress"
                 />
                 <label for="useDevicePassword" class="password-label">
                   <div class="flex align-items-center mb-1">
@@ -129,6 +158,7 @@
                   name="passwordSource"
                   :value="false"
                   class="password-radio"
+                  :disabled="isLoading || operationInProgress"
                 />
                 <label for="useManualPassword" class="password-label">
                   <div class="flex align-items-center mb-1">
@@ -148,14 +178,16 @@
         <div v-if="!useDevicePassword" class="manual-password-section">
           <div class="password-input-container">
             <label class="text-sm font-semibold mb-2 block">Router Password:</label>
+            <form @submit.prevent>
             <Password 
               v-model="manualRouterPassword" 
               :feedback="false" 
               placeholder="Enter router password"
               class="w-full router-password-input"
               toggleMask
-              :disabled="operationInProgress"
+              :disabled="isLoading || operationInProgress"
             />
+            </form>
             <small class="text-color-secondary mt-1 block">
               <i class="pi pi-info-circle mr-1"></i>
               Enter the router's admin password if different from device
@@ -199,7 +231,7 @@
                 v-model="modalValue" 
                 :value="router.id" 
                 :inputId="'router_' + router.id"
-                :disabled="currentConnection?.routerId === router.id"
+                :disabled="currentConnection?.routerId === router.id || isLoading || operationInProgress"
               />
             </div>
             
@@ -256,34 +288,36 @@
     </div>
 
     <!-- FAQ Modal -->
-      <div v-if="modalType === 'faq'" class="faq-modal-content">
-        <div class="faq-controls">
-          <div class="language-switcher">
-            <Button 
-              @click="currentLanguage = 'en'" 
-              :label="'EN'"
-              size="small"
-              :class="{ 'p-button-primary': currentLanguage === 'en', 'p-button-outlined': currentLanguage !== 'en' }"
-            />
-            <Button 
-              @click="currentLanguage = 'ru'" 
-              :label="'RU'"
-              size="small"
-              :class="{ 'p-button-primary': currentLanguage === 'ru', 'p-button-outlined': currentLanguage !== 'ru' }"
-            />
-          </div>
-          
-          <!-- ✅ ИСПРАВЛЕННАЯ СТРУКТУРА ПОИСКА -->
-          <span class="p-input-icon-left search-container">
-            <i class="pi pi-search" />
-            <InputText 
-              v-model="faqSearchQuery" 
-              :placeholder="currentLanguage === 'en' ? 'Search FAQ...' : 'Поиск...'"
-              size="small"
-              class="search-input"
-            />
-          </span>
+    <div v-if="modalType === 'faq'" class="faq-modal-content">
+      <div class="faq-controls">
+        <div class="language-switcher">
+          <Button 
+            @click="currentLanguage = 'en'" 
+            :label="'EN'"
+            size="small"
+            :class="{ 'p-button-primary': currentLanguage === 'en', 'p-button-outlined': currentLanguage !== 'en' }"
+            :disabled="isLoading || operationInProgress"
+          />
+          <Button 
+            @click="currentLanguage = 'ru'" 
+            :label="'RU'"
+            size="small"
+            :class="{ 'p-button-primary': currentLanguage === 'ru', 'p-button-outlined': currentLanguage !== 'ru' }"
+            :disabled="isLoading || operationInProgress"
+          />
         </div>
+        
+        <span class="p-input-icon-left search-container">
+          <i class="pi pi-search" />
+          <InputText 
+            v-model="faqSearchQuery" 
+            :placeholder="currentLanguage === 'en' ? 'Search FAQ...' : 'Поиск...'"
+            size="small"
+            class="search-input"
+            :disabled="isLoading || operationInProgress"
+          />
+        </span>
+      </div>
 
       <div class="faq-list">
         <Accordion :multiple="true">
@@ -316,16 +350,18 @@
           @click="closeModal" 
           class="p-button-text close-btn"
           size="small"
+          :disabled="isLoading || operationInProgress"
         />
         
         <template v-if="modalType === 'wanTypes'">
           <Button 
             :label="mobileView ? 'Apply' : 'Apply changes'" 
             icon="pi pi-check" 
-            @click="saveChanges" 
+            @click="saveWanChanges" 
             :loading="isLoading"
             class="apply-btn" 
             size="small"
+            :disabled="operationInProgress || !modalValue"
           />
         </template>
         
@@ -338,7 +374,8 @@
               icon="pi pi-unlink" 
               @click="saveChanges('disconnect')" 
               class="p-button-outlined p-button-danger disconnect-btn"
-              :loading="isLoading"
+              :loading="isLoading && operationType === 'disconnect'"
+              :disabled="isLoading || operationInProgress"
               size="small"
             />
             
@@ -347,10 +384,10 @@
               :label="getConnectButtonLabel()" 
               icon="pi pi-link" 
               @click="saveChanges('connect')" 
-              :loading="isLoading"
+              :loading="isLoading && operationType === 'connect'"
               class="connect-btn"
               size="small"
-              :disabled="!canConnect"
+              :disabled="!canConnect || isLoading || operationInProgress"
             />
           </div>
         </template>
@@ -360,7 +397,7 @@
 </template>
 
 <script setup>
-import { ref, computed, watch, nextTick } from 'vue'
+import { ref, computed, watch, onUnmounted } from 'vue'
 import { useToast } from 'primevue/usetoast'
 import { socket } from '@/socket'
 import Dialog from 'primevue/dialog'
@@ -372,6 +409,7 @@ import AccordionTab from 'primevue/accordiontab'
 import Message from 'primevue/message'
 import Tag from 'primevue/tag'
 import Password from 'primevue/password'
+import ProgressBar from 'primevue/progressbar'
 import { useDeviceStore } from '@/stores/useDeviceStore'
 import { useModeStore } from '@/stores/useModeStore'
 
@@ -395,12 +433,16 @@ const props = defineProps({
   currentWanType: String,
 })
 
-const emit = defineEmits(['save'])
+const emit = defineEmits(['save', 'operationStarted', 'operationProgress'])
 
+// Основные состояния
 const visible = ref(false)
 const modalValue = ref(null)
 const modalType = ref('')
 const isLoading = ref(false)
+const operationType = ref('')
+const operationInProgress = ref(false)
+const progressMessage = ref('')
 const showPPPoECredentials = ref(false)
 const showResetHint = ref(true)
 const faqSearchQuery = ref('')
@@ -408,21 +450,29 @@ const currentLanguage = ref('en')
 const currentConnection = ref(null)
 const connectionLoading = ref(false)
 
-// ✅ ДОБАВЛЕНЫ ПЕРЕМЕННЫЕ ДЛЯ УПРАВЛЕНИЯ ПАРОЛЕМ
+// Состояния для прогресс-модалки (нужны для слушателей)
+const progress = ref(0)
+const currentStepId = ref('')
+const operationLog = ref([])
+
+// Состояния для управления паролем
 const useDevicePassword = ref(true)
 const manualRouterPassword = ref('')
 const devicePassword = ref('')
 const passwordSource = ref('global')
 const authError = ref(false)
-const operationInProgress = ref(false)
 
-// Локальная копия для безопасности
+// Таймеры
+const operationTimeout = ref(null)
+const completionHandler = ref(null)
+
+// Локальная копия устройства
 const currentDevice = ref(null)
 
 // Определение мобильного устройства
 const mobileView = computed(() => window.innerWidth <= 768)
 
-// ✅ FAQ данные из старого компонента
+// FAQ данные
 const localizedFaqItems = {
   en: [
     {
@@ -502,13 +552,12 @@ const localizedFaqItems = {
   ]
 }
 
-
+// Computed свойства
 const hasValidPassword = computed(() => {
   return devicePassword.value && 
         devicePassword.value.trim() !== '' && 
         devicePassword.value !== 'Loading...'
 })
-
 
 const routerPasswordToUse = computed(() => {
   if (useDevicePassword.value) {
@@ -518,7 +567,6 @@ const routerPasswordToUse = computed(() => {
   }
 })
 
-// Computed properties
 const modalTitle = computed(() => {
   if (!currentDevice.value) return 'FAQ'
   
@@ -545,20 +593,16 @@ const filteredWanTypes = computed(() => {
 const availableRouters = computed(() => {
   if (modalType.value !== 'mwsConnection') return []
   
-  return props.filteredDevices.filter(dev => 
-    dev.id && 
-    dev.hwId && 
-    dev.shortName &&
+  // ✅ ИСПОЛЬЗУЕМ deviceStore.devices вместо props.filteredDevices
+  return deviceStore.devices.filter(dev => 
     dev.type === 'router' &&
     dev.statusCode === 200 &&
     dev.id !== currentDevice.value?.id &&
-    // ✅ ФИЛЬТРАЦИЯ ПО БРОНИРОВАНИЮ ТЕКУЩЕГО ПОЛЬЗОВАТЕЛЯ
     dev.booking?.isBooked && 
     dev.booking?.bookedBy === deviceStore.currentUserId
   )
 })
 
-// ✅ FAQ computed из старого компонента
 const filteredFaqItems = computed(() => {
   const items = localizedFaqItems[currentLanguage.value] || []
   if (!faqSearchQuery.value) return items
@@ -574,33 +618,62 @@ const canConnect = computed(() => {
   return modalValue.value !== null && availableRouters.value.length > 0
 })
 
-// ✅ ДОБАВЛЕНЫ ОТСУТСТВУЮЩИЕ ФУНКЦИИ
-const fetchCurrentConnection = async (deviceId) => {
-  if (!deviceId) {
-    // console.warn('⚠️ No device ID provided for fetching connection');
-    currentConnection.value = null;
-    return;
+const getModalStyle = computed(() => {
+  if (mobileView.value) {
+    return { width: '95vw', maxWidth: '95vw' }
   }
   
-  connectionLoading.value = true;
+  const widthSettings = {
+    mwsConnection: { width: '600px', maxWidth: '600px' },
+    wanTypes: { width: '550px', maxWidth: '550px' },
+    faq: { width: '700px', maxWidth: '700px' }
+  }
+  
+  return widthSettings[modalType.value] || { width: '550px', maxWidth: '550px' }
+})
+
+// ✅ НОВОЕ computed для WAN операции
+const isWanOperationInProgress = computed(() => {
+  return operationInProgress.value && operationType.value === 'wan'
+})
+
+// Методы
+const addLog = (type, message) => {
+  operationLog.value.unshift({
+    type,
+    message,
+    time: new Date().toLocaleTimeString()
+  })
+  
+  if (operationLog.value.length > 20) {
+    operationLog.value = operationLog.value.slice(0, 20)
+  }
+}
+
+const setStepError = (stepId, errorMessage) => {
+  console.error(`❌ Step error [${stepId}]:`, errorMessage)
+  addLog('error', errorMessage)
+}
+
+const fetchCurrentConnection = async (deviceId) => {
+  if (!deviceId) {
+    currentConnection.value = null
+    return
+  }
+  
+  connectionLoading.value = true
   try {
-    // console.log('🔗 Fetching MWS connection for device:', deviceId);
-    
-    const device = deviceStore.devices.find(d => d.id === deviceId);
+    const device = deviceStore.devices.find(d => d.id === deviceId)
     
     if (!device) {
-      // console.warn('⚠️ Device not found:', deviceId);
-      currentConnection.value = null;
-      return;
+      currentConnection.value = null
+      return
     }
 
-    // ✅ ПРЯМАЯ ПРОВЕРКА ДАННЫХ ИЗ STORE
-    const modeInfo = modeStore.getDeviceModeInfo(deviceId);
-    // console.log('🔍 Mode info from store:', modeInfo);
+    const modeInfo = modeStore.getDeviceModeInfo(deviceId)
     
-    // ✅ ЕСЛИ ЕСТЬ ДАННЫЕ О ПОДКЛЮЧЕНИИ - ОТОБРАЖАЕМ ИХ
     if (modeInfo && modeInfo.mode === 'extender_connect' && modeInfo.routerId) {
-      const router = deviceStore.devices.find(d => d.id === modeInfo.routerId);
+      const router = deviceStore.devices.find(d => d.id === modeInfo.routerId)
       if (router) {
         currentConnection.value = {
           routerId: modeInfo.routerId,
@@ -608,43 +681,34 @@ const fetchCurrentConnection = async (deviceId) => {
           status: 'connected',
           connectedSince: modeInfo.timestamp || Date.now(),
           modeConnect: 'Wired'
-        };
-        // console.log('✅ Active connection found:', currentConnection.value);
-        return;
-      } else {
-        console.warn('⚠️ Router not found for connection:', modeInfo.routerId);
+        }
+        return
       }
     }
 
-    // ✅ ДЛЯ AP УСТРОЙСТВ - ПРОВЕРЯЕМ РЕАЛЬНЫЙ РЕЖИМ
     if (device && device.type === 'AP' && device.hWtype === 'true') {
-      // console.log(`🔧 AP устройство ${deviceId}, проверяем реальный режим...`);
-      await fetchAPDeviceConnection(deviceId, device);
+      await fetchAPDeviceConnection(deviceId, device)
     } else {
-      currentConnection.value = null;
-      // console.log('🔗 No active connection found');
+      currentConnection.value = null
     }
     
   } catch (error) {
-    console.error('❌ Failed to fetch current connection:', error);
-    currentConnection.value = null;
+    console.error('❌ Failed to fetch current connection:', error)
+    currentConnection.value = null
   } finally {
-    connectionLoading.value = false;
+    connectionLoading.value = false
   }
-};
+}
 
 const fetchAPDeviceConnection = async (deviceId, device) => {
   try {
-    // console.log(`🔧 Checking real AP device connection for ${deviceId}`);
-    
-    // ✅ ПРЯМОЙ ЗАПРОС К СЕРВЕРУ ДЛЯ ПОЛУЧЕНИЯ АКТУАЛЬНЫХ ДАННЫХ
     const connectionResponse = await new Promise((resolve) => {
       socket.emit('device:getMwsConnection', deviceId, (response) => {
-        resolve(response);
-      });
+        resolve(response)
+      })
       
-      setTimeout(() => resolve({ success: false, connection: null }), 5000);
-    });
+      setTimeout(() => resolve({ success: false, connection: null }), 5000)
+    })
     
     if (connectionResponse?.success && connectionResponse.connection) {
       currentConnection.value = {
@@ -653,20 +717,68 @@ const fetchAPDeviceConnection = async (deviceId, device) => {
         status: connectionResponse.connection.status,
         connectedSince: connectionResponse.connection.connectedSince,
         modeConnect: 'Wired'
-      };
-      // console.log('✅ AP device connection found via server:', currentConnection.value);
+      }
     } else {
-      currentConnection.value = null;
-      // console.log('🔗 No active connection found for AP device');
+      currentConnection.value = null
     }
     
   } catch (error) {
-    console.error('❌ Error fetching AP device connection:', error);
-    currentConnection.value = null;
+    console.error('❌ Error fetching AP device connection:', error)
+    currentConnection.value = null
   }
-};
+}
 
-// ✅ ДОБАВЛЕНА ФУНКЦИЯ getConnectButtonLabel
+const setupModeChangeListeners = () => {
+  socket.off('device:modeUpdated')
+  socket.off('device:operationError')
+  
+  socket.on('device:modeUpdated', (data) => {
+    if (data.deviceId === props.device?.id && data.source === 'mode_change') {
+      if (data.success) {
+        addLog('success', `Mode changed successfully to ${data.mode}`)
+        emit('operationProgress', {
+          deviceId: data.deviceId,
+          progress: 100,
+          step: 'completed',
+          message: 'Operation completed successfully'
+        })
+      } else {
+        setStepError(currentStepId.value, data.message || 'Operation failed')
+        emit('operationProgress', {
+          deviceId: data.deviceId,
+          progress: 0,
+          step: 'error',
+          message: data.message || 'Operation failed'
+        })
+      }
+    }
+  })
+  
+  socket.on('device:operationError', (data) => {
+    if (data.deviceId === props.device?.id) {
+      setStepError(currentStepId.value, data.error)
+      emit('operationProgress', {
+        deviceId: data.deviceId,
+        progress: 0,
+        step: 'error',
+        message: data.error
+      })
+    }
+  })
+}
+
+const cleanupOperation = () => {
+  if (operationTimeout.value) {
+    clearTimeout(operationTimeout.value)
+    operationTimeout.value = null
+  }
+  
+  socket.off('device:modeUpdated')
+  socket.off('device:operationError')
+  socket.off('device:mwsOperationProgress')
+  socket.off('device:modeChangeProgress')
+}
+
 const getConnectButtonLabel = () => {
   if (currentConnection.value && modalValue.value === currentConnection.value.routerId) {
     return mobileView.value ? 'Reconnect' : 'Reconnect'
@@ -674,7 +786,6 @@ const getConnectButtonLabel = () => {
   return mobileView.value ? 'Connect' : 'Connect to Router'
 }
 
-// ✅ ДОБАВЛЕНА ФУНКЦИЯ getConnectionSeverity
 const getConnectionSeverity = (status) => {
   const severityMap = {
     connected: 'success',
@@ -685,46 +796,31 @@ const getConnectionSeverity = (status) => {
   return severityMap[status] || 'info'
 }
 
-// ✅ ДОБАВЛЕНА ФУНКЦИЯ formatConnectionTime
 const formatConnectionTime = (timestamp) => {
   if (!timestamp) return 'Unknown'
   return new Date(timestamp).toLocaleString()
 }
 
-const getModalStyle = computed(() => {
-  if (mobileView.value) {
-    return { width: '95vw', maxWidth: '95vw' }
-  }
-  
-  // Настройки ширины для разных типов модалок
-  const widthSettings = {
-    mwsConnection: { width: '600px', maxWidth: '600px' },
-    wanTypes: { width: '550px', maxWidth: '550px' },
-    faq: { width: '700px', maxWidth: '700px' }
-  }
-  
-  return widthSettings[modalType.value] || { width: '550px', maxWidth: '550px' }
-})
-// ✅ ОБНОВЛЕННЫЙ метод show для получения пароля
+const selectRouter = (routerId) => {
+  modalValue.value = routerId
+}
+
 const show = async (type, password = '', source = 'global') => {
   modalType.value = type
   faqSearchQuery.value = ''
   visible.value = true
   currentDevice.value = props.device
   
-  // ✅ СОХРАНЯЕМ ПАРОЛЬ
   devicePassword.value = password
   passwordSource.value = source
   useDevicePassword.value = true
   manualRouterPassword.value = ''
   authError.value = false
   
-  // console.log('🔑 MWS Modal opened with password:', {
-  //   type: type,
-  //   device: props.device?.hwId,
-  //   hasPassword: !!password,
-  //   source: source
-  // })
+  isLoading.value = false
+  operationInProgress.value = false
+  operationType.value = ''
+  progressMessage.value = ''
   
   if (type === 'mwsConnection' && props.device) {
     if (!props.device.id) {
@@ -734,172 +830,229 @@ const show = async (type, password = '', source = 'global') => {
     
     await fetchCurrentConnection(props.device.id)
     
-    // Если есть текущее подключение, выбираем его по умолчанию
     if (currentConnection.value) {
       modalValue.value = currentConnection.value.routerId
-      // console.log('🔗 Default selection: current connection router', modalValue.value)
     } else if (availableRouters.value.length > 0) {
-      // Иначе выбираем первый доступный роутер
       modalValue.value = availableRouters.value[0].id
-      // console.log('🔗 Default selection: first available router', modalValue.value)
     } else {
       modalValue.value = null
-      // console.log('🔗 No default selection - no routers available')
     }
+  } else if (type === 'wanTypes') {
+    modalValue.value = props.currentWanType === 'ISP not configured' ? null : props.currentWanType
   }
-}
-
-const selectRouter = (routerId) => {
-  modalValue.value = routerId
-}
-
-  const saveChanges = async (action) => {
-    isLoading.value = true
-    try {
-      // ✅ ПРОВЕРКА ЧТО УСТРОЙСТВО ВСЕ ЕЩЕ ДОСТУПНО
-      if (!currentDevice.value || !currentDevice.value.id) {
-        throw new Error('Device information is no longer available')
-      }
-
-      let valueToSend = modalValue.value
-      let actionType = action
-      if (modalType.value === 'mwsConnection') {
-          if (action === 'disconnect') {
-            if (!currentConnection.value) {
-              throw new Error('No active connection to disconnect from')
-            }
-            
-            valueToSend = currentConnection.value.routerId
-            actionType = 'disconnect'
-            
-            console.log("🔗 DISCONNECT from current connection:", {
-              device: currentDevice.value?.hwId,
-              router: currentConnection.value.routerName,
-              routerId: valueToSend,
-              action: actionType 
-            })
-            
-          } else {
-            valueToSend = modalValue.value
-            actionType = currentConnection.value ? 'reconnect' : 'connect'
-            
-            console.log("🔗 CONNECT to selected router:", {
-              device: currentDevice.value?.hwId, 
-              selectedRouter: modalValue.value,
-              action: actionType, 
-              useDevicePassword: useDevicePassword.value,
-              hasManualPassword: !!manualRouterPassword.value
-            })
-          }
-        }
-      // ✅ ПЕРЕДАЕМ ДАННЫЕ О ПАРОЛЕ И ПОЛУЧАЕМ СООБЩЕНИЕ
-      const customMessage = await new Promise((resolve, reject) => {
-        // ✅ ДОПОЛНИТЕЛЬНАЯ ПРОВЕРКА ПЕРЕД ОТПРАВКОЙ
-        if (!currentDevice.value || !currentDevice.value.id) {
-          reject(new Error('Device data lost during operation'))
-          return
-        }
-
-        emit('save', {
-          value: valueToSend,
-          type: modalType.value,
-          action: actionType,
-          routerPassword: routerPasswordToUse.value,
-          useDevicePassword: useDevicePassword.value,
-          callback: (success, message) => {
-            if (success) {
-              resolve(message)
-            } else {
-              reject(new Error(message))
-            }
-          }
-        })
-      })
-
-      // ✅ ТОЛЬКО ОДИН TOAST С КАСТОМНЫМ СООБЩЕНИЕМ
-      const successMessage = customMessage || getSuccessMessage(actionType)
-      
-      toast.add({
-        severity: 'success',
-        summary: 'Success', 
-        detail: successMessage,
-        life: 3000
-      })
-
-      // ✅ ПРОВЕРКА ПЕРЕД ОБНОВЛЕНИЕМ СТАТУСА
-      if (modalType.value === 'mwsConnection' && currentDevice.value?.id) {
-        // console.log('🔄 Targeted status check for extender after MWS operation...')
-        
-        // ✅ ЗАЩИЩЕННЫЙ ВЫЗОВ С ПРОВЕРКОЙ
-        const deviceId = currentDevice.value.id
-        const deviceHwId = currentDevice.value.hwId
-        
-        socket.emit('device:forceStatusCheck', deviceId, (response) => {
-          if (response?.success) {
-            console.log(`✅ Extender ${deviceHwId} status: ${response.status}`)
-          } else {
-            // console.log(`⚠️ Failed to check extender status: ${response?.error}`)
-          }
-        })
-        
-        // ✅ ОТЛОЖЕННОЕ ОБНОВЛЕНИЕ С ПРОВЕРКОЙ
-        setTimeout(() => {
-          if (currentDevice.value && currentDevice.value.id === deviceId) {
-            fetchCurrentConnection(deviceId)
-          }
-        }, 2000)
-      }
-      
-      closeModal()
-      
-    } catch (error) {
-      console.error('❌ Save changes error:', error)
-      toast.add({
-        severity: 'error',
-        summary: 'Error',
-        detail: `Failed to apply changes: ${error.message}`,
-        life: 5000
-      })
-    } finally {
-      isLoading.value = false
-    }
-  }
-
-// ✅ ОБНОВЛЕННЫЙ метод getSuccessMessage с проверками
-const getSuccessMessage = (action) => {
-  const deviceName = currentDevice.value?.shortName || currentDevice.value?.hwId || 'device'
   
-  const messages = {
-    connect: `Successfully connected ${deviceName} to router`,
-    disconnect: `Successfully disconnected ${deviceName}`,
-    reconnect: `Connection updated for ${deviceName}`,
-    default: `Changes applied for ${deviceName} successfully`
-  }
-  return messages[action] || messages.default
+  setupModeChangeListeners()
 }
 
-// ✅ ОБНОВЛЕННЫЙ метод closeModal с полной очисткой
 const closeModal = () => {
-  // ✅ СОХРАНЯЕМ ДАННЫЕ ДЛЯ АСИНХРОННЫХ ОПЕРАЦИЙ
+  cleanupOperation()
+  
+  if (operationInProgress.value && currentDevice.value?.id) {
+    socket.emit('device:cancelOperation', {
+      deviceId: currentDevice.value.id,
+      operationType: operationType.value
+    })
+  }
+  
   const deviceId = currentDevice.value?.id
   const deviceHwId = currentDevice.value?.hwId
   
-  // ✅ ОЧИСТКА ДАННЫХ
   modalValue.value = null
   modalType.value = '' 
   currentDevice.value = null
   currentConnection.value = null
   visible.value = false
   isLoading.value = false
+  operationInProgress.value = false
+  operationType.value = ''
+  progressMessage.value = ''
   faqSearchQuery.value = ''
   
-  // ✅ СБРАСЫВАЕМ ПАРОЛИ ПРИ ЗАКРЫТИИ
   devicePassword.value = ''
   manualRouterPassword.value = ''
   useDevicePassword.value = true
   authError.value = false
   
-  // console.log('🔒 Modal closed, device data cleared:', { deviceId, deviceHwId })
+  console.log('🔒 Modal closed, device data cleared:', { deviceId, deviceHwId })
+}
+
+const saveChanges = async (action = 'connect') => {
+  try {
+    console.log('💾 Saving MWS changes for device:', currentDevice.value?.id, 'action:', action)
+    
+    if (!currentDevice.value?.id) {
+      toast.add({ severity: 'error', summary: 'Error', detail: 'No device selected', life: 3000 })
+      return
+    }
+    
+    if (!modalValue.value && action !== 'disconnect') {
+      toast.add({ severity: 'warn', summary: 'Warning', detail: 'Please select a router', life: 3000 })
+      return
+    }
+    
+    const deviceId = currentDevice.value.id;
+    
+    if (currentDevice.value.hwType === 'yes') {
+      // Для AP устройств используем device:mwsConnected
+      const mwsData = {
+        deviceId: deviceId,
+        routerId: modalValue.value,
+        action: action,
+        routerPassword: routerPasswordToUse.value,
+        useDevicePassword: useDevicePassword.value
+      };
+      
+      const saveData = {
+        value: modalValue.value,
+        type: 'mwsApConnection',  
+        action: action,
+        routerPassword: routerPasswordToUse.value,
+        useDevicePassword: useDevicePassword.value,
+        callback: (success, message) => {
+          if (success) {
+            console.log('✅ MWS AP operation completed:', message)
+            toast.add({ severity: 'success', summary: 'Success', detail: message, life: 3000 })
+            
+            if (action === 'disconnect') {
+              currentConnection.value = null
+            } else {
+              setTimeout(() => {
+                fetchCurrentConnection(deviceId);
+              }, 5000);
+            }
+          } else {
+            console.error('❌ MWS AP operation failed:', message)
+            toast.add({ severity: 'error', summary: 'Error', detail: message, life: 5000 })
+          }
+        }
+      };
+      
+      emit('save', saveData);
+      
+      emit('operationStarted', {
+        deviceId: deviceId,
+        operationType: 'mwsConnection',  // Важно: используем правильный тип
+        operationData: {
+          action: action,
+          routerId: modalValue.value,
+          isDisconnect: action === 'disconnect'
+        }
+      });
+      
+      closeModal();
+      return;
+    }
+    
+      let mode
+      if (action === 'disconnect') {
+        mode = 'extender_disconnect'
+      } else {
+        mode = currentConnection.value ? 'extender_connect' : 'extender'
+      }
+
+      console.log('📤 Emitting operationStarted for regular device:', {
+        deviceId: deviceId,
+        operationType: 'modeChange',
+        operationData: {
+          oldMode: currentConnection.value ? 'extender_connect' : 'router',
+          newMode: mode,
+          routerId: modalValue.value,
+          action: action
+        }
+      });
+
+      // ✅ ВАЖНО: ЭМИТИМ СОБЫТИЕ ДЛЯ ОТКРЫТИЯ ПРОГРЕСС-МОДАЛКИ
+      emit('operationStarted', {
+        deviceId: deviceId,
+        operationType: 'modeChange',  // Используем modeChange для обычных устройств
+        operationData: {
+          oldMode: currentConnection.value ? 'extender_connect' : 'router',
+          newMode: mode,
+          routerId: modalValue.value,
+          action: action
+        }
+      });
+
+      const saveData = {
+        value: modalValue.value,
+        type: 'mwsConnection',
+        action: action,
+        routerPassword: routerPasswordToUse.value,
+        useDevicePassword: useDevicePassword.value,
+        mode: mode,
+        callback: (success, message) => {
+          if (success) {
+            console.log('✅ MWS operation completed:', message)
+            toast.add({ severity: 'success', summary: 'Success', detail: message, life: 3000 })
+            
+            if (action === 'disconnect') {
+              currentConnection.value = null
+            } else {
+              setTimeout(() => {
+                fetchCurrentConnection(deviceId);
+              }, 5000);
+            }
+          } else {
+            console.error('❌ MWS operation failed:', message)
+            toast.add({ severity: 'error', summary: 'Error', detail: message, life: 5000 })
+          }
+        }
+      }
+
+      emit('save', saveData);    
+    
+    // closeModal();
+    
+  } catch (error) {
+    console.error('❌ Save changes error:', error)
+    toast.add({ severity: 'error', summary: 'Error', detail: error.message, life: 5000 })
+  }
+}
+// ✅ ИСПРАВЛЕННАЯ ФУНКЦИЯ saveWanChanges
+const saveWanChanges = () => {
+  // Показываем индикатор загрузки
+  isLoading.value = true
+  operationInProgress.value = true
+  operationType.value = 'wan'
+  progressMessage.value = 'Configuring switch...'
+  
+  // Создаем объект с callback для асинхронной операции
+  const saveData = {
+    value: modalValue.value,
+    type: 'wanTypes',
+    callback: (success, message) => {
+      // Скрываем индикатор загрузки
+      isLoading.value = false
+      operationInProgress.value = false
+      operationType.value = ''
+      progressMessage.value = ''
+      
+      if (success) {
+        console.log('✅ WAN type saved successfully:', message)
+        toast.add({
+          severity: 'success',
+          summary: 'Success',
+          detail: message,
+          life: 3000
+        })
+        // ✅ ЗАКРЫВАЕМ МОДАЛКУ ТОЛЬКО ПОСЛЕ УСПЕШНОГО ЗАВЕРШЕНИЯ
+        closeModal()
+      } else {
+        console.error('❌ Failed to save WAN type:', message)
+        toast.add({
+          severity: 'error',
+          summary: 'Error',
+          detail: message,
+          life: 5000
+        })
+        // В случае ошибки оставляем модалку открытой для повторной попытки
+      }
+    }
+  }
+  
+  // Отправляем событие с данными
+  emit('save', saveData)
+  
 }
 
 // Watchers
@@ -908,18 +1061,70 @@ watch(modalValue, (newVal) => {
   showResetHint.value = newVal === null
 })
 
-defineExpose({ show })
+// Очистка при размонтировании
+onUnmounted(() => {
+  cleanupOperation()
+})
+
+defineExpose({ 
+  show,
+  updateProgress: (newProgress, step, details) => {
+    console.log('Progress update:', newProgress, step, details)
+  }
+})
 </script>
 
-
 <style scoped>
-
 .optimized-modal {
   max-height: 90vh;
 }
 
 .modal-content {
   padding: 0.5rem 0;
+}
+
+/* Стили для прогресс-бара операции */
+.operation-progress {
+  margin-bottom: 1.5rem;
+  padding: 1rem;
+  background: var(--surface-50);
+  border-radius: 8px;
+  border: 1px solid var(--surface-200);
+}
+
+/* ✅ НОВЫЕ СТИЛИ ДЛЯ WAN ПРОГРЕССА */
+.wan-operation-progress {
+  margin-bottom: 1.5rem;
+  padding: 1rem;
+  background: var(--surface-50);
+  border-radius: 8px;
+  border: 1px solid var(--surface-200);
+}
+
+.progress-details {
+  margin-top: 0.5rem;
+  font-size: 0.85rem;
+}
+
+.opacity-50 {
+  opacity: 0.5;
+}
+
+.pointer-events-none {
+  pointer-events: none;
+}
+
+.progress-message {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+  color: var(--text-color-secondary);
+  font-size: 0.9rem;
+}
+
+.progress-message i {
+  color: var(--primary-color);
 }
 
 .section-title {
@@ -992,6 +1197,7 @@ defineExpose({ show })
   padding: 0.5rem 0;
   margin: 0;
 }
+
 .connection-info {
   margin: 0;
 }
@@ -1007,6 +1213,7 @@ defineExpose({ show })
 .connection-info :deep(.p-message-content) {
   padding: 0;
 }
+
 .connection-details {
   flex: 1;
 }
@@ -1015,7 +1222,7 @@ defineExpose({ show })
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 0.5rem; /* Уменьшено с 0.75rem */
+  margin-bottom: 0.5rem;
   flex-wrap: wrap;
   gap: 0.5rem;
 }
@@ -1028,9 +1235,11 @@ defineExpose({ show })
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 0.25rem;}
+  margin-bottom: 0.25rem;
+}
 
-.connection-info-line strong,.connection-info-line span:not(.info-label) {
+.connection-info-line strong,
+.connection-info-line span:not(.info-label) {
   font-size: 0.85rem;
   line-height: 1.2;
 }
@@ -1049,12 +1258,6 @@ defineExpose({ show })
   font-size: 0.85rem;
 }
 
-.signal-indicator {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-}
-
 /* Секция пароля роутера */
 .router-password-section {
   background: var(--surface-50);
@@ -1065,13 +1268,6 @@ defineExpose({ show })
 
 .password-toggle-section {
   margin-bottom: 1rem;
-}
-
-.horizontal-password-options {
-  display: flex;
-  flex-direction: row;
-  gap: 1rem;
-  width: 100%;
 }
 
 .horizontal-password-options {
@@ -1148,95 +1344,6 @@ defineExpose({ show })
 .password-label small {
   text-align: left;
   margin-top: 0.25rem;
-}
-
-/* Выравнивание по вертикали для всего контента */
-.password-option.horizontal-option .option-content {
-  display: flex;
-  align-items: flex-start;
-}
-
-/* ===== АДАПТИВНОСТЬ ДЛЯ МОБИЛЬНЫХ ===== */
-@media (max-width: 768px) {
-  .horizontal-password-options {
-    flex-direction: column;
-    gap: 0.75rem;
-  }
-  
-  .password-option.horizontal-option {
-    width: 100%;
-  }
-  
-  .password-option.horizontal-option .option-content {
-    padding: 0.75rem;
-  }
-}
-
-/* ===== ДОПОЛНИТЕЛЬНЫЕ ИСПРАВЛЕНИЯ ВЫРАВНИВАНИЯ ===== */
-.router-password-section {
-  background: var(--surface-50);
-  border-radius: 8px;
-  padding: 1.25rem;
-  border: 1px solid var(--surface-200);
-}
-
-.password-toggle-section {
-  margin-bottom: 1.5rem;
-}
-
-.section-title {
-  font-weight: 600;
-  margin-bottom: 1rem;
-  color: var(--text-color);
-  font-size: 1rem;
-  line-height: 1.2;
-  text-align: left;
-}
-
-/* Убедитесь, что все элементы выровнены по левому краю */
-.password-label {
-  text-align: left;
-}
-
-.password-label strong {
-  display: block;
-  margin-bottom: 0.25rem;
-}
-
-.password-label small {
-  display: block;
-  line-height: 1.4;
-}
-
-.password-option:hover {
-  border-color: var(--primary-300);
-  background-color: var(--surface-50);
-}
-
-.password-option.active {
-  border-color: var(--primary-500);
-  background-color: var(--primary-50);
-}
-
-.password-radio {
-  margin-right: 0.75rem;
-  margin-top: 0.125rem;
-}
-
-.password-label {
-  cursor: pointer;
-  flex: 1;
-  margin: 0;
-}
-
-.manual-password-section {
-  margin-top: 1rem;
-  padding-top: 1rem;
-  border-top: 1px solid var(--surface-200);
-}
-
-.password-input-container {
-  position: relative;
 }
 
 /* Список роутеров */
@@ -1474,9 +1581,8 @@ defineExpose({ show })
   min-width: 100px;
 }
 
-/* ===== АДАПТИВНОСТЬ ДЛЯ МОБИЛЬНЫХ УСТРОЙСТВ ===== */
+/* ===== АДАПТИВНОСТЬ ===== */
 @media (max-width: 768px) {
-  /* Общие мобильные стили */
   .modal-content {
     padding: 0.25rem 0;
   }
@@ -1486,7 +1592,6 @@ defineExpose({ show })
     margin-bottom: 0.75rem;
   }
 
-  /* MWS Connection мобильные стили */
   .mws-connection-content {
     gap: 1rem;
   }
@@ -1508,7 +1613,6 @@ defineExpose({ show })
     font-size: 0.9rem;
   }
 
-  /* Пароль роутера мобильные */
   .router-password-section {
     padding: 0.75rem;
   }
@@ -1522,7 +1626,6 @@ defineExpose({ show })
     width: 100%;
   }
 
-  /* Список роутеров мобильные */
   .router-item {
     padding: 0.75rem;
   }
@@ -1540,7 +1643,6 @@ defineExpose({ show })
     justify-content: space-between;
   }
 
-  /* FAQ мобильные */
   .faq-controls {
     flex-direction: column;
     gap: 0.75rem;
@@ -1556,7 +1658,6 @@ defineExpose({ show })
     width: 100%;
   }
 
-  /* Футер мобильные */
   .modal-footer {
     flex-direction: column;
     gap: 0.75rem;
@@ -1571,7 +1672,6 @@ defineExpose({ show })
   }
 }
 
-/* ===== АДАПТИВНОСТЬ ДЛЯ ОЧЕНЬ МАЛЕНЬКИХ ЭКРАНОВ ===== */
 @media (max-width: 480px) {
   .router-password-section {
     padding: 0.5rem;
@@ -1590,7 +1690,6 @@ defineExpose({ show })
   }
 }
 
-/* ===== ДЕСКТОПНЫЕ ОПТИМИЗАЦИИ ===== */
 @media (min-width: 769px) {
   .faq-controls {
     flex-direction: row;
@@ -1601,7 +1700,7 @@ defineExpose({ show })
   }
 }
 
-/* ===== СТИЛИ ДЛЯ SCROLLBAR ===== */
+/* Стили для скроллбара */
 .routers-list::-webkit-scrollbar,
 .options-grid::-webkit-scrollbar,
 .faq-list::-webkit-scrollbar {
@@ -1627,7 +1726,7 @@ defineExpose({ show })
   background: var(--surface-400);
 }
 
-/* ===== УТИЛИТЫ ===== */
+/* Утилиты */
 .no-routers-message,
 .no-connection-section {
   margin-top: 1rem;
@@ -1636,5 +1735,4 @@ defineExpose({ show })
 .info-message {
   margin-top: 1rem;
 }
-
 </style>

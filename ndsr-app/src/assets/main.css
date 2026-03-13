@@ -36,6 +36,21 @@ html, body {
   backdrop-filter: blur(0.5px) !important;
   z-index: var(--z-index-modal) !important;
 }
+/* Предотвращаем дерганье скролла при открытии модалок */
+body.p-overflow-hidden {
+  padding-right: 0 !important;
+}
+
+/* Для всех модальных окон */
+.p-dialog-mask {
+  overflow-y: auto !important;
+}
+
+/* Фикс для Dropdown внутри модалки */
+.p-dropdown-panel {
+  position: fixed !important;
+  z-index: 10000 !important;
+}
 
 /* Стили для Progress Dialog */
 .operation-dialog-overlay .p-dialog {
@@ -256,6 +271,8 @@ html, body {
   opacity: 1 !important;
   visibility: visible !important;
 }
+
+
 
 @keyframes spin {
   from { transform: rotate(0deg); }

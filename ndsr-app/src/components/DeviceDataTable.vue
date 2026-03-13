@@ -1,4 +1,4 @@
-  <template>
+<template>
   <div class="devices-management">
     <BookedDevicesTable 
       :loading="deviceStore.loading"
@@ -163,28 +163,34 @@
         </template>
       </DataTable>
 
-      <PrimeDeviceModal 
-        ref="deviceModal" 
+      <PrimeDeviceModal
+        ref="deviceModal"
         :device="selectedDevice"
         :wan-types="wanTypes"
-        :filtered-devices="deviceStore.routerDevices"
+        :filtered-devices="filteredDevices"
+        :current-wan-type="currentDeviceWanType"
         @save="handleModalSave"
+        @operation-started="handleOperationStarted"
       />
+      
       <ProgressModal 
-      ref="progressModal" 
-      :device="selectedDevice"> 
-      </ProgressModal>
+        ref="progressModal" 
+        :device="selectedDevice"
+      />
+      
       <ChangeModeModal 
         ref="changeModeModal"
         :device="selectedDevice"
         :available-routers="deviceStore.routerDevices"
+        @operation-started="handleOperationStarted"
+        @mode-changed="handleModeChanged"
       />
     </div>
   </div>
 </template>
 
 <script setup>
-import { ref, computed, onMounted, nextTick, inject, watch } from 'vue'
+import { ref, computed, onMounted, nextTick, inject, watch, onBeforeUnmount } from 'vue'
 import { useToast } from 'primevue/usetoast'
 import { useDeviceStore } from '@/stores/useDeviceStore'
 import { socket } from '@/socket'
@@ -213,11 +219,18 @@ const globalFilter = ref('')
 const selectedDevice = ref(null)
 const deviceModal = ref(null)
 const changeModeModal = ref(null)
+const progressModal = ref(null)
 const sortField = ref('statusCode')
 const sortOrder = ref(-1)
 
+// ========== COMPUTED ==========
 const showBookedSectionButton = computed(() => {
   return deviceStore.isBookedSectionCollapsed && deviceStore.bookedDevicesCount > 0
+})
+
+const currentDeviceWanType = computed(() => {
+  if (!selectedDevice.value) return null
+  return deviceStore.getDeviceWanType(selectedDevice.value.id)
 })
 
 const filteredDevices = computed(() => {
@@ -267,6 +280,7 @@ const sortedAndFilteredDevices = computed(() => {
   })
 })
 
+// ========== UTILITY FUNCTIONS ==========
 const clearSearch = () => {
   globalFilter.value = ''
 }
@@ -306,10 +320,151 @@ const getTypeSeverity = (type) => {
   return severityMap[type] || 'secondary'
 }
 
+const getDevicePassword = (deviceId) => {
+  const device = deviceStore.devices.find(d => d.id === deviceId);
+  if (device?.booking?.isBooked && device.booking?.bookedBy === deviceStore.currentUserId) {
+    return device.booking.accessPassword;
+  }
+  return null;
+}
+
+// ========== HANDLERS ==========
+const handleOperationStarted = (data) => {
+  // console.log('📡 Operation started RECEIVED:', data);
+  
+  if (!data?.deviceId || !data?.operationType) {
+    // console.warn('⚠️ Invalid operation started data:', data);
+    return;
+  }
+  
+  const device = deviceStore.devices.find(d => d.id === data.deviceId);
+  // console.log('📡 Found device for progress modal:', device);
+  
+  if (device) {
+    // console.log('📡 Showing progress modal with:', {
+    //   operationType: data.operationType,
+    //   device: device,
+    //   operationData: data.operationData
+    // });
+    
+    if (progressModal.value) {
+      progressModal.value.show(
+        data.operationType, 
+        device, 
+        data.operationData || {}
+      );
+    } else {
+      console.error('❌ progressModal ref is not available');
+    }
+  } else {
+    console.warn(`⚠️ Device with ID ${data.deviceId} not found in store`);
+  }
+};
+
+const handleModeChanged = (data) => {
+  // console.log('📡 Mode changed event:', data);
+  // Можно обновить UI если нужно
+};
+
+const handleFirmwareUpdated = (data) => {
+  // console.log('📡 Firmware updated event received:', data);
+  
+  if (data.deviceId && data.version) {
+    const device = deviceStore.devices.find(d => d.id === data.deviceId);
+    if (device) {
+      device.firmwareVersion = data.version;
+    }
+  }
+  
+  if (data.message) {
+    toast.add({
+      severity: data.success ? 'success' : 'warn',
+      summary: data.success ? 'Firmware Updated' : 'Firmware Check',
+      detail: data.message,
+      life: 3000
+    });
+  }
+};
+
+const handleBatchFirmwareUpdated = (data) => {
+  console.log('📡 Batch firmware updated:', data);
+  if (data.successful) {
+    data.successful.forEach(item => {
+      const device = deviceStore.devices.find(d => d.id === item.deviceId);
+      if (device) device.firmwareVersion = item.version;
+    });
+  }
+  
+  if (data.failed && data.failed.length > 0) {
+    toast.add({
+      severity: 'warn',
+      summary: 'Some checks failed',
+      detail: `${data.failed.length} device(s) could not be checked`,
+      life: 5000
+    });
+  }
+};
+
+const handleMwsStatusUpdated = (data) => {
+  // console.log('📡 MWS status updated:', data);
+};
+
+const handleModeUpdated = (data) => {
+  // console.log('📡 Mode updated:', data);
+};
+
+const handleBookingUpdated = (data) => {
+  // console.log('📡 Booking updated:', data);
+  deviceStore.updateDeviceBooking(data.deviceId, data.booking);
+};
+
+const handleBatchBookingUpdated = (data) => {
+  // console.log('📡 Batch booking updated:', data);
+  if (data.successful) {
+    data.successful.forEach(deviceId => {
+      deviceStore.updateDeviceBooking(deviceId, null);
+    });
+  }
+};
+
+const handleWanTypeUpdated = (data) => {
+  // console.log('📡 WAN type updated:', data);
+  const device = deviceStore.devices.find(d => d.id === data.deviceId);
+  if (device) {
+    device.currentWanType = data.type;
+  }
+};
+
+const handleOperationCompleted = (data) => {
+  // console.log('📡 Operation completed:', data);
+  
+  if (data.success) {
+    toast.add({
+      severity: 'success',
+      summary: 'Success',
+      detail: data.message || 'Operation completed',
+      life: 3000
+    });
+  } else {
+    toast.add({
+      severity: 'error',
+      summary: 'Error',
+      detail: data.message || 'Operation failed',
+      life: 5000
+    });
+  }
+  
+  if (data.deviceId) {
+    setTimeout(() => {
+      socket.emit('device:forceStatusCheck', data.deviceId);
+    }, 2000);
+  }
+};
+
+// ========== MODAL HANDLERS ==========
 const handleOpenModal = (device, modalType) => {
   selectedDevice.value = device
   
-  // ✅ ПОДГОТАВЛИВАЕМ ПАРОЛЬ ДЛЯ MWS МОДАЛКИ
   let devicePassword = null
   let passwordSource = 'global'
   
@@ -321,7 +476,6 @@ const handleOpenModal = (device, modalType) => {
   }
   
   nextTick(() => {
-    // ✅ ПЕРЕДАЕМ ПАРОЛЬ В МОДАЛКУ
     if (modalType === 'mwsConnection') {
       deviceModal.value?.show(modalType, devicePassword, passwordSource)
     } else {
@@ -359,6 +513,12 @@ const handleOpenConsole = async (device) => {
 
   } catch (error) {
     console.error('Failed to open console:', error)
+    toast.add({
+      severity: 'error',
+      summary: 'Error',
+      detail: error.message,
+      life: 4000
+    })
   }
 }
 
@@ -386,12 +546,8 @@ const handleOpenChangeMode = (device) => {
   })
 }
 
-// const mwsOperationInProgress = ref(false)
-const progressModal = ref(null)
-
 const handleMwsSave = async (deviceId, routerId, action, routerPassword = null, useDevicePassword = true) => {
   return new Promise((resolve, reject) => {
-    // ✅ ИСПРАВЛЕНИЕ: ПРАВИЛЬНО ПЕРЕДАЕМ operationData С action
     const device = deviceStore.devices.find(d => d.id === deviceId)
     if (device && progressModal.value) {
       progressModal.value.show('mwsConnection', device, {
@@ -408,7 +564,7 @@ const handleMwsSave = async (deviceId, routerId, action, routerPassword = null, 
       useDevicePassword
     }
     
-    console.log('🔗 Sending MWS operation:', mwsData);
+    // console.log('🔗 Sending MWS operation:', mwsData);
     
     socket.emit('device:mwsConnected', mwsData, (response) => {
       if (!response) {
@@ -417,15 +573,14 @@ const handleMwsSave = async (deviceId, routerId, action, routerPassword = null, 
       }
       
       if (response?.status === 'ok') {
-        console.log('✅ MWS operation completed successfully');
+        // console.log('✅ MWS operation completed successfully');
         resolve()
       } else {
-        console.error('❌ MWS operation failed:', response.error);
+        // console.error('❌ MWS operation failed:', response.error);
         reject(new Error(response?.error || 'MWS operation failed'))
       }
     })
     
-    // ✅ УВЕЛИЧИВАЕМ ТАЙМАУТ ДО 120 СЕКУНД ДЛЯ DISCONNECT
     const timeoutDuration = action === 'disconnect' ? 120000 : 60000;
     
     setTimeout(() => {
@@ -434,36 +589,10 @@ const handleMwsSave = async (deviceId, routerId, action, routerPassword = null, 
   })
 }
 
-const handleModalSave = async ({ value, type, action, routerPassword, useDevicePassword, callback }) => {
-  if (!selectedDevice.value) {
-    callback(false, 'No device selected')
-    return
-  }
-  
-  try {
-    if (type === 'wanTypes') {
-      const result = await handleWanSave(selectedDevice.value.id, value)
-      // ✅ ПЕРЕДАЕМ СООБЩЕНИЕ ИЗ handleWanSave В КАЧЕСТВЕ ВТОРОГО АРГУМЕНТА
-      callback(true, result)
-    } else if (type === 'mwsConnection') {
-      await handleMwsSave(
-        selectedDevice.value.id, 
-        value, 
-        action, 
-        routerPassword, 
-        useDevicePassword
-      )
-      callback(true)
-    }
-  } catch (error) {
-    console.error('Modal save error:', error)
-    callback(false, error.message)
-  }
-}
-
-// ✅ ИСПРАВЛЕННЫЙ метод handleWanSave - ВОЗВРАЩАЕТ СООБЩЕНИЕ
 const handleWanSave = async (deviceId, vlanId) => {
   return new Promise((resolve, reject) => {
+    // console.log(`🔧 Configuring WAN type for device ${deviceId} to VLAN ${vlanId}`);
+    
     socket.emit('device:wanTypes:save', deviceId, vlanId, (response) => {
       if (!response) return reject(new Error('No response from server'))
       
@@ -472,16 +601,119 @@ const handleWanSave = async (deviceId, vlanId) => {
         const deviceName = device?.shortName || device?.hwId || 'Unknown device'
         const wanStatus = vlanId === "4094" ? "WAN port is DOWN" : "WAN port is UP"
         
-        // ✅ ВОЗВРАЩАЕМ СООБЩЕНИЕ, А НЕ ПРОСТО РЕЗОЛВИМ
+        // console.log(`✅ WAN type configuration completed for ${deviceName}`);
         resolve(`WAN type updated for ${deviceName} - ${wanStatus}`)
       } else {
         reject(new Error(response?.message || 'Save failed'))
       }
     })
-    setTimeout(() => reject(new Error('Request timeout')), 10000)
+    
+    setTimeout(() => reject(new Error('Switch configuration timeout - device may be slow')), 30000)
   })
 }
 
+const handleModalSave = (data) => {
+  // console.log('💾 Handling modal save with data:', data);
+  
+  if (!data || typeof data.callback !== 'function') {
+    // console.error('❌ Invalid modal save data or missing callback');
+    return;
+  }
+  
+  const { value, type, action, routerPassword, useDevicePassword, mode, callback } = data;
+  
+  if (type === 'wanTypes') {
+    handleWanSave(selectedDevice.value?.id, value)
+      .then(message => {
+        callback(true, message);
+      })
+      .catch(error => {
+        callback(false, error.message);
+      });
+  } 
+  else if (type === 'mwsApConnection') {
+    if (!selectedDevice.value?.id) {
+      callback(false, 'Device not selected');
+      return;
+    }
+    
+    const mwsData = {
+      deviceId: selectedDevice.value.id,
+      routerId: value,
+      action: action,
+      routerPassword: routerPassword,
+      useDevicePassword: useDevicePassword
+    };
+    
+    socket.emit('device:mwsConnected', mwsData, (response) => {
+      if (response?.status === 'ok') {
+        callback(true, `MWS ${action} completed`);
+      } else {
+        callback(false, response?.error || 'MWS operation failed');
+      }
+    });
+  }
+  else if (type === 'mwsConnection') {
+    if (!selectedDevice.value?.id) {
+      callback(false, 'Device not selected');
+      return;
+    }
+    
+    callback(true, `MWS ${action} started`);
+  }
+};
+
+// ========== LIFECYCLE ==========
+onMounted(() => {
+  deviceStore.loadCollapsedState()
+  
+  // ✅ ЕДИНСТВЕННЫЕ СЛУШАТЕЛИ - ВСЕ В ОДНОМ МЕСТЕ
+  socket.on('device:firmwareUpdated', handleFirmwareUpdated)
+  socket.on('device:batchFirmwareUpdated', handleBatchFirmwareUpdated)
+  socket.on('device:mwsStatusUpdated', handleMwsStatusUpdated)
+  socket.on('device:modeUpdated', handleModeUpdated)
+  socket.on('device:bookingUpdated', handleBookingUpdated)
+  socket.on('device:batchBookingUpdated', handleBatchBookingUpdated)
+  socket.on('device:wanTypeUpdated', handleWanTypeUpdated)
+  socket.on('device:operationCompleted', handleOperationCompleted)
+  
+  // Прогресс слушатели
+  socket.on('device:mwsOperationProgress', (data) => {
+    // console.log('📡 PROGRESS: device:mwsOperationProgress received:', data);
+    if (progressModal.value && data.deviceId === selectedDevice.value?.id) {
+      progressModal.value.updateProgress(data.progress, data.step, data.details);
+    }
+  });
+
+  socket.on('device:operationProgress', (data) => {
+    // console.log('📡 PROGRESS: device:operationProgress received:', data);
+    if (progressModal.value && data.deviceId === selectedDevice.value?.id) {
+      progressModal.value.updateProgress(data.progress, data.step, data.details);
+    }
+  });
+
+  socket.on('device:modeChangeProgress', (data) => {
+    // console.log('📡 PROGRESS: device:modeChangeProgress received:', data);
+    if (progressModal.value && data.deviceId === selectedDevice.value?.id) {
+      progressModal.value.updateProgress(data.progress, data.step, data.details);
+    }
+  });
+})
+
+onBeforeUnmount(() => {
+  // ✅ ОЧИЩАЕМ ВСЕ СЛУШАТЕЛИ
+  socket.off('device:firmwareUpdated', handleFirmwareUpdated)
+  socket.off('device:batchFirmwareUpdated', handleBatchFirmwareUpdated)
+  socket.off('device:mwsStatusUpdated', handleMwsStatusUpdated)
+  socket.off('device:modeUpdated', handleModeUpdated)
+  socket.off('device:bookingUpdated', handleBookingUpdated)
+  socket.off('device:batchBookingUpdated', handleBatchBookingUpdated)
+  socket.off('device:wanTypeUpdated', handleWanTypeUpdated)
+  socket.off('device:operationCompleted', handleOperationCompleted)
+  socket.off('device:mwsOperationProgress')
+  socket.off('device:operationProgress')
+  socket.off('device:modeChangeProgress')
+})
 
 watch(() => deviceStore.availableDevices, (newDevices) => {
   if (newDevices.length > 0) {
@@ -491,14 +723,9 @@ watch(() => deviceStore.availableDevices, (newDevices) => {
     }, 500)
   }
 }, { deep: true, immediate: true })
-
-onMounted(() => {
-  deviceStore.loadCollapsedState()
-})
 </script>
 
 <style scoped>
-
 .devices-count {
   font-size: 0.9rem;
   color: var(--text-color-secondary);
@@ -512,7 +739,6 @@ onMounted(() => {
 .online-icon {
   color: var(--green-500);
   font-size: 0.5rem;
-  
 }
 
 .offline-icon {
@@ -581,9 +807,6 @@ onMounted(() => {
     overflow-x: auto;
   }
 }
-</style>
-
-<style scoped>
 
 :deep(.p-datatable .p-datatable-header) {
     background: var(--surface-card) !important;

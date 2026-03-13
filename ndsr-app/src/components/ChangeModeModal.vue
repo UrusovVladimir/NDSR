@@ -12,7 +12,7 @@
   >
     <div class="change-mode-modal" v-if="currentDevice">
       <!-- Статус пароля -->
-      <div v-if="!hasValidPassword && !operationInProgress" class="mb-3">
+      <div v-if="!hasValidPassword" class="mb-3">
         <Message severity="warn">
           <i class="pi pi-exclamation-triangle mr-2"></i>
           No password available for this device. Please book the device first.
@@ -20,91 +20,40 @@
       </div>
 
       <!-- Ошибка аутентификации -->
-      <div v-if="authError && !operationInProgress" class="mb-3">
+      <div v-if="authError" class="mb-3">
         <Message severity="error">
           <i class="pi pi-shield mr-2"></i>
           Authentication failed. Please check device credentials.
         </Message>
       </div>
 
-      <!-- Прогресс смены режима -->
-      <div v-if="operationInProgress" class="operation-progress mb-4">
-        <h6 class="section-title text-center mb-3">
-          <i class="pi pi-cog mr-2"></i>
-          Changing Device Mode
-        </h6>
-        
-        <!-- Прогресс-бар -->
-        <ProgressBar 
-          :value="progressPercentage" 
-          class="custom-progressbar"
-          :class="progressBarClass"
-          showValue
-        />
-        
-        <!-- Детальный статус -->
-        <div class="status-steps">
-          <div 
-            v-for="step in statusSteps" 
-            :key="step.id" 
-            class="status-step" 
-            :class="{ 
-              'active': currentStep === step.id, 
-              'completed': currentStep > step.id 
-            }"
-          >
-            <div class="step-indicator">
-              <i v-if="currentStep > step.id" class="pi pi-check-circle text-green-500"></i>
-              <i v-else-if="currentStep === step.id" class="pi pi-spin pi-spinner text-primary"></i>
-              <i v-else class="pi pi-circle text-color-secondary"></i>
-            </div>
-            <div class="step-content">
-              <div class="step-title">{{ step.title }}</div>
-              <div class="step-description">{{ step.description }}</div>
-              <div v-if="step.details && currentStep >= step.id" class="step-details text-color-secondary text-sm">
-                {{ getStepDetails(step.id) }}
-              </div>
+      <!-- УЛУЧШЕННОЕ ОТОБРАЖЕНИЕ ТЕКУЩЕГО РЕЖИМА -->
+      <div class="current-mode-section mb-4" v-if="hasValidPassword">
+        <h6 class="section-title mb-2">Current Mode:</h6>
+        <div class="mode-display-container">
+          <div class="flex align-items-center gap-3">
+            <div class="mode-status-indicator" :class="modeStatusClass">
+              <i :class="modeStatusIcon" class="mr-1"></i>
+              <small>{{ modeStatusText }}</small>
             </div>
           </div>
-        </div>
-        
-        <!-- Таймер перезагрузки -->
-        <div v-if="currentStep >= 3" class="reboot-timer text-center mt-3">
-          <div class="timer-display">
-            <i class="pi pi-clock mr-2"></i>
-            Device rebooting... Estimated time: 
-            <span class="font-bold">{{ formatTime(estimatedTimeRemaining) }}</span>
-          </div>
-          <small class="text-color-secondary">This may take 2-3 minutes</small>
         </div>
       </div>
 
-      <div v-if="!operationInProgress">
-        <!-- УЛУЧШЕННОЕ ОТОБРАЖЕНИЕ ТЕКУЩЕГО РЕЖИМА -->
-        <div class="current-mode-section mb-4" v-if="hasValidPassword">
-          <h6 class="section-title mb-2">Current Mode:</h6>
-          <div class="mode-display-container">
-            <div class="flex align-items-center gap-3">
-              <div class="mode-status-indicator" :class="modeStatusClass">
-                <i :class="modeStatusIcon" class="mr-1"></i>
-                <small>{{ modeStatusText }}</small>
-              </div>
-            </div>
-          </div>
-        </div>
+      <!-- Информация о пароле -->
+      <div v-if="hasValidPassword && !authError" class="password-info mb-3">
+        <Chip :label="`Using ${passwordSource} password`" icon="pi pi-key" />
+      </div>
 
-        <!-- Информация о пароле -->
-        <div v-if="hasValidPassword && !authError" class="password-info mb-3">
-          <Chip :label="`Using ${passwordSource} password: ${devicePassword}`" icon="pi pi-key" />
-        </div>
-
-        <div v-if="hasValidPassword && !authError" class="action-selection-section mb-4">
-          <h6 class="section-title mb-3">Select Action:</h6>
-          
-          <!-- Router Mode - скрываем если уже в router без подключения -->
-          <div v-if="shouldShowAction('router')" 
-               class="action-option mb-3 p-3 border-1 surface-border border-round" 
-               :class="{ 'action-option-active': selectedAction === 'router' }">
+      <div v-if="hasValidPassword && !authError" class="action-selection-section mb-4">
+        <h6 class="section-title mb-3">Select Action:</h6>
+        
+        <!-- Router Mode -->
+        <div v-if="shouldShowAction('router')" 
+             class="action-option mb-3 p-3 border-1 surface-border border-round" 
+             :class="{ 'action-option-active': selectedAction === 'router' }"
+             @click="selectedAction = 'router'">
+          <div class="option-content">
             <RadioButton
               v-model="selectedAction"
               inputId="actionRouter"
@@ -122,11 +71,14 @@
               </small>
             </label>
           </div>
+        </div>
 
-          <!-- Extender Mode (без подключения) - скрываем если уже в extender без подключения -->
-          <div v-if="shouldShowAction('extender')"
-               class="action-option mb-3 p-3 border-1 surface-border border-round"
-               :class="{ 'action-option-active': selectedAction === 'extender' }">
+        <!-- Extender Mode (без подключения) -->
+        <div v-if="shouldShowAction('extender')"
+             class="action-option mb-3 p-3 border-1 surface-border border-round"
+             :class="{ 'action-option-active': selectedAction === 'extender' }"
+             @click="selectedAction = 'extender'">
+          <div class="option-content">
             <RadioButton
               v-model="selectedAction"
               inputId="actionExtender"
@@ -144,11 +96,14 @@
               </small>
             </label>
           </div>
+        </div>
 
-          <!-- Extender + Connect - скрываем если уже в extender с подключением -->
-          <div v-if="shouldShowAction('extenderConnect')"
-               class="action-option mb-3 p-3 border-1 surface-border border-round"
-               :class="{ 'action-option-active': selectedAction === 'extenderConnect' }">
+        <!-- Extender + Connect -->
+        <div v-if="shouldShowAction('extenderConnect')"
+             class="action-option mb-3 p-3 border-1 surface-border border-round"
+             :class="{ 'action-option-active': selectedAction === 'extenderConnect' }"
+             @click="selectedAction = 'extenderConnect'">
+          <div class="option-content">
             <RadioButton
               v-model="selectedAction"
               inputId="actionExtenderConnect"
@@ -167,11 +122,14 @@
               </small>
             </label>
           </div>
+        </div>
 
-          <!-- Disconnect + Router Mode - показываем только если в extender с подключением -->
-          <div v-if="shouldShowAction('disconnectRouter')"
-               class="action-option mb-3 p-3 border-1 surface-border border-round"
-               :class="{ 'action-option-active': selectedAction === 'disconnectRouter' }">
+        <!-- Disconnect + Router Mode -->
+        <div v-if="shouldShowAction('disconnectRouter')"
+             class="action-option mb-3 p-3 border-1 surface-border border-round"
+             :class="{ 'action-option-active': selectedAction === 'disconnectRouter' }"
+             @click="selectedAction = 'disconnectRouter'">
+          <div class="option-content">
             <RadioButton
               v-model="selectedAction"
               inputId="actionDisconnectRouter"
@@ -191,255 +149,253 @@
             </label>
           </div>
         </div>
+      </div>
 
-        <div v-if="(selectedAction === 'extenderConnect' || selectedAction === 'disconnectRouter') && hasValidPassword && !authError" 
-             class="router-password-section mb-4">
-          <h6 class="section-title mb-3">Router Authentication:</h6>
-          
-          <!-- ИСПРАВЛЕННЫЙ БЛОК - ГОРИЗОНТАЛЬНОЕ РАСПОЛОЖЕНИЕ -->
-          <div class="password-toggle-section mb-3">
-            <div class="horizontal-password-options">
-              <div class="password-option horizontal-option" 
-                  :class="{ 'active': useDevicePassword }"
-                  @click="useDevicePassword = true">
-                <div class="option-content">
-                  <RadioButton
-                    v-model="useDevicePassword"
-                    inputId="useDevicePassword"
-                    name="passwordSource"
-                    :value="true"
-                    class="password-radio"
-                  />
-                  <label for="useDevicePassword" class="password-label">
-                    <div class="flex align-items-center mb-1">
-                      <i class="pi pi-key mr-2 text-primary"></i>
-                      <strong>Device Password</strong>
-                    </div>
-                    <small class="block text-color-secondary">
-                      Same as device
-                    </small>
-                  </label>
-                </div>
+      <!-- Router Password Section (для connect/disconnect) -->
+      <div v-if="(selectedAction === 'extenderConnect' || selectedAction === 'disconnectRouter') && hasValidPassword && !authError" 
+           class="router-password-section mb-4">
+        <h6 class="section-title mb-3">Router Authentication:</h6>
+        
+        <div class="password-toggle-section mb-3">
+          <div class="horizontal-password-options">
+            <!-- Device Password Option -->
+            <div class="password-option horizontal-option" 
+                :class="{ 'active': useDevicePassword }"
+                @click="useDevicePassword = true">
+              <div class="option-content">
+                <RadioButton
+                  v-model="useDevicePassword"
+                  inputId="useDevicePassword"
+                  name="passwordSource"
+                  :value="true"
+                  class="password-radio"
+                />
+                <label for="useDevicePassword" class="password-label">
+                  <div class="flex align-items-center mb-1">
+                    <i class="pi pi-key mr-2 text-primary"></i>
+                    <strong>Device Password</strong>
+                  </div>
+                  <small class="block text-color-secondary">
+                    Same as device
+                  </small>
+                </label>
               </div>
+            </div>
 
-              <div class="password-option horizontal-option" 
-                  :class="{ 'active': !useDevicePassword }"
-                  @click="useDevicePassword = false">
-                <div class="option-content">
-                  <RadioButton
-                    v-model="useDevicePassword"
-                    inputId="useManualPassword"
-                    name="passwordSource"
-                    :value="false"
-                    class="password-radio"
-                  />
-                  <label for="useManualPassword" class="password-label">
-                    <div class="flex align-items-center mb-1">
-                      <i class="pi pi-pencil mr-2 text-warning"></i>
-                      <strong>Manual Password</strong>
-                    </div>
-                    <small class="block text-color-secondary">
-                      Enter manually
-                    </small>
-                  </label>
-                </div>
+            <!-- Manual Password Option -->
+            <div class="password-option horizontal-option" 
+                :class="{ 'active': !useDevicePassword }"
+                @click="useDevicePassword = false">
+              <div class="option-content">
+                <RadioButton
+                  v-model="useDevicePassword"
+                  inputId="useManualPassword"
+                  name="passwordSource"
+                  :value="false"
+                  class="password-radio"
+                />
+                <label for="useManualPassword" class="password-label">
+                  <div class="flex align-items-center mb-1">
+                    <i class="pi pi-pencil mr-2 text-warning"></i>
+                    <strong>Manual Password</strong>
+                  </div>
+                  <small class="block text-color-secondary">
+                    Enter manually
+                  </small>
+                </label>
               </div>
             </div>
           </div>
+        </div>
 
-          <!-- Поле для ручного ввода пароля -->
-          <div v-if="!useDevicePassword" class="manual-password-section">
-            <div class="password-input-container">
-              <label class="text-sm font-semibold mb-2 block">Router Password:</label>
+        <!-- Manual Password Input -->
+        <div v-if="!useDevicePassword" class="manual-password-section">
+          <div class="password-input-container">
+            <label class="text-sm font-semibold mb-2 block">Router Password:</label>
+            <form @submit.prevent>
+              <!-- Используем видимое, но стилизованное как скрытое поле (screen-reader only) -->
+              <div style="position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); border: 0;">
+                <label for="username">Username</label>
+                <input 
+                  type="text" 
+                  id="username"
+                  name="username" 
+                  value="admin" 
+                  autocomplete="username"
+                  readonly
+                />
+              </div>
+              
+              <!-- Поле для нового пароля -->
               <Password 
                 v-model="manualRouterPassword" 
                 :feedback="false" 
                 placeholder="Enter router password"
                 class="w-full router-password-input"
                 toggleMask
-                :disabled="operationInProgress"
+                :inputProps="{ 
+                  autocomplete: 'new-password',
+                  id: 'new-password'
+                }"
               />
-            </div>
-          </div>
-
-          <!-- Информация о текущем выборе -->
-          <div v-else class="password-info-section">
-            <div class="info-message p-2 border-round bg-green-50 border-1 border-green-200">
-              <div class="flex align-items-center">
-                <i class="pi pi-check-circle text-green-600 mr-2"></i>
-                <span class="text-green-700">
-                  Will use device password: <strong>{{ devicePassword ? devicePassword : 'Not set' }}</strong>
-                </span>
-              </div>
-            </div>
+            </form>
           </div>
         </div>
-
-        <!-- Выбор роутера для отключения -->
-        <div v-if="selectedAction === 'disconnectRouter' && hasValidPassword && !authError" 
-             class="router-selection-section mb-4">
-          <h6 class="section-title mb-2">Select Router to Disconnect From:</h6>
-          <Dropdown 
-            v-model="selectedRouterId" 
-            :options="availableBookedRoutersFormatted"
-            optionLabel="displayName"
-            optionValue="id"
-            placeholder="Select a router..."
-            class="w-full router-dropdown"
-            :appendTo="dropdownAppendTo"
-            :panelStyle="dropdownPanelStyle"
-            :disabled="operationInProgress"
-            @focus="lockBodyScroll"
-            @blur="unlockBodyScroll"
-            @before-show="onDropdownShow"
-          />
-        </div>
-
-        <!-- Выбор роутера для подключения -->
-        <div v-if="selectedAction === 'extenderConnect' && hasValidPassword && !authError" class="router-selection-section mb-4">
-          <h6 class="section-title mb-2">Select Router to Connect:</h6>
-          <Dropdown 
-            v-model="selectedRouterId" 
-            :options="availableBookedRoutersFormatted"
-            optionLabel="displayName"
-            optionValue="id"
-            placeholder="Select a router..."
-            class="w-full router-dropdown"
-            :appendTo="dropdownAppendTo"
-            :panelStyle="dropdownPanelStyle"
-            :disabled="operationInProgress"
-            @focus="lockBodyScroll"
-            @blur="unlockBodyScroll"
-            @before-show="onDropdownShow"
-          />
-          <div v-if="selectedAction === 'extenderConnect' && !selectedRouterId" class="text-orange-500 text-sm mt-2">
-            <i class="pi pi-exclamation-circle mr-1"></i>
-            Please select a router to connect to
-          </div>
-        </div>
-
-        <!-- Предупреждения -->
-        <div v-if="showWarning && !authError" class="mt-3">
-          <div class="warning-message p-3 border-round bg-yellow-50 border-1 border-yellow-200">
+        <!-- Device Password Info -->
+        <div v-else class="password-info-section">
+          <div class="info-message p-2 border-round bg-green-50 border-1 border-green-200">
             <div class="flex align-items-center">
-              <i class="pi pi-exclamation-triangle text-yellow-600 mr-2"></i>
-              <span class="text-yellow-700">{{ warningMessage }}</span>
+              <i class="pi pi-check-circle text-green-600 mr-2"></i>
+              <span class="text-green-700">
+                Will use device password
+              </span>
             </div>
           </div>
         </div>
+      </div>
 
-        <!-- Сообщение о необходимости бронирования -->
-        <div v-if="!hasValidPassword" class="mt-3">
-          <Message severity="info">
-            <i class="pi pi-info-circle mr-2"></i>
-            To change device mode, you need to book the device first.
-          </Message>
-        </div>
-
-        <!-- Сообщение при ошибке аутентификации -->
-        <div v-if="authError" class="mt-3">
-          <Message severity="info">
-            <i class="pi pi-info-circle mr-2"></i>
-            Cannot determine current mode due to authentication issues. You can still try to change mode.
-          </Message>
-        </div>
-
-        <!-- Debug секция -->
-        <Button 
-          :label="showDebug ? 'Hide' : 'Show Debug Info'"
-          :icon="showDebug ? 'bi bi-toggle-on' : 'bi bi-tools'"
-          @click="showDebugSection"
-          class="p-button-sm p-button-info"
-          style="margin-top: 15px;"
+      <!-- Router Selection for Disconnect -->
+      <div v-if="selectedAction === 'disconnectRouter' && hasValidPassword && !authError" 
+           class="router-selection-section mb-4">
+        <h6 class="section-title mb-2">Select Router to Disconnect From:</h6>
+        <Dropdown 
+          v-model="selectedRouterId" 
+          :options="availableBookedRoutersFormatted"
+          optionLabel="displayName"
+          optionValue="id"
+          placeholder="Select a router..."
+          class="w-full router-dropdown"
+          :appendTo="dropdownAppendTo"
+          :panelStyle="dropdownPanelStyle"
+          @focus="lockBodyScroll"
+          @blur="unlockBodyScroll"
+          @before-show="onDropdownShow"
         />
-            
-        <div v-if="showDebug" class="debug-section mt-3 p-2 border-round" style="background: #f8f9fa; border: 1px dashed #ccc;">
-          <small class="text-color-secondary">Debug info:</small>
-          <div class="flex gap-2 mt-1">
-            <Button 
-              label="Test Mode Detection" 
-              icon="pi pi-bug" 
-              @click="testModeDetection"
-              class="p-button-sm p-button-help"
-              :disabled="!hasValidPassword"
-            />
-            <Button 
-              label="Reset State" 
-              icon="pi pi-refresh" 
-              @click="resetState"
-              class="p-button-sm p-button-secondary"
-            />
+      </div>
+
+      <!-- Router Selection for Connect -->
+      <div v-if="selectedAction === 'extenderConnect' && hasValidPassword && !authError" class="router-selection-section mb-4">
+        <h6 class="section-title mb-2">Select Router to Connect:</h6>
+        <Dropdown 
+          v-model="selectedRouterId" 
+          :options="availableBookedRoutersFormatted"
+          optionLabel="displayName"
+          optionValue="id"
+          placeholder="Select a router..."
+          class="w-full router-dropdown"
+          :appendTo="dropdownAppendTo"
+          :panelStyle="dropdownPanelStyle"
+          @focus="lockBodyScroll"
+          @blur="unlockBodyScroll"
+          @before-show="onDropdownShow"
+        />
+        <div v-if="selectedAction === 'extenderConnect' && !selectedRouterId" class="text-orange-500 text-sm mt-2">
+          <i class="pi pi-exclamation-circle mr-1"></i>
+          Please select a router to connect to
+        </div>
+      </div>
+
+      <!-- Предупреждения -->
+      <div v-if="showWarning && !authError" class="mt-3">
+        <div class="warning-message p-3 border-round bg-yellow-50 border-1 border-yellow-200">
+          <div class="flex align-items-center">
+            <i class="pi pi-exclamation-triangle text-yellow-600 mr-2"></i>
+            <span class="text-yellow-700">{{ warningMessage }}</span>
           </div>
-          <div v-if="debugInfo" class="mt-1 text-xs">
-            <pre style="margin: 0; font-size: 0.75rem; background: #fff; padding: 0.5rem; border-radius: 4px; overflow-x: auto;">{{ debugInfo }}</pre>
-          </div>
-          <div class="mt-1 text-xs">
-            <div><strong>Device:</strong> {{ currentDevice?.hwId }} ({{ currentDevice?.id }})</div>
-            <div><strong>Password:</strong> {{ devicePassword ? '••••••••' : 'None' }} ({{ passwordSource }})</div>
-            <div><strong>URL:</strong> {{ currentDevice?.URL }}</div>
-            <div><strong>Auth Error:</strong> {{ authError }}</div>
-            <div><strong>Current Mode:</strong> {{ currentDeviceBaseMode || 'Unknown' }}</div>
-            <div><strong>Status MWS:</strong> {{ mwsStatus }}</div> 
-            <div><strong>Available Routers:</strong> {{ availableBookedRoutersFormatted.length }}</div>
-            <div><strong>Should Show Router:</strong> {{ shouldShowAction('router') }}</div>
-            <div><strong>Should Show Extender:</strong> {{ shouldShowAction('extender') }}</div>
-            <div><strong>Should Show Connect:</strong> {{ shouldShowAction('extenderConnect') }}</div>
-            <div><strong>Should Show Disconnect:</strong> {{ shouldShowAction('disconnectRouter') }}</div>
-          </div>
+        </div>
+      </div>
+
+      <!-- Сообщение о необходимости бронирования -->
+      <div v-if="!hasValidPassword" class="mt-3">
+        <Message severity="info">
+          <i class="pi pi-info-circle mr-2"></i>
+          To change device mode, you need to book the device first.
+        </Message>
+      </div>
+
+      <!-- Сообщение при ошибке аутентификации -->
+      <div v-if="authError" class="mt-3">
+        <Message severity="info">
+          <i class="pi pi-info-circle mr-2"></i>
+          Cannot determine current mode due to authentication issues. You can still try to change mode.
+        </Message>
+      </div>
+
+      <!-- Debug секция -->
+      <Button 
+        :label="showDebug ? 'Hide' : 'Show Debug Info'"
+        :icon="showDebug ? 'bi bi-toggle-on' : 'bi bi-tools'"
+        @click="showDebugSection"
+        class="p-button-sm p-button-info"
+        style="margin-top: 15px;"
+      />
+          
+      <div v-if="showDebug" class="debug-section mt-3 p-2 border-round" style="background: #f8f9fa; border: 1px dashed #ccc;">
+        <small class="text-color-secondary">Debug info:</small>
+        <div class="flex gap-2 mt-1">
+          <Button 
+            label="Test Mode Detection" 
+            icon="pi pi-bug" 
+            @click="testModeDetection"
+            class="p-button-sm p-button-help"
+            :disabled="!hasValidPassword"
+          />
+          <Button 
+            label="Reset State" 
+            icon="pi pi-refresh" 
+            @click="resetState"
+            class="p-button-sm p-button-secondary"
+          />
+        </div>
+        <div v-if="debugInfo" class="mt-1 text-xs">
+          <pre style="margin: 0; font-size: 0.75rem; background: #fff; padding: 0.5rem; border-radius: 4px; overflow-x: auto;">{{ debugInfo }}</pre>
+        </div>
+        <div class="mt-1 text-xs">
+          <div><strong>Device:</strong> {{ currentDevice?.hwId }} ({{ currentDevice?.id }})</div>
+          <div><strong>Password:</strong> {{ devicePassword ? '••••••••' : 'None' }} ({{ passwordSource }})</div>
+          <div><strong>Auth Error:</strong> {{ authError }}</div>
+          <div><strong>Current Mode:</strong> {{ currentDeviceBaseMode || 'Unknown' }}</div>
+          <div><strong>Available Routers:</strong> {{ availableBookedRoutersFormatted.length }}</div>
         </div>
       </div>
     </div>
     
-    <div v-else-if="!operationInProgress" class="text-center p-4">
+    <div v-else-if="!currentDevice" class="text-center p-4">
       <ProgressSpinner />
       <div class="mt-2 text-color-secondary">Loading device information...</div>
     </div>
 
     <template #footer>
-      <!-- Кнопки для обычного режима -->
-      <template v-if="!operationInProgress">
-        <Button 
-          label="Cancel" 
-          icon="pi pi-times" 
-          @click="closeModal" 
-          class="p-button-secondary modal-btn-cancel"
-          :disabled="operationInProgress" 
-        />
-        <Button 
-          v-if="hasValidPassword && !authError"
-          :label="confirmButtonText" 
-          icon="pi pi-check" 
-          @click="confirmAction"
-          :disabled="!canConfirm || isLoading"
-          :loading="isLoading"
-          class="modal-btn-confirm"
-        />
-        <Button 
-          v-else-if="hasValidPassword && authError"
-          label="Try Change Mode Anyway" 
-          icon="pi pi-exclamation-triangle" 
-          @click="confirmAction"
-          :disabled="!canConfirmAuthError || isLoading"
-          :loading="isLoading"
-          class="p-button-warning modal-btn-warning"
-        />
-        <Button 
-          v-else
-          label="Book Device First" 
-          icon="pi pi-lock" 
-          disabled
-          class="p-button-outlined modal-btn-disabled"
-        />
-      </template>
-
-      <!-- Кнопка для режима операции -->
+      <Button 
+        label="Cancel" 
+        icon="pi pi-times" 
+        @click="closeModal" 
+        class="p-button-secondary modal-btn-cancel"
+      />
+      <Button 
+        v-if="hasValidPassword && !authError"
+        :label="confirmButtonText" 
+        icon="pi pi-check" 
+        @click="confirmAction"
+        :disabled="!canConfirm || isLoading"
+        :loading="isLoading"
+        class="modal-btn-confirm"
+      />
+      <Button 
+        v-else-if="hasValidPassword && authError"
+        label="Try Change Mode Anyway" 
+        icon="pi pi-exclamation-triangle" 
+        @click="confirmAction"
+        :disabled="!canConfirmAuthError || isLoading"
+        :loading="isLoading"
+        class="p-button-warning modal-btn-warning"
+      />
       <Button 
         v-else
-        :label="currentStep >= 3 ? 'Operation in Progress...' : 'Close'" 
-        icon="pi pi-times" 
-        @click="handleOperationClose" 
-        class="p-button-outlined modal-btn-operation"
-        :disabled="currentStep >= 3"
+        label="Book Device First" 
+        icon="pi pi-lock" 
+        disabled
+        class="p-button-outlined modal-btn-disabled"
       />
     </template>
   </Dialog>
@@ -454,7 +410,6 @@ import Dialog from 'primevue/dialog'
 import Button from 'primevue/button'
 import RadioButton from 'primevue/radiobutton'
 import Dropdown from 'primevue/dropdown'
-import ProgressBar from 'primevue/progressbar'
 import ProgressSpinner from 'primevue/progressspinner'
 import Chip from 'primevue/chip'
 import Message from 'primevue/message'
@@ -464,168 +419,7 @@ const toast = useToast()
 const modeStore = useModeStore()
 const deviceStore = useDeviceStore()
 
-// Определяем мобильное устройство
-const isMobile = ref(false)
-
-// ✅ ДОБАВЛЯЕМ НОВЫЕ ПЕРЕМЕННЫЕ ДЛЯ УПРАВЛЕНИЯ ПАРОЛЕМ
-const useDevicePassword = ref(true)
-const manualRouterPassword = ref('')
-
-const checkMobile = () => {
-  isMobile.value = window.innerWidth <= 768
-}
-const showDebugSection = () => {
-  showDebug.value = !showDebug.value
-}
-
-// ✅ ФУНКЦИИ ДЛЯ УПРАВЛЕНИЯ СКРОЛЛОМ
-const lockBodyScroll = () => {
-  const scrollY = window.scrollY;
-  document.body.style.overflow = 'hidden';
-  document.body.style.position = 'fixed';
-  document.body.style.top = `-${scrollY}px`;
-  document.body.style.width = '100%';
-  document.body.classList.add('dropdown-open');
-  
-  // Сохраняем позицию скролла для восстановления
-  document.body.dataset.scrollY = scrollY.toString();
-}
-
-const unlockBodyScroll = () => {
-  document.body.style.overflow = '';
-  document.body.style.position = '';
-  document.body.style.top = '';
-  document.body.style.width = '';
-  document.body.classList.remove('dropdown-open');
-  
-  // Восстанавливаем позицию скролла
-  const scrollY = document.body.dataset.scrollY;
-  if (scrollY) {
-    window.scrollTo(0, parseInt(scrollY));
-  }
-}
-
-// ✅ НОВАЯ ФУНКЦИЯ ДЛЯ КОРРЕКТНОГО ПОЗИЦИОНИРОВАНИЯ DROPDOWN
-const onDropdownShow = () => {
-  if (!isMobile.value) return;
-  
-  nextTick(() => {
-    const dropdownPanels = document.querySelectorAll('.p-dropdown-panel');
-    dropdownPanels.forEach(panel => {
-      if (panel.style.display !== 'none') {
-        const input = panel.previousElementSibling;
-        if (input) {
-          const inputRect = input.getBoundingClientRect();
-          const panelHeight = panel.offsetHeight;
-          const viewportHeight = window.innerHeight;
-          
-          // Вычисляем доступное пространство снизу
-          const spaceBelow = viewportHeight - inputRect.bottom;
-          const spaceAbove = inputRect.top;
-          
-          let topPosition;
-          
-          if (spaceBelow >= panelHeight || spaceBelow >= spaceAbove) {
-            // Открываем вниз, если есть место
-            topPosition = inputRect.bottom;
-          } else {
-            // Открываем вверх, если снизу нет места
-            topPosition = inputRect.top - panelHeight;
-          }
-          
-          // Ограничиваем позиционирование в пределах viewport
-          topPosition = Math.max(10, Math.min(topPosition, viewportHeight - panelHeight - 10));
-          
-          panel.style.position = 'fixed';
-          panel.style.top = `${topPosition}px`;
-          panel.style.left = `${inputRect.left}px`;
-          panel.style.width = `${inputRect.width}px`;
-          panel.style.transform = 'none';
-          panel.style.maxHeight = '200px';
-          panel.style.zIndex = '10000';
-        }
-      }
-    });
-  });
-}
-
-// ✅ ОБНОВЛЕННЫЕ COMPUTED ДЛЯ DROPDOWN
-const dropdownAppendTo = computed(() => {
-  return isMobile.value ? null : 'body'
-})
-
-const dropdownPanelStyle = computed(() => {
-  if (isMobile.value) {
-    return {
-      maxHeight: '200px',
-      position: 'fixed',
-      zIndex: 10000
-    }
-  }
-  
-  return {
-    maxHeight: '200px'
-  }
-})
-
-// Стили для диалога
-const dialogStyle = computed(() => {
-  if (isMobile.value) {
-    return { 
-      width: '100vw', 
-      height: '90vh', 
-      margin: '0',
-      borderRadius: '0',
-      maxHeight: 'none'
-    }
-  }
-  return { 
-    width: '50vw', 
-    maxWidth: '600px',
-    minWidth: '400px'
-  }
-})
-
-const breakpoints = computed(() => {
-  if (isMobile.value) {
-    return {
-      '0px': { 
-        width: '100vw', 
-        height: '100vh', 
-        margin: '0',
-        borderRadius: '0'
-      }
-    }
-  }
-  
-  return {
-    '1400px': '60vw',
-    '1200px': '70vw', 
-    '960px': '80vw',
-    '768px': { 
-      width: '100vw', 
-      height: '100vh', 
-      margin: '0',
-      borderRadius: '0'
-    }
-  }
-})
-
-const contentStyle = computed(() => {
-  if (isMobile.value) {
-    return {
-      maxHeight: 'calc(100vh - 120px)',
-      overflowY: 'auto',
-      padding: '1rem',
-      paddingBottom: 'env(safe-area-inset-bottom, 1rem)'
-    }
-  }
-  return {
-    maxHeight: '70vh',
-    overflowY: 'auto',
-    padding: '1.5rem'
-  }
-})
+const emit = defineEmits(['modeChanged', 'operationStarted'])
 
 const props = defineProps({
   device: {
@@ -634,8 +428,7 @@ const props = defineProps({
   }
 })
 
-const emit = defineEmits(['modeChanged'])
-
+// ========== СОСТОЯНИЯ ==========
 const visible = ref(false)
 const selectedAction = ref('router')
 const selectedRouterId = ref('')
@@ -644,511 +437,15 @@ const modeCheckInProgress = ref(false)
 const devicePassword = ref('')
 const passwordSource = ref('global')
 const authError = ref(false)
-const todayPassword = inject('todayPassword')
-// Переменные для отслеживания прогресса
-const operationInProgress = ref(false)
-const currentStep = ref(0)
-const operationStartTime = ref(null)
-const estimatedTimeRemaining = ref(180)
-const progressInterval = ref(null)
-
-// Локальная копия устройства чтобы избежать проблем с null
+const useDevicePassword = ref(true)
+const manualRouterPassword = ref('')
+const isMobile = ref(false)
 const currentDevice = ref(null)
-
 const debugInfo = ref('')
 const showDebug = ref(false)
+const todayPassword = inject('todayPassword')
 
-// ✅ ДОБАВЛЯЕМ ОТСУТСТВУЮЩИЕ ПЕРЕМЕННЫЕ
-const mwsStatus = computed(() => {
-  return modeStore.mwsStatus || 'No MWS status'
-})
-
-// ✅ ИСПРАВЛЕННОЕ: Правильно получаем информацию о режиме
-const currentDeviceModeInfo = computed(() => {
-  if (!currentDevice.value) return null;
-  
-  const modeInfo = modeStore.getDeviceModeInfo(currentDevice.value.id);
-  
-  // ✅ ЕСЛИ В STORE NULL, НО УСТРОЙСТВО ОНЛАЙН - ПЫТАЕМСЯ ОПРЕДЕЛИТЬ
-  if (!modeInfo && hasValidPassword.value && !authError.value) {
-    // console.log('🔄 No mode info in store for online device');
-    // Можно запустить автоматическое определение
-  }
-  
-  return modeInfo;
-})
-
-// ✅ Базовый режим с fallback
-const currentDeviceBaseMode = computed(() => {
-  const modeInfo = currentDeviceModeInfo.value;
-  
-  if (!modeInfo) {
-    // ✅ ВОЗВРАЩАЕМ 'router' КАК ДЕФОЛТНЫЙ РЕЖИМ ВМЕСТО null
-    return hasValidPassword.value && !authError.value ? 'router' : null;
-  }
-  
-  return modeInfo.mode;
-})
-
-// ✅ Есть ли подключение к роутеру
-const hasRouterConnection = computed(() => {
-  const modeInfo = currentDeviceModeInfo.value
-  // ✅ extender_connect ИЛИ extender с routerId считаются подключенными
-  return modeInfo && (
-    modeInfo.mode === 'extender_connect' || 
-    (modeInfo.mode === 'extender' && modeInfo.routerId)
-  )
-})
-// ✅ ID подключенного роутера
-const connectedRouterId = computed(() => {
-  const modeInfo = currentDeviceModeInfo.value
-  return modeInfo?.routerId || null
-})
-
-const show = async (password, source = 'global') => {
-    // console.log('🔑 ChangeModeModal show called:', { 
-    //     device: props.device?.hwId,
-    //     hasPassword: !!password 
-    // });
-  
-    devicePassword.value = password;
-    useDevicePassword.value = true;
-    manualRouterPassword.value = '';
-    passwordSource.value = source;
-    authError.value = false;
-    operationInProgress.value = false;
-    currentStep.value = 0;
-    selectedAction.value = 'router';
-    selectedRouterId.value = '';
-    modeCheckInProgress.value = false;
-    isLoading.value = false;
-    debugInfo.value = '';
-    
-    currentDevice.value = props.device;
-    visible.value = true;
-
-    if (hasValidPassword.value && currentDevice.value) {
-        // console.log('🔄 Loading current mode (preserving connections)...');
-        
-        // ✅ ТОЛЬКО ДЛЯ ОТЛАДКИ - можно закомментировать в проде
-        await loadCurrentMode();
-    }
-
-    // ✅ ВОССТАНАВЛИВАЕМ ВЫБРАННЫЙ РОУТЕР ИЗ СУЩЕСТВУЮЩИХ ДАННЫХ
-    if (currentDevice.value) {
-        const savedMode = modeStore.getDeviceModeInfo(currentDevice.value.id);
-        if (savedMode?.routerId) {
-            selectedRouterId.value = savedMode.routerId;
-            // console.log(`🔗 Restored router selection: ${selectedRouterId.value}`);
-        }
-        
-        // ✅ АВТОМАТИЧЕСКИ ВЫБИРАЕМ СООТВЕТСТВУЮЩЕЕ ДЕЙСТВИЕ
-        autoSelectActionBasedOnMode(savedMode);
-    }
-}
-
-// ✅ ДОБАВЬТЕ ЭТУ ФУНКЦИЮ ДЛЯ АВТОВЫБОРА ДЕЙСТВИЯ
-const autoSelectActionBasedOnMode = (modeInfo) => {
-  if (!modeInfo) return;
-  
-  const mode = modeInfo.mode;
-  const hasConnection = modeInfo.routerId;
-  
-  // console.log('🤖 Auto-selecting action based on mode:', { mode, hasConnection });
-  
-  // ✅ ЕСЛИ УСТРОЙСТВО В РЕЖИМЕ EXTENDER_CONNECT - ВЫБИРАЕМ DISCONNECT ПО УМОЛЧАНИЮ
-  if (mode === 'extender_connect' || (mode === 'extender' && hasConnection)) {
-    selectedAction.value = 'disconnectRouter';
-  } else if (mode === 'router' && !hasConnection) {
-    selectedAction.value = 'router';
-  } else if (mode === 'extender' && !hasConnection) {
-    selectedAction.value = 'extender';
-  }
-}
-
-const loadCurrentMode = async () => {
-    if (!hasValidPassword.value || !currentDevice.value) return;
-    
-    modeCheckInProgress.value = true;
-    authError.value = false;
-    
-    try {
-        // console.log('🔄 Loading current mode (preserving connections)...');
-        
-        // ✅ СОХРАНЯЕМ ПОЛНУЮ ИНФОРМАЦИЮ О ТЕКУЩЕМ РЕЖИМЕ
-        const existingModeInfo = modeStore.getDeviceModeInfo(currentDevice.value.id);
-        const existingMode = existingModeInfo?.mode;
-        const existingRouterId = existingModeInfo?.routerId;
-        
-        // console.log('📊 Existing mode info:', { existingMode, existingRouterId });
-        
-        // ✅ ЕСЛИ УСТРОЙСТВО ПОДКЛЮЧЕНО - НЕ ПЕРЕОПРЕДЕЛЯЕМ РЕЖИМ!
-        if (existingMode === 'extender_connect' && existingRouterId) {
-            // console.log('🔗 Device is connected, skipping mode detection to preserve connection');
-            authError.value = false;
-            return; // ← ВАЖНО: выходим без переопределения режима
-        }
-        
-        // ✅ ТОЛЬКО ДЛЯ НЕПОДКЛЮЧЕННЫХ УСТРОЙСТВ - определяем режим
-        const detectedMode = await modeStore.getCurrentMode(currentDevice.value.id, devicePassword.value);
-        
-        // ✅ УМНАЯ ЛОГИКА ОБНОВЛЕНИЯ: СОХРАНЯЕМ ПОДКЛЮЧЕНИЯ
-        let finalMode = detectedMode;
-        let finalRouterId = existingRouterId;
-        
-        // Если устройство было подключено, но сервер вернул extender - сохраняем подключение
-        if (existingMode === 'extender_connect' && detectedMode === 'extender' && existingRouterId) {
-            finalMode = 'extender_connect';
-            // console.log('🔄 Preserving connection mode despite server response');
-        }
-        // Если не подключено и сервер вернул router - очищаем routerId
-        else if (detectedMode === 'router') {
-            finalRouterId = null;
-        }
-        
-        modeStore.updateDeviceMode(currentDevice.value.id, {
-            mode: finalMode,
-            routerId: finalRouterId,
-            timestamp: Date.now()
-        });
-        
-        authError.value = false;
-        // console.log(`✅ Mode updated: ${finalMode}, routerId: ${finalRouterId}`);
-        
-    } catch (error) {
-        console.log('❌ Error getting current mode:', error.message);
-        
-        // ✅ ПРИ ОШИБКЕ НЕ СБРАСЫВАЕМ ДАННЫЕ
-        const existingModeInfo = modeStore.getDeviceModeInfo(currentDevice.value.id);
-        if (existingModeInfo) {
-            // console.log('⚠️ Keeping existing mode data due to error:', existingModeInfo);
-        }
-        
-        if (error.message.includes('401') || error.message.includes('authentication')) {
-            authError.value = true;
-            toast.add({ 
-                severity: 'error', 
-                summary: 'Authentication Failed', 
-                detail: 'Cannot determine current mode due to authentication issues', 
-                life: 5000 
-            });
-        } else if (error.message.includes('timeout')) {
-            toast.add({ 
-                severity: 'warn', 
-                summary: 'Device Timeout', 
-                detail: 'Device is slow to respond. Mode detection failed.', 
-                life: 5000 
-            });
-        }
-    } finally {
-        modeCheckInProgress.value = false;
-    }
-}
-
-// Функции для отладки
-const testModeDetection = async () => {
-  if (!hasValidPassword.value || !currentDevice.value) return
-  
-  debugInfo.value = 'Testing mode detection via store...'
-  
-  try {
-    let testPassword = devicePassword.value;
-    
-    if (!testPassword) {
-      debugInfo.value = '❌ No password available for testing'
-      toast.add({ severity: 'error', summary: 'Mode Detection Test Failed', detail: 'No password available for testing', life: 5000 })
-      return;
-    }
-    
-    // console.log('🔧 TestModeDetection via store:', {
-    //   deviceId: currentDevice.value.id,
-    //   hasPassword: !!testPassword,
-    //   passwordLength: testPassword.length
-    // });
-    
-    // ✅ Используем forceRefresh: true только для тестирования
-    const mode = await modeStore.getCurrentMode(currentDevice.value.id, testPassword, { forceRefresh: true })
-    
-    debugInfo.value = `✅ Success! Mode: ${mode}`
-    toast.add({ severity: 'success', summary: 'Mode Detection Test', detail: `Mode detected: ${mode}`, life: 3000 })
-    
-  } catch (error) {
-    debugInfo.value = `❌ Store error: ${error.message}`
-    // console.error('TestModeDetection store error:', error)
-    
-    if (modeStore.error) {
-      // console.error('Store error details:', modeStore.error)
-      debugInfo.value += `\nStore error: ${modeStore.error}`
-    }
-    
-    let errorDetail = error.message;
-    if (error.message.includes('401') || error.message.includes('authentication')) {
-      errorDetail = 'Authentication failed. Please check the device password.'
-    } else if (error.message.includes('timeout')) {
-      errorDetail = 'Device timeout. Device may be offline or slow to respond.'
-    } else if (error.message.includes('network') || error.message.includes('fetch')) {
-      errorDetail = 'Network error. Check device connectivity.'
-    }
-    
-    toast.add({ severity: 'error', summary: 'Mode Detection Test Failed', detail: errorDetail, life: 5000 })
-  }
-}
-
-const resetState = () => {
-  modeStore.resetDeviceMode(currentDevice.value?.id)
-  authError.value = false
-  modeCheckInProgress.value = false
-  debugInfo.value = 'State reset'
-  toast.add({ severity: 'info', summary: 'State Reset', detail: 'Modal state has been reset', life: 2000 })
-}
-
-const startOperationProgress = () => {
-  operationInProgress.value = true
-  currentStep.value = 1
-  operationStartTime.value = Date.now()
-  estimatedTimeRemaining.value = 180
-  
-  progressInterval.value = setInterval(() => {
-    if (currentStep.value < 4) {
-      const elapsed = Math.floor((Date.now() - operationStartTime.value) / 1000)
-      estimatedTimeRemaining.value = Math.max(0, 180 - elapsed)
-    }
-  }, 1000)
-}
-
-const updateProgressStep = (step) => {
-  currentStep.value = step
-}
-
-const getStepDetails = (stepId) => {
-  switch (stepId) {
-    case 1:
-      return currentStep.value >= 1 ? 'Command sent successfully' : ''
-    case 2:
-      return currentStep.value >= 2 ? 'Configuration applied' : ''
-    case 3:
-      return currentStep.value >= 3 ? `Estimated time: ${formatTime(estimatedTimeRemaining.value)}` : ''
-    case 4:
-      return currentStep.value >= 4 ? 'You can now use the device' : ''
-    default:
-      return ''
-  }
-}
-
-const formatTime = (seconds) => {
-  const m = Math.floor(seconds / 60)
-  const s = seconds % 60
-  return `${m}:${s.toString().padStart(2, '0')}`
-}
-  
-const closeModal = () => {
-  fullCleanup()
-  visible.value = false
-}
-
-const handleOperationClose = () => {
-  if (currentStep.value >= 3) {
-    toast.add({ severity: 'info', summary: 'Operation in Progress', detail: 'Please wait for the operation to complete', life: 3000 })
-    return
-  }
-  closeModal()
-}
-
-const cleanupOperation = () => {
-  if (progressInterval.value) {
-    clearInterval(progressInterval.value)
-    progressInterval.value = null
-  }
-  operationInProgress.value = false
-  currentStep.value = 0
-  isLoading.value = false
-  estimatedTimeRemaining.value = 180
-}
-
-const fullCleanup = () => {
-  cleanupOperation()
-  selectedAction.value = 'router'
-  selectedRouterId.value = ''
-  devicePassword.value = ''
-  useDevicePassword.value = true
-  manualRouterPassword.value = ''
-  passwordSource.value = 'global'
-  authError.value = false
-  modeCheckInProgress.value = false
-  currentDevice.value = null
-  debugInfo.value = ''
-  showDebug.value = false
-}
-  
-const confirmAction = async () => {
-  if ((!canConfirm.value && !authError.value) || (!canConfirmAuthError.value && authError.value)) return
-  
-  isLoading.value = true
-  
-  try {
-    let mode, routerId;
-    
-    switch (selectedAction.value) {
-      case 'router':
-        mode = 'router'
-        routerId = null
-        break
-      case 'extender':
-        mode = 'extender' 
-        routerId = null
-        break
-      case 'extenderConnect':
-        mode = 'extender_connect'
-        routerId = selectedRouterId.value
-        break
-      case 'disconnectRouter':
-        mode = 'extender_disconnect'
-        routerId = selectedRouterId.value 
-        break
-      default:
-        throw new Error('Invalid action selected')
-    }
-    
-    startOperationProgress()
-    
-    setTimeout(() => updateProgressStep(2), 1000)
-    
-    if (selectedAction.value === 'extenderConnect') {
-      setTimeout(() => updateProgressStep(3), 3000)
-    } else {
-      setTimeout(() => updateProgressStep(3), 3000)
-    }
-    
-    let routerPasswordToUse = null
-    if (selectedAction.value === 'extenderConnect' || selectedAction.value === 'disconnectRouter') {
-      if (useDevicePassword.value) {
-        routerPasswordToUse = devicePassword.value
-        // console.log('🔑 Using device password for router')
-      } else if (manualRouterPassword.value) {
-        routerPasswordToUse = manualRouterPassword.value
-        // console.log('🔑 Using manual password for router')
-      }
-    }
-    
-    const result = await modeStore.changeMode(
-      currentDevice.value.id, 
-      mode,
-      routerId, 
-      devicePassword.value,
-      routerPasswordToUse
-    )
-    
-    if (result.success) {
-      updateProgressStep(4)
-      
-      let successMessage = `Device mode successfully changed to ${mode}`
-      if (result.mwsConnected) {
-        successMessage += ` and connected to ${routerId} via MWS`
-      }
-      
-      toast.add({ severity: 'success', summary: 'Operation Completed', detail: successMessage, life: 5000 })
-      
-      setTimeout(() => {
-        emit('modeChanged', {
-          deviceId: currentDevice.value.id,
-          mode: mode,
-          routerId: routerId,
-          action: selectedAction.value,
-          mwsConnected: result.mwsConnected || false,
-          passwordUsed: useDevicePassword.value ? 'device' : 'manual'
-        })
-        closeModal()
-      }, 2000)
-    } else {
-      throw new Error(result.message)
-    }
-    
-  } catch (error) {
-    console.error('Action failed:', error)
-    cleanupOperation()
-    toast.add({ severity: 'error', summary: 'Operation Failed', detail: error.message, life: 5000 })
-  } finally {
-    isLoading.value = false
-  }
-}
-
-// ✅ ВАЖНЫЕ ИСПРАВЛЕНИЯ:
-
-// ✅ 1. ФИЛЬТРАЦИЯ РОУТЕРОВ - только забронированные и type = router
-const availableBookedRoutersFormatted = computed(() => {
-  return deviceStore.devices
-    .filter(device => {
-      // Только роутеры
-      const isRouter = device.type === 'router';
-      // Только забронированные текущим пользователем
-      const isBooked = device.booking?.isBooked && device.booking?.bookedBy === deviceStore.currentUserId;
-      // Только онлайн устройства
-      const isOnline = device.statusCode === 200;
-      // Исключаем текущее устройство из списка
-      const isNotCurrentDevice = device.id !== currentDevice.value?.id;
-      
-      return isRouter && isBooked && isOnline && isNotCurrentDevice;
-    })
-    .map(router => ({
-      id: router.id,
-      displayName: `${router.hwId} ${router.shortName}`
-    }));
-});
-
-const shouldShowAction = (action) => {
-  if (!hasValidPassword.value || authError.value) return true;
-  
-  const baseMode = currentDeviceBaseMode.value;
-  const hasConnection = hasRouterConnection.value;
-  const connectedRouter = connectedRouterId.value;
-  
-  // console.log('🔍 shouldShowAction check:', {
-  //   action,
-  //   baseMode,
-  //   hasConnection,
-  //   connectedRouter,
-  //   modeInfo: currentDeviceModeInfo.value
-  // });
-  
-  // ✅ ЕСЛИ УСТРОЙСТВО В РЕЖИМЕ EXTENDER_CONNECT - ПОКАЗЫВАЕМ ТОЛЬКО DISCONNECT
-  if (baseMode === 'extender_connect' || (baseMode === 'extender' && hasConnection)) {
-    switch (action) {
-      case 'disconnectRouter':
-        return true; // ✅ ПОКАЗЫВАЕМ ТОЛЬКО DISCONNECT
-      case 'router':
-        return false; // ❌ СКРЫВАЕМ ROUTER MODE
-      case 'extender':
-      case 'extenderConnect':
-        return false; // ❌ СКРЫВАЕМ EXTENDER И EXTENDER_CONNECT
-      default:
-        return false;
-    }
-  }
-  
-  // ✅ СТАНДАРТНАЯ ЛОГИКА ДЛЯ ДРУГИХ РЕЖИМОВ
-  switch (action) {
-    case 'router':
-      // Скрываем Router если уже в router без подключения
-      return !(baseMode === 'router' && !hasConnection);
-      
-    case 'extender':
-      // Скрываем Extender если уже в extender без подключения
-      return !(baseMode === 'extender' && !hasConnection);
-      
-    case 'extenderConnect':
-      // Скрываем Extender+Connect если уже в extender с подключением
-      return !(baseMode === 'extender_connect' || (baseMode === 'extender' && hasConnection));
-      
-    case 'disconnectRouter':
-      // Показываем Disconnect только если в extender с подключением
-      return (baseMode === 'extender_connect' || (baseMode === 'extender' && hasConnection && connectedRouter));
-      
-    default:
-      return true;
-  }
-}
-
-// ✅ 3.  COMPUTED PROPERTIES ДЛЯ ОТОБРАЖЕНИЯ РЕЖИМА
+// ========== COMPUTED ==========
 const hasValidPassword = computed(() => {
   return devicePassword.value && 
         devicePassword.value.trim() !== '' && 
@@ -1157,53 +454,153 @@ const hasValidPassword = computed(() => {
 
 const modalTitle = computed(() => {
   if (!currentDevice.value) return 'Device Mode'
-  
-  return operationInProgress.value 
-    ? `Changing Mode - ${currentDevice.value.shortName} ${currentDevice.value.hwId}`
-    : `Device Mode - ${currentDevice.value.shortName} ${currentDevice.value.hwId}`
+  return `Device Mode - ${currentDevice.value.shortName} ${currentDevice.value.hwId}`
 })
 
-// ✅ ИСПРАВЛЕННОЕ computed свойство для severity
-const progressSeverity = computed(() => {
-  if (currentStep.value <= 2) return 'info'
-  if (currentStep.value === 3) return 'warning'
-  return 'success'
+const currentDeviceModeInfo = computed(() => {
+  if (!currentDevice.value) return null
+  return modeStore.getDeviceModeInfo(currentDevice.value.id)
 })
 
-// ✅ Оставьте progressPercentage как есть
-const progressPercentage = computed(() => {
-  return Math.min((currentStep.value / 4) * 100, 100)
-})
-
-const progressBarClass = computed(() => {
-  if (currentStep.value <= 2) return 'progress-info'
-  if (currentStep.value === 3) return 'progress-warning'
-  return 'progress-success'
-})
-
-const statusSteps = computed(() => [
-  {
-    id: 1,
-    title: 'Sending Command',
-    description: 'Sending mode change request to device',
-  },
-  {
-    id: 2,
-    title: 'Configuring Device',
-    description: 'Device is applying new configuration',
-  },
-  {
-    id: 3,
-    title: 'Device Rebooting',
-    description: 'Device is restarting with new mode',
-  },
-  {
-    id: 4,
-    title: 'Operation Complete',
-    description: 'Device mode has been changed successfully',
+const currentDeviceBaseMode = computed(() => {
+  const modeInfo = currentDeviceModeInfo.value
+  if (!modeInfo) {
+    return hasValidPassword.value && !authError.value ? 'router' : null
   }
-])
+  return modeInfo.mode
+})
 
+const hasRouterConnection = computed(() => {
+  const modeInfo = currentDeviceModeInfo.value
+  return modeInfo && (
+    modeInfo.mode === 'extender_connect' || 
+    (modeInfo.mode === 'extender' && modeInfo.routerId)
+  )
+})
+
+const connectedRouterId = computed(() => {
+  const modeInfo = currentDeviceModeInfo.value
+  return modeInfo?.routerId || null
+})
+
+const mwsStatus = computed(() => {
+  return modeStore.mwsStatus || 'No MWS status'
+})
+
+// ========== ФИЛЬТРАЦИЯ РОУТЕРОВ ==========
+const availableBookedRoutersFormatted = computed(() => {
+  return deviceStore.devices
+    .filter(device => {
+      const isRouter = device.type === 'router'
+      const isBooked = device.booking?.isBooked && device.booking?.bookedBy === deviceStore.currentUserId
+      const isOnline = device.statusCode === 200
+      const isNotCurrentDevice = device.id !== currentDevice.value?.id
+      
+      return isRouter && isBooked && isOnline && isNotCurrentDevice
+    })
+    .map(router => ({
+      id: router.id,
+      displayName: `${router.hwId} ${router.shortName}`
+    }))
+})
+
+// ========== ЛОГИКА ОТОБРАЖЕНИЯ ДЕЙСТВИЙ ==========
+const shouldShowAction = (action) => {
+  if (!hasValidPassword.value || authError.value) return true
+  
+  const baseMode = currentDeviceBaseMode.value
+  const hasConnection = hasRouterConnection.value
+  const connectedRouter = connectedRouterId.value
+  
+  if (baseMode === 'extender_connect' || (baseMode === 'extender' && hasConnection)) {
+    switch (action) {
+      case 'disconnectRouter': return true
+      case 'router':
+      case 'extender':
+      case 'extenderConnect':
+        return false
+      default: return false
+    }
+  }
+  
+  switch (action) {
+    case 'router':
+      return !(baseMode === 'router' && !hasConnection)
+    case 'extender':
+      return !(baseMode === 'extender' && !hasConnection)
+    case 'extenderConnect':
+      return !(baseMode === 'extender_connect' || (baseMode === 'extender' && hasConnection))
+    case 'disconnectRouter':
+      return (baseMode === 'extender_connect' || (baseMode === 'extender' && hasConnection && connectedRouter))
+    default:
+      return true
+  }
+}
+
+const canConfirm = computed(() => {
+  if (!hasValidPassword.value || modeCheckInProgress.value || isLoading.value) return false
+  if (!shouldShowAction(selectedAction.value)) return false
+  if (selectedAction.value === 'extenderConnect') return !!selectedRouterId.value
+  if (selectedAction.value === 'disconnectRouter') return !!selectedRouterId.value
+  return !!selectedAction.value
+})
+
+const canConfirmAuthError = computed(() => {
+  if (!hasValidPassword.value || !authError.value || modeCheckInProgress.value || isLoading.value) return false
+  if (selectedAction.value === 'extenderConnect') return !!selectedRouterId.value
+  if (selectedAction.value === 'disconnectRouter') return !!selectedRouterId.value
+  return !!selectedAction.value
+})
+
+const confirmButtonText = computed(() => {
+  if (authError.value) return 'Try Change Mode Anyway'
+  
+  const baseMode = currentDeviceBaseMode.value
+  const hasConnection = hasRouterConnection.value
+  
+  if (baseMode === 'extender_connect' || (baseMode === 'extender' && hasConnection)) {
+    switch (selectedAction.value) {
+      case 'disconnectRouter': return 'Disconnect & Switch to Router'
+      case 'router': return 'Switch to Router Mode'
+      default: return 'Confirm'
+    }
+  }
+  
+  switch (selectedAction.value) {
+    case 'router': 
+      return baseMode === 'router' && !hasConnection ? 'Device is already in Router Mode' : 'Switch to Router Mode'
+    case 'extender': 
+      return baseMode === 'extender' && !hasConnection ? 'Device is already in Extender Mode' : 'Switch to Extender Mode'
+    case 'extenderConnect': 
+      return baseMode === 'extender_connect' && hasConnection ? 'Reconnect Extender to Router' : 'Switch to Extender & Connect'
+    case 'disconnectRouter':
+      return 'Disconnect & Switch to Router'
+    default: return 'Confirm'
+  }
+})
+
+const showWarning = computed(() => {
+  if (!hasValidPassword.value || authError.value || modeCheckInProgress.value || isLoading.value) return false
+  return !shouldShowAction(selectedAction.value)
+})
+
+const warningMessage = computed(() => {
+  const baseMode = currentDeviceBaseMode.value
+  const hasConnection = hasRouterConnection.value
+  
+  if (baseMode === 'router' && selectedAction.value === 'router' && !hasConnection) {
+    return 'Device is already in Router mode'
+  }
+  if (baseMode === 'extender' && selectedAction.value === 'extender' && !hasConnection) {
+    return 'Device is already in Extender mode'
+  }
+  if (baseMode === 'extender_connect' && selectedAction.value === 'extenderConnect' && hasConnection) {
+    return 'Device is already in Extender mode with router connection'
+  }
+  return ''
+})
+
+// ========== СТАТУС РЕЖИМА ==========
 const modeStatusClass = computed(() => {
   if (!hasValidPassword.value) return 'status-unknown'
   if (authError.value) return 'status-error'
@@ -1246,120 +643,410 @@ const modeStatusText = computed(() => {
   return 'Mode unknown'
 })
 
-// ✅ Информация о подключенном роутере
-const connectedRouterInfo = computed(() => {
-  if (!hasRouterConnection.value || !connectedRouterId.value) return ''
+// ========== МЕТОДЫ ==========
+const show = async (password, source = 'global') => {
+  devicePassword.value = password
+  useDevicePassword.value = true
+  manualRouterPassword.value = ''
+  passwordSource.value = source
+  authError.value = false
+  selectedAction.value = 'router'
+  selectedRouterId.value = ''
+  modeCheckInProgress.value = false
+  isLoading.value = false
+  debugInfo.value = ''
   
-  const router = deviceStore.devices.find(d => d.id === connectedRouterId.value)
-  return router ? `${router.hwId} (${router.shortName})` : `Router ${connectedRouterId.value}`
-})
+  currentDevice.value = props.device
+  visible.value = true
 
-const canConfirm = computed(() => {
-  if (!hasValidPassword.value || 
-      operationInProgress.value || 
-      modeCheckInProgress.value ||
-      isLoading.value) return false
-  
-  // ✅ Проверяем что действие должно отображаться
-  if (!shouldShowAction(selectedAction.value)) return false
-      
-  if (selectedAction.value === 'extenderConnect') return !!selectedRouterId.value
-  if (selectedAction.value === 'disconnectRouter') return !!selectedRouterId.value
-  
-  return !!selectedAction.value
-})
+  if (hasValidPassword.value && currentDevice.value) {
+    await loadCurrentMode()
+  }
 
-const confirmButtonText = computed(() => {
-  if (authError.value) return 'Try Change Mode Anyway';
+  if (currentDevice.value) {
+    const savedMode = modeStore.getDeviceModeInfo(currentDevice.value.id)
+    if (savedMode?.routerId) {
+      selectedRouterId.value = savedMode.routerId
+    }
+    autoSelectActionBasedOnMode(savedMode)
+  }
+}
+
+const autoSelectActionBasedOnMode = (modeInfo) => {
+  if (!modeInfo) return
   
-  const baseMode = currentDeviceBaseMode.value;
-  const hasConnection = hasRouterConnection.value;
+  const mode = modeInfo.mode
+  const hasConnection = modeInfo.routerId
   
-  // ✅ ЕСЛИ УСТРОЙСТВО В РЕЖИМЕ EXTENDER_CONNECT - СПЕЦИАЛЬНЫЕ ТЕКСТЫ
-  if (baseMode === 'extender_connect' || (baseMode === 'extender' && hasConnection)) {
+  if (mode === 'extender_connect' || (mode === 'extender' && hasConnection)) {
+    selectedAction.value = 'disconnectRouter'
+  } else if (mode === 'router' && !hasConnection) {
+    selectedAction.value = 'router'
+  } else if (mode === 'extender' && !hasConnection) {
+    selectedAction.value = 'extender'
+  }
+}
+
+const loadCurrentMode = async () => {
+  if (!hasValidPassword.value || !currentDevice.value) return
+  
+  modeCheckInProgress.value = true
+  authError.value = false
+  
+  try {
+    const existingModeInfo = modeStore.getDeviceModeInfo(currentDevice.value.id)
+    const existingMode = existingModeInfo?.mode
+    const existingRouterId = existingModeInfo?.routerId
+    
+    if (existingMode === 'extender_connect' && existingRouterId) {
+      authError.value = false
+      return
+    }
+    
+    const detectedMode = await modeStore.getCurrentMode(currentDevice.value.id, devicePassword.value)
+    
+    let finalMode = detectedMode
+    let finalRouterId = existingRouterId
+    
+    if (existingMode === 'extender_connect' && detectedMode === 'extender' && existingRouterId) {
+      finalMode = 'extender_connect'
+    } else if (detectedMode === 'router') {
+      finalRouterId = null
+    }
+    
+    modeStore.updateDeviceMode(currentDevice.value.id, {
+      mode: finalMode,
+      routerId: finalRouterId,
+      timestamp: Date.now()
+    })
+    
+    authError.value = false
+    
+  } catch (error) {
+    console.log('❌ Error getting current mode:', error.message)
+    
+    const existingModeInfo = modeStore.getDeviceModeInfo(currentDevice.value.id)
+    if (existingModeInfo) {
+      // сохраняем существующие данные
+    }
+    
+    if (error.message.includes('401') || error.message.includes('authentication')) {
+      authError.value = true
+      toast.add({ 
+        severity: 'error', 
+        summary: 'Authentication Failed', 
+        detail: 'Cannot determine current mode due to authentication issues', 
+        life: 5000 
+      })
+    } else if (error.message.includes('timeout')) {
+      toast.add({ 
+        severity: 'warn', 
+        summary: 'Device Timeout', 
+        detail: 'Device is slow to respond. Mode detection failed.', 
+        life: 5000 
+      })
+    }
+  } finally {
+    modeCheckInProgress.value = false
+  }
+}
+
+const confirmAction = async () => {
+  if ((!canConfirm.value && !authError.value) || (!canConfirmAuthError.value && authError.value)) return
+  
+  isLoading.value = true
+  
+  try {
+    let mode, routerId
+    
     switch (selectedAction.value) {
-      case 'disconnectRouter':
-        return 'Disconnect & Switch to Router';
       case 'router':
-        return 'Switch to Router Mode';
+        mode = 'router'
+        routerId = null
+        break
+      case 'extender':
+        mode = 'extender' 
+        routerId = null
+        break
+      case 'extenderConnect':
+        mode = 'extender_connect'
+        routerId = selectedRouterId.value
+        break
+      case 'disconnectRouter':
+        mode = 'extender_disconnect'
+        routerId = selectedRouterId.value 
+        break
       default:
-        return 'Confirm';
+        throw new Error('Invalid action selected')
+    }
+    
+    let routerPasswordToUse = null
+    if (selectedAction.value === 'extenderConnect' || selectedAction.value === 'disconnectRouter') {
+      if (useDevicePassword.value) {
+        routerPasswordToUse = devicePassword.value
+      } else if (manualRouterPassword.value) {
+        routerPasswordToUse = manualRouterPassword.value
+      }
+    }
+      setTimeout((
+      // Открываем ProgressModal
+      emit('operationStarted', {
+        deviceId: currentDevice.value.id,
+        operationType: 'modeChange',
+        operationData: {
+          oldMode: currentDeviceBaseMode.value || 'unknown',
+          newMode: mode,
+          routerId: routerId,
+          action: selectedAction.value
+        }
+      }),1000))
+      
+    const result = await modeStore.changeMode(
+      currentDevice.value.id, 
+      mode,
+      routerId, 
+      devicePassword.value,
+      routerPasswordToUse
+    )
+    
+    if (result.success) {
+      let successMessage = `Device mode successfully changed to ${mode}`
+      if (result.mwsConnected) {
+        successMessage += ` and connected to ${routerId} via MWS`
+      }
+      
+      // toast.add({ severity: 'success', summary: 'Operation Completed', detail: successMessage, life: 5000 })
+      
+        emit('modeChanged', {
+          deviceId: currentDevice.value.id,
+          mode: mode,
+          routerId: routerId,
+          action: selectedAction.value,
+          mwsConnected: result.mwsConnected || false,
+          passwordUsed: useDevicePassword.value ? 'device' : 'manual'
+        })
+        closeModal()
+      
+    } else {
+      throw new Error(result.message)
+    }
+    
+  } catch (error) {
+    console.error('Action failed:', error)
+    toast.add({ severity: 'error', summary: 'Operation Failed', detail: error.message, life: 5000 })
+  } finally {
+    isLoading.value = false
+  }
+}
+
+const closeModal = () => {
+  fullCleanup()
+  visible.value = false
+}
+
+const fullCleanup = () => {
+  selectedAction.value = 'router'
+  selectedRouterId.value = ''
+  devicePassword.value = ''
+  useDevicePassword.value = true
+  manualRouterPassword.value = ''
+  passwordSource.value = 'global'
+  authError.value = false
+  modeCheckInProgress.value = false
+  currentDevice.value = null
+  debugInfo.value = ''
+  showDebug.value = false
+  isLoading.value = false
+}
+
+// ========== DEBUG ==========
+const testModeDetection = async () => {
+  if (!hasValidPassword.value || !currentDevice.value) return
+  
+  debugInfo.value = 'Testing mode detection via store...'
+  
+  try {
+    const mode = await modeStore.getCurrentMode(currentDevice.value.id, devicePassword.value, { forceRefresh: true })
+    debugInfo.value = `✅ Success! Mode: ${mode}`
+    toast.add({ severity: 'success', summary: 'Mode Detection Test', detail: `Mode detected: ${mode}`, life: 3000 })
+  } catch (error) {
+    debugInfo.value = `❌ Store error: ${error.message}`
+    let errorDetail = error.message
+    if (error.message.includes('401') || error.message.includes('authentication')) {
+      errorDetail = 'Authentication failed. Please check the device password.'
+    } else if (error.message.includes('timeout')) {
+      errorDetail = 'Device timeout. Device may be offline or slow to respond.'
+    }
+    toast.add({ severity: 'error', summary: 'Mode Detection Test Failed', detail: errorDetail, life: 5000 })
+  }
+}
+
+const resetState = () => {
+  modeStore.resetDeviceMode(currentDevice.value?.id)
+  authError.value = false
+  modeCheckInProgress.value = false
+  debugInfo.value = 'State reset'
+  toast.add({ severity: 'info', summary: 'State Reset', detail: 'Modal state has been reset', life: 2000 })
+}
+
+const showDebugSection = () => {
+  showDebug.value = !showDebug.value
+}
+
+// ========== МОБИЛЬНАЯ АДАПТАЦИЯ ==========
+const checkMobile = () => {
+  isMobile.value = window.innerWidth <= 768
+}
+
+// Стили для диалога
+const dialogStyle = computed(() => {
+  if (isMobile.value) {
+    return { 
+      width: '100vw', 
+      height: '90vh', 
+      margin: '0',
+      borderRadius: '0',
+      maxHeight: 'none'
     }
   }
-  
-  // ✅ СТАНДАРТНЫЕ ТЕКСТЫ ДЛЯ ДРУГИХ РЕЖИМОВ
-  switch (selectedAction.value) {
-    case 'router': 
-      return baseMode === 'router' && !hasConnection
-        ? 'Device is already in Router Mode' 
-        : 'Switch to Router Mode';
-    case 'extender': 
-      return baseMode === 'extender' && !hasConnection
-        ? 'Device is already in Extender Mode' 
-        : 'Switch to Extender Mode';
-    case 'extenderConnect': 
-      return baseMode === 'extender_connect' && hasConnection
-        ? 'Reconnect Extender to Router' 
-        : 'Switch to Extender & Connect';
-    case 'disconnectRouter':
-      return 'Disconnect & Switch to Router';
-    default: return 'Confirm';
+  return { 
+    width: '50vw', 
+    maxWidth: '600px',
+    minWidth: '400px'
   }
-});
-const showWarning = computed(() => {
-  if (!hasValidPassword.value || authError.value || operationInProgress.value || modeCheckInProgress.value || isLoading.value) return false
-  
-  const baseMode = currentDeviceBaseMode.value
-  const hasConnection = hasRouterConnection.value
-  
-  // Показываем предупреждение если выбрано действие, которое не должно отображаться
-  return !shouldShowAction(selectedAction.value)
 })
 
-const warningMessage = computed(() => {
-  const baseMode = currentDeviceBaseMode.value
-  const hasConnection = hasRouterConnection.value
-  
-  if (baseMode === 'router' && selectedAction.value === 'router' && !hasConnection) {
-    return 'Device is already in Router mode'
+const breakpoints = computed(() => {
+  if (isMobile.value) {
+    return {
+      '0px': { 
+        width: '100vw', 
+        height: '100vh', 
+        margin: '0',
+        borderRadius: '0'
+      }
+    }
   }
-  if (baseMode === 'extender' && selectedAction.value === 'extender' && !hasConnection) {
-    return 'Device is already in Extender mode'
+  return {
+    '1400px': '60vw',
+    '1200px': '70vw', 
+    '960px': '80vw',
+    '768px': { 
+      width: '100vw', 
+      height: '100vh', 
+      margin: '0',
+      borderRadius: '0'
+    }
   }
-  if (baseMode === 'extender_connect' && selectedAction.value === 'extenderConnect' && hasConnection) {
-    return 'Device is already in Extender mode with router connection'
-  }
-  return ''
 })
 
-const canConfirmAuthError = computed(() => {
-  if (!hasValidPassword.value || 
-      !authError.value || 
-      operationInProgress.value || 
-      modeCheckInProgress.value ||
-      isLoading.value) return false
-      
-  if (selectedAction.value === 'extenderConnect') return !!selectedRouterId.value
-  if (selectedAction.value === 'disconnectRouter') return !!selectedRouterId.value
-  
-  return !!selectedAction.value
+const contentStyle = computed(() => {
+  if (isMobile.value) {
+    return {
+      maxHeight: 'calc(100vh - 120px)',
+      overflowY: 'auto',
+      padding: '1rem',
+      paddingBottom: 'env(safe-area-inset-bottom, 1rem)'
+    }
+  }
+  return {
+    maxHeight: '70vh',
+    overflowY: 'auto',
+    padding: '1.5rem'
+  }
 })
 
-// Watchers
+// ========== DROPDOWN УПРАВЛЕНИЕ ==========
+const dropdownAppendTo = computed(() => {
+  return isMobile.value ? null : 'body'
+})
+
+const dropdownPanelStyle = computed(() => {
+  if (isMobile.value) {
+    return {
+      maxHeight: '200px',
+      position: 'fixed',
+      zIndex: 10000
+    }
+  }
+  return {
+    maxHeight: '200px'
+  }
+})
+
+const lockBodyScroll = () => {
+  const scrollY = window.scrollY
+  document.body.style.overflow = 'hidden'
+  document.body.style.position = 'fixed'
+  document.body.style.top = `-${scrollY}px`
+  document.body.style.width = '100%'
+  document.body.classList.add('dropdown-open')
+  document.body.dataset.scrollY = scrollY.toString()
+}
+
+const unlockBodyScroll = () => {
+  document.body.style.overflow = ''
+  document.body.style.position = ''
+  document.body.style.top = ''
+  document.body.style.width = ''
+  document.body.classList.remove('dropdown-open')
+  
+  const scrollY = document.body.dataset.scrollY
+  if (scrollY) {
+    window.scrollTo(0, parseInt(scrollY))
+  }
+}
+
+const onDropdownShow = () => {
+  if (!isMobile.value) return
+  
+  nextTick(() => {
+    const dropdownPanels = document.querySelectorAll('.p-dropdown-panel')
+    dropdownPanels.forEach(panel => {
+      if (panel.style.display !== 'none') {
+        const input = panel.previousElementSibling
+        if (input) {
+          const inputRect = input.getBoundingClientRect()
+          const panelHeight = panel.offsetHeight
+          const viewportHeight = window.innerHeight
+          
+          const spaceBelow = viewportHeight - inputRect.bottom
+          const spaceAbove = inputRect.top
+          
+          let topPosition
+          
+          if (spaceBelow >= panelHeight || spaceBelow >= spaceAbove) {
+            topPosition = inputRect.bottom
+          } else {
+            topPosition = inputRect.top - panelHeight
+          }
+          
+          topPosition = Math.max(10, Math.min(topPosition, viewportHeight - panelHeight - 10))
+          
+          panel.style.position = 'fixed'
+          panel.style.top = `${topPosition}px`
+          panel.style.left = `${inputRect.left}px`
+          panel.style.width = `${inputRect.width}px`
+          panel.style.transform = 'none'
+          panel.style.maxHeight = '200px'
+          panel.style.zIndex = '10000'
+        }
+      }
+    })
+  })
+}
+
+// ========== WATCHERS ==========
 watch(selectedAction, (newAction) => {
   if (newAction !== 'extenderConnect' && newAction !== 'disconnectRouter') {
     selectedRouterId.value = ''
   }
 })
 
-// ✅ СЛУШАЕМ ОБНОВЛЕНИЯ РЕЖИМА ИЗ STORE
 watch(
   () => currentDeviceModeInfo.value,
   (newModeInfo) => {
     if (currentDevice.value && visible.value && newModeInfo) {
-      // console.log('🔄 Mode updated in store:', newModeInfo)
-      
-      // Автоматически выбираем соответствующий роутер для disconnect
       if (newModeInfo.routerId && hasRouterConnection.value) {
         selectedRouterId.value = newModeInfo.routerId
       }
@@ -1368,8 +1055,7 @@ watch(
   { deep: true }
 )
 
-defineExpose({ show })
-
+// ========== LIFECYCLE ==========
 onMounted(() => {
   checkMobile()
   window.addEventListener('resize', checkMobile)
@@ -1379,6 +1065,8 @@ onUnmounted(() => {
   window.removeEventListener('resize', checkMobile)
   fullCleanup()
 })
+
+defineExpose({ show })
 </script>
 
 <style scoped>
@@ -1386,37 +1074,40 @@ onUnmounted(() => {
   min-height: 200px;
 }
 
-.section-title {
-  font-weight: 600;
-  margin-bottom: 0.5rem;
-  color: var(--text-color);
-  font-size: 1rem;
-  line-height: 1.2;
+.action-option {
+  cursor: pointer;
+  border-radius: 16px !important;
+  border: 1.5px solid var(--surface-300);
+  overflow: hidden;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.02);
 }
 
-/* Стили для опций действий */
-.action-option {
+.action-option::before,
+.action-option::after {
+  border-radius: inherit;
+}
+
+.option-content {
   display: flex;
   align-items: flex-start;
-  transition: all 0.3s ease;
-  border-radius: 8px;
-  border: 2px solid var(--surface-300);
-  cursor: pointer;
-}
-
-.action-option:hover {
-  border-color: var(--primary-300);
-  background-color: var(--surface-50);
-}
-
-.action-option-active {
-  border-color: var(--primary-500) !important;
-  background-color: var(--primary-50);
+  padding: 0.875rem 0.5rem;
+  width: 100%;
+  gap: 0.75rem;
 }
 
 .action-radio {
-  margin-right: 12px;
-  margin-top: 2px;
+  margin-top: 0.125rem;
+  flex-shrink: 0;
+}
+
+.action-radio :deep(.p-radiobutton-box) {
+  width: 18px;
+  height: 18px;
+}
+
+.action-radio :deep(.p-radiobutton-box.p-highlight) {
+  border-color: var(--primary-500);
+  background: var(--primary-500);
 }
 
 .action-label {
@@ -1425,94 +1116,146 @@ onUnmounted(() => {
   margin: 0;
 }
 
-/* Стили для прогресса */
-.status-steps {
-  display: flex;
-  flex-direction: column;
-  gap: 1rem;
-  margin-top: 1rem;
-}
-
-.status-step {
-  display: flex;
-  align-items: flex-start;
-  gap: 1rem;
-  padding: 0.75rem;
-  border-radius: 8px;
-  transition: all 0.3s ease;
-}
-
-.status-step.active {
-  background-color: var(--blue-50);
-  border-left: 4px solid var(--blue-500);
-}
-
-.status-step.completed {
-  background-color: var(--green-50);
-  border-left: 4px solid var(--green-500);
-}
-
-.step-indicator {
-  font-size: 1.25rem;
-  flex-shrink: 0;
-  width: 24px;
-  height: 24px;
+.action-label .flex.align-items-center {
   display: flex;
   align-items: center;
-  justify-content: center;
-}
-
-.step-content {
-  flex: 1;
-}
-
-.step-title {
-  font-weight: 600;
+  gap: 0.5rem;
   margin-bottom: 0.25rem;
+}
+
+.action-label .flex.align-items-center i {
+  font-size: 1.1rem; /* Немного уменьшенные иконки */
+}
+
+.action-label .flex.align-items-center strong {
+  font-size: 0.95rem; /* Уменьшенный размер шрифта */
+  font-weight: 600;
   color: var(--text-color);
 }
 
-.step-description {
+.action-label small {
+  display: block;
+  font-size: 0.8rem; /* Уменьшенный размер шрифта */
   color: var(--text-color-secondary);
-  font-size: 0.9rem;
+  line-height: 1.4;
+  margin-left: 1.6rem; /* Выравнивание с текстом */
 }
 
-.step-details {
-  margin-top: 0.25rem;
-  font-style: italic;
+/* Специфические стили для иконок */
+.bi-router {
+  color: var(--primary-600);
 }
 
-.reboot-timer {
-  background: var(--yellow-100);
-  border: 1px solid var(--yellow-200);
-  border-radius: 8px;
-  padding: 1rem;
+.pi-wifi {
+  color: var(--green-600);
 }
 
-.timer-display {
-  font-size: 1.1rem;
-  color: var(--yellow-800);
+.pi-broadcast,
+.pi-link {
+  color: var(--green-600);
 }
 
+.pi-chain-broken {
+  color: var(--red-600);
+}
+
+.bi-router.mr-1 {
+  color: var(--primary-600);
+}
+
+/* Адаптация для мобильных */
+@media (max-width: 768px) {
+  .action-option {
+    border-radius: 14px;
+    margin-bottom: 0.5rem;
+  }
+  
+  .option-content {
+    padding: 0.75rem;
+  }
+  
+  .action-label .flex.align-items-center strong {
+    font-size: 0.9rem;
+  }
+  
+  .action-label small {
+    font-size: 0.75rem;
+    margin-left: 1.4rem;
+  }
+  
+  .action-radio :deep(.p-radiobutton-box) {
+    width: 16px;
+    height: 16px;
+  }
+}
+
+/* Для очень маленьких экранов */
+@media (max-width: 480px) {
+  .action-option {
+    border-radius: 12px;
+  }
+  
+  .option-content {
+    padding: 0.625rem;
+  }
+}
+
+/* Анимация появления */
+.action-option {
+  animation: slideIn 0.3s ease-out;
+}
+
+@keyframes slideIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.section-title {
+  font-weight: 600;
+  margin-bottom: 0.75rem;
+  color: var(--text-color);
+  font-size: 0.95rem;
+  letter-spacing: 0.3px;
+  text-transform: uppercase;
+  opacity: 0.8;
+  line-height: 1.2;
+}
+/* Улучшенные тени для активного состояния */
+.action-option-active {
+  border-color: var(--primary-500) !important;
+  background: linear-gradient(135deg, var(--primary-50) 0%, #ffffff 100%);
+  box-shadow: 0 6px 14px rgba(var(--primary-500-rgb, 33, 150, 243), 0.12);
+}
+
+.action-option-active .bi-router,
+.action-option-active .pi-wifi,
+.action-option-active .pi-broadcast,
+.action-option-active .pi-link,
+.action-option-active .pi-chain-broken {
+  filter: brightness(0.9);
+}
+
+.action-option-active .pi-wifi,
+.action-option-active .pi-broadcast,
+.action-option-active .pi-link {
+  color: var(--green-700);
+}
+
+.action-option-active .pi-chain-broken {
+  color: var(--red-700);
+}
 /* Секции */
-.operation-progress {
-  background: var(--surface-50);
-  border-radius: 8px;
-  padding: 1.5rem;
-  border: 1px solid var(--surface-200);
-}
-
 .current-mode-section {
   padding: 0.75rem;
   background: var(--surface-50);
   border-radius: 8px;
   border: 1px solid var(--surface-200);
-}
-
-.mode-display-container {
-  display: flex;
-  flex-direction: column;
-  gap: 0.25rem;
 }
 
 .mode-status-indicator {
@@ -1551,21 +1294,12 @@ onUnmounted(() => {
   border: 1px solid var(--surface-200);
 }
 
-.password-toggle-section {
-  margin-bottom: 1rem;
-}
-
-/* ИСПРАВЛЕННЫЕ СТИЛИ ДЛЯ ГОРИЗОНТАЛЬНЫХ ОПЦИЙ ПАРОЛЯ */
+/* Password options */
 .horizontal-password-options {
   display: flex;
   flex-direction: row;
   gap: 1rem;
   width: 100%;
-}
-
-.horizontal-option {
-  flex: 1;
-  min-width: 0;
 }
 
 .password-option.horizontal-option {
@@ -1577,6 +1311,8 @@ onUnmounted(() => {
   cursor: pointer;
   transition: all 0.3s ease;
   height: auto;
+  flex: 1;
+  min-width: 0;
 }
 
 .password-option.horizontal-option:hover {
@@ -1592,8 +1328,9 @@ onUnmounted(() => {
 .password-option.horizontal-option .option-content {
   display: flex;
   align-items: flex-start;
-  padding: 0.75rem;
+  padding: 1rem;
   width: 100%;
+  height: 100%;
 }
 
 .password-option.horizontal-option .password-radio {
@@ -1606,12 +1343,9 @@ onUnmounted(() => {
   cursor: pointer;
   flex: 1;
   margin: 0;
-}
-
-.password-label {
-  cursor: pointer;
-  flex: 1;
-  margin: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
 }
 
 .manual-password-section {
@@ -1620,15 +1354,11 @@ onUnmounted(() => {
   border-top: 1px solid var(--surface-200);
 }
 
-.password-input-container {
-  position: relative;
-}
-
 .info-message {
   border-left: 4px solid #28a745;
 }
 
-/* Стили для индикаторов статуса */
+/* Status indicators */
 .status-unknown {
   color: #6c757d;
   background: #f8f9fa;
@@ -1659,151 +1389,11 @@ onUnmounted(() => {
   background: #d1e7dd;
 }
 
-/* Мобильная адаптивность */
-@media (max-width: 768px) {
-  .change-mode-modal {
-    min-height: auto;
-    padding: 0.25rem;
-  }
-  
-  .current-mode-section {
-    padding: 0.75rem;
-    margin-bottom: 1rem;
-  }
-  
-  .mode-display-container .flex.align-items-center {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 0.5rem;
-    width: 100%;
-  }
-  
-  .mode-status-indicator {
-    align-self: flex-start;
-    margin-left: 0;
-  }
-  
-  .action-selection-section,
-  .router-selection-section,
-  .router-password-section {
-    padding: 0.75rem;
-    margin-bottom: 1rem;
-  }
-  
-  .action-option {
-    padding: 0.75rem;
-    margin-bottom: 0.75rem;
-    flex-direction: column;
-    gap: 0.5rem;
-  }
-  
-  .action-radio {
-    margin-right: 0;
-    align-self: flex-start;
-  }
-  
-  .section-title {
-    font-size: 0.95rem;
-    margin-bottom: 0.75rem;
-  }
-  
-  .action-label .text-lg {
-    font-size: 1rem;
-  }
-  
-  .action-label small {
-    font-size: 0.8rem;
-  }
-  
-  /* Адаптация горизонтальных опций для мобильных */
-  .horizontal-password-options {
-    flex-direction: column;
-    gap: 0.5rem;
-  }
-  
-  .password-option.horizontal-option {
-    width: 100%;
-  }
-}
-
-@media (max-width: 480px) {
-  .current-mode-section {
-    padding: 0.5rem;
-  }
-  
-  .action-option {
-    padding: 0.5rem;
-  }
-  
-  .action-label .text-lg {
-    font-size: 0.9rem;
-  }
-  
-  .action-label small {
-    font-size: 0.75rem;
-  }
-  
-  .router-password-section {
-    padding: 0.5rem;
-  }
-  
-  .password-option {
-    padding: 0.5rem;
-  }
-}
-
-@media (max-width: 375px) {
-  .current-mode-section {
-    padding: 0.4rem;
-  }
-  
-  .action-option {
-    padding: 0.4rem;
-  }
-}
-
-/* Для очень маленьких экранов */
-@media (max-width: 360px) {
-  .current-mode-section .flex.align-items-center {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 0.5rem;
-  }
-  
-  .mode-status-indicator {
-    align-self: flex-start;
-    margin-left: 0 !important;
-  }
-}
-</style>
-
-<style>
-/* Глобальные стили для этого диалога */
-.change-mode-dialog .p-dialog-header {
-  background: linear-gradient(135deg, #f8f9fa, #e9ecef) !important;
-  border-bottom: 1px solid #dee2e6 !important;
-  padding: 1.25rem 1.5rem !important;
-}
-
-.change-mode-dialog .p-dialog-content {
-  background: #ffffff !important;
-  overflow-y: auto;
-}
-
-.change-mode-dialog .p-dialog-footer {
-  background: #f8f9fa !important;
-  border-top: 1px solid #dee2e6 !important;
-  display: flex !important;
-  gap: 0.75rem !important;
-  justify-content: flex-end !important;
-}
-
-/* Стили для кнопок в модальном окне */
+/* Footer buttons */
 .modal-btn-cancel,
 .modal-btn-confirm,
 .modal-btn-warning,
-.modal-btn-disabled,
-.modal-btn-operation {
+.modal-btn-disabled {
   border-radius: 8px !important;
   padding: 0.75rem 1.5rem !important;
   font-weight: 500 !important;
@@ -1847,17 +1437,35 @@ onUnmounted(() => {
   box-shadow: 0 4px 8px rgba(255, 193, 7, 0.3) !important;
 }
 
-.modal-btn-disabled {
-  border-radius: 8px !important;
-  padding: 0.75rem 1.5rem !important;
+/* Mobile */
+@media (max-width: 768px) {
+  .change-mode-modal {
+    padding: 0.25rem;
+  }
+  
+  .horizontal-password-options {
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+  
+  .password-option.horizontal-option {
+    width: 100%;
+  }
+  
+  .action-option {
+    padding: 0.5rem;
+  }
+  
+  .modal-btn-cancel,
+  .modal-btn-confirm,
+  .modal-btn-warning,
+  .modal-btn-disabled {
+    width: 100% !important;
+    min-width: auto !important;
+  }
 }
 
-.modal-btn-operation {
-  border-radius: 8px !important;
-  padding: 0.75rem 1.5rem !important;
-}
-
-/* Стили для dropdown */
+/* Dropdown */
 .router-dropdown .p-dropdown {
   border-radius: 6px !important;
   border: 1px solid #ced4da !important;
@@ -1869,127 +1477,32 @@ onUnmounted(() => {
   box-shadow: 0 0 0 0.2rem rgba(40, 167, 69, 0.25) !important;
 }
 
-/* Стили через классы PrimeVue */
-.custom-progressbar {
-  height: 13.5px !important;
-  border-radius: 4px;
-  margin: 0.5rem 0;
-}
-
-:deep(.custom-progressbar.progress-info .p-progressbar .p-progressbar-value) {
-  background: linear-gradient(90deg, #007bff, #0056b3) !important;
-}
-
-:deep(.custom-progressbar.progress-warning .p-progressbar .p-progressbar-value) {
-  background: linear-gradient(90deg, #ffc107, #fd7e14) !important;
-}
-
-:deep(.custom-progressbar.progress-success .p-progressbar .p-progressbar-value) {
-  background: linear-gradient(90deg, #28a745, #20c997) !important;
-}
-
-/* ПОЛНОЭКРАННАЯ АДАПТИВНОСТЬ ДЛЯ МОБИЛЬНЫХ */
 @media (max-width: 768px) {
-  .change-mode-dialog .p-dialog {
-    width: 100vw !important;
-    height: 100vh !important;
-    margin: 0 !important;
-    max-width: none !important;
-    border-radius: 0 !important;
-  }
-  
-  .change-mode-dialog .p-dialog-content {
-    padding: 1rem !important;
-    max-height: calc(100vh - 120px) !important;
-  }
-  
-  .change-mode-dialog .p-dialog-header {
-    padding: 1rem !important;
-    border-radius: 0 !important;
-  }
-  
-  .change-mode-dialog .p-dialog-footer {
-    padding: 0.75rem 1rem !important;
-    flex-direction: column !important;
-    gap: 0.5rem !important;
-    border-radius: 0 !important;
-  }
-  
-  .modal-btn-cancel,
-  .modal-btn-confirm,
-  .modal-btn-warning,
-  .modal-btn-disabled,
-  .modal-btn-operation {
-    width: 100% !important;
-    min-width: auto !important;
-    margin-bottom: 0;
-  }
-}
-
-/* Для очень маленьких экранов */
-@media (max-width: 480px) {
-  .change-mode-dialog .p-dialog {
-    width: 100vw !important;
-    height: 100vh !important;
-  }
-  
-  .change-mode-dialog .p-dialog-content {
-    padding: 0.75rem !important;
-  }
-  
-  .change-mode-dialog .p-dialog-header {
-    padding: 0.75rem !important;
-  }
-  
-  .change-mode-dialog .p-dialog-footer {
-    padding: 0.5rem !important;
-  }
-}
-
-/* Безопасные зоны для iPhone */
-@supports(padding: max(0px)) {
-  .change-mode-dialog .p-dialog {
-    padding-left: env(safe-area-inset-left) !important;
-    padding-right: env(safe-area-inset-right) !important;
-    padding-top: env(safe-area-inset-top) !important;
-    padding-bottom: env(safe-area-inset-bottom) !important;
-  }
-  
-  .change-mode-dialog .p-dialog-content {
-    padding-left: max(1rem, env(safe-area-inset-left)) !important;
-    padding-right: max(1rem, env(safe-area-inset-right)) !important;
-    padding-bottom: max(1rem, env(safe-area-inset-bottom)) !important;
-  }
-}
-
-.router-password-input .p-password input {
-  border-radius: 6px !important;
-  border: 1px solid #ced4da !important;
-  width: 100% !important;
-}
-
-.router-password-input .p-password:focus-within input {
-  border-color: #28a745 !important;
-  box-shadow: 0 0 0 0.2rem rgba(40, 167, 69, 0.25) !important;
-}
-
-/* ИСПРАВЛЕННЫЕ СТИЛИ ДЛЯ DROPDOWN НА МОБИЛЬНЫХ */
-@media (max-width: 768px) {
-  :deep(.p-dropdown-panel) {
+  .change-mode-dialog :deep(.p-dropdown-panel) {
+    position: fixed !important;
+    max-height: 200px !important;
+    width: calc(100vw - 2rem) !important;
+    left: 1rem !important;
+    right: 1rem !important;
     z-index: 10001 !important;
   }
-  
-  :deep(.p-component-overlay) {
-    z-index: 10000 !important;
-  }
 }
 
-/* Дополнительные исправления для позиционирования */
-:deep(.p-overlay) {
-  z-index: 10000 !important;
+.change-mode-dialog :deep(.p-dialog-mask) {
+  overflow-y: auto !important;
+  scrollbar-gutter: stable;
 }
 
-:deep(.p-component-overlay) {
-  z-index: 9999 !important;
+:global(body.p-overflow-hidden) {
+  padding-right: 0 !important;
+  overflow: hidden !important;
 }
+
+.change-mode-dialog :deep(.p-dropdown-panel) {
+  position: fixed !important;
+  z-index: 10001 !important;
+  margin-top: 4px;
+}
+
+
 </style>
