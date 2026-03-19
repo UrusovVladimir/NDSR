@@ -11,32 +11,24 @@
     :dismissableMask="!isLoading && !operationInProgress"
     class="optimized-modal mws-connection-modal"
   >
-    <!-- Индикатор выполнения операции -->
     <div v-if="isLoading || operationInProgress" class="operation-progress">
       <ProgressBar mode="indeterminate" style="height: 6px; width: 100%"></ProgressBar>
       <div class="progress-message">
         <i class="pi pi-spin pi-spinner"></i>
         <span>{{ progressMessage }}</span>
       </div>
+      
+      <!-- Специфичная информация для WAN операций -->
+      <div v-if="operationType === 'wan'" class="progress-details">
+        <small class="text-color-secondary">
+          <i class="pi pi-info-circle mr-1"></i>
+          Connecting to switch via telnet...
+        </small>
+      </div>
     </div>
 
     <!-- WAN Types Modal -->
     <div v-if="modalType === 'wanTypes'" class="modal-content">
-      <!-- Индикатор выполнения для WAN операции -->
-      <div v-if="isWanOperationInProgress" class="wan-operation-progress">
-        <ProgressBar mode="indeterminate" style="height: 4px; width: 100%"></ProgressBar>
-        <div class="progress-message">
-          <i class="pi pi-spin pi-spinner"></i>
-          <span>{{ progressMessage }}</span>
-        </div>
-        <div class="progress-details">
-          <small class="text-color-secondary">
-            <i class="pi pi-info-circle mr-1"></i>
-            Connecting to switch via telnet...
-          </small>
-        </div>
-      </div>
-
       <div class="options-grid" :class="{ 'opacity-50 pointer-events-none': isWanOperationInProgress }">
         <div 
           v-for="wan in filteredWanTypes" 
