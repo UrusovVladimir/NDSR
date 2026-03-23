@@ -275,7 +275,22 @@ body.p-overflow-hidden {
   visibility: visible !important;
 }
 
+/* Отключаем блокировку прокрутки от Dropdown в модалках */
+.p-dialog .p-dropdown-panel,
+.p-dialog-mask .p-dropdown-panel {
+    position: fixed !important;
+}
 
+/* Предотвращаем добавление overflow:hidden к body от Dropdown */
+body.p-overflow-hidden {
+    overflow-y: scroll !important;
+    padding-right: 0 !important;
+}
+
+/* Отключаем блокировку прокрутки для Dropdown в модалках */
+.p-dialog .p-dropdown-panel {
+    z-index: 10001 !important;
+}
 
 @keyframes spin {
   from { transform: rotate(0deg); }

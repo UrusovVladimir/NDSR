@@ -975,26 +975,16 @@ const dropdownPanelStyle = computed(() => {
 })
 
 const lockBodyScroll = () => {
-  const scrollY = window.scrollY
-  document.body.style.overflow = 'hidden'
-  document.body.style.position = 'fixed'
-  document.body.style.top = `-${scrollY}px`
-  document.body.style.width = '100%'
-  document.body.classList.add('dropdown-open')
-  document.body.dataset.scrollY = scrollY.toString()
+    const scrollY = window.scrollY
+    document.body.dataset.scrollY = scrollY.toString()
 }
 
 const unlockBodyScroll = () => {
-  document.body.style.overflow = ''
-  document.body.style.position = ''
-  document.body.style.top = ''
-  document.body.style.width = ''
-  document.body.classList.remove('dropdown-open')
-  
-  const scrollY = document.body.dataset.scrollY
-  if (scrollY) {
-    window.scrollTo(0, parseInt(scrollY))
-  }
+    const scrollY = document.body.dataset.scrollY
+    if (scrollY) {
+        window.scrollTo(0, parseInt(scrollY))
+        delete document.body.dataset.scrollY
+    }
 }
 
 const onDropdownShow = () => {
