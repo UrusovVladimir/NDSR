@@ -51,7 +51,10 @@ body.p-overflow-hidden {
   position: fixed !important;
   z-index: 10000 !important;
 }
-
+body.p-overflow-hidden {
+    overflow-y: scroll !important;
+    padding-right: 0 !important;
+}
 /* Стили для Progress Dialog */
 .operation-dialog-overlay .p-dialog {
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3) !important;

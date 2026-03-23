@@ -62,29 +62,30 @@
                         <div class="common-device-info">
                             <div class="common-device-name">{{ data.shortName }}</div>
                             <div class="common-device-hwid">{{ data.hwId }}
-                                <i 
-                                    class="pi pi-info-circle details-inline"
-                                    @click="showDeviceDetails(data)"
-                                    v-tooltip="'View device details'"
-                                ></i>
+                                <i class="pi pi-info-circle details-inline" 
+                                @click="showDeviceDetails(data)"
+                                v-tooltip="'View device details'"></i>
                             </div>
-
-                            <div class="common-device-hwid">Current Mode: 
-                                <b>{{ getDisplayMode(data.id) }}</b>
-                                <i 
-                                    label="refresh mode" 
-                                    class="pi pi-refresh details-inline" 
-                                    @click="refreshDeviceMode(data.id)"
-                                    v-tooltip="'Refresh mode info'"
-                                ></i>
+                            
+                            <!-- Сгруппировать остальные строки -->
+                            <div class="common-device-hwid">
+                                Current Mode: <b>{{ getDisplayMode(data.id) }}</b>
+                                <i class="pi pi-refresh details-inline" 
+                                @click="refreshDeviceMode(data.id)"
+                                v-tooltip="'Refresh mode info'"></i>
+                            </div>
+                            
+                            <div class="common-device-hwid">
+                                Device Password: <b>{{ data.booking.accessPassword }}</b>
+                                <i class="pi pi-copy details-inline" 
+                                @click="copyToClipboard(data.booking.accessPassword)"
+                                v-tooltip="'Copy access password'"></i>
                             </div>
                             
                             <div v-if="shouldShowConnectionInfo(data.id)" class="common-device-hwid">
-                                Connected to: 
-                                <b>{{ getConnectedRouterInfo(data.id) }}</b>
+                                Connected to: <b>{{ getConnectedRouterInfo(data.id) }}</b>
                             </div>
                             
-                            <!-- Индикатор статуса питания -->
                             <div v-if="data.rebootPort" class="common-device-hwid">
                                 Power Port Status: 
                                 <span :class="getPowerStatusClass(data.id)">
@@ -260,6 +261,7 @@
         <Dialog 
             v-model:visible="showReleaseConfirmDialog" 
             modal 
+            :blockScroll="false"
             header="Release Device"
             :style="{ width: '400px' }"
         >
@@ -287,6 +289,7 @@
         <Dialog 
             v-model:visible="showExtendDialog" 
             modal 
+            :blockScroll="false"
             header="Extend Booking"
             :style="{ width: '400px' }"
         >
@@ -350,6 +353,7 @@
         <Dialog 
             v-model:visible="showResetConfirmDialog" 
             modal 
+            :blockScroll="false"
             header="Reset Configuration"
             :style="{ width: '450px' }"
         >
@@ -383,6 +387,7 @@
         <Dialog 
             v-model:visible="showRebootConfirmDialog" 
             modal 
+            :blockScroll="false"
             header="Reboot Device"
             :style="{ width: '450px' }"
         >
@@ -416,6 +421,7 @@
         <Dialog 
             v-model:visible="showDslResetConfirmDialog" 
             modal 
+            :blockScroll="false"
             header="Reset DSL Line"
             :style="{ width: '450px' }"
         >
@@ -449,6 +455,7 @@
         <Dialog 
             v-model:visible="showReleaseAllConfirmDialog" 
             modal 
+            :blockScroll="false"
             header="Release All Devices"
             :style="{ width: '450px' }"
         >
@@ -489,6 +496,7 @@
 
         <!-- НОВЫЙ: Диалог меню питания -->
         <Dialog 
+            :blockScroll="false"
             v-model:visible="showPowerMenuDialog" 
             modal 
             header="Power Management"
@@ -571,6 +579,7 @@
 
         <!-- НОВЫЙ: Диалог подтверждения действия питания -->
         <Dialog 
+            :blockScroll="false"
             v-model:visible="showPowerActionConfirmDialog" 
             modal 
             :header="`Confirm ${getPowerActionLabel(selectedPowerAction)}`"
@@ -626,6 +635,7 @@
             v-model:visible="showDetailsDialog" 
             header="Device Details" 
             :modal="true"
+            :blockScroll="false"
             :style="{ width: '700px', maxWidth: '90vw' }"
             :contentStyle="{ maxHeight: '70vh' }"
         >
@@ -986,7 +996,7 @@ const getPowerStatusText = (deviceId) => {
 
 const getPowerStatusIcon = (deviceId) => {
     if (!deviceActionsStore.hasPowerStatus(deviceId)) return 'pi pi-spinner pi-spin'
-    return deviceActionsStore.isPoweredOn(deviceId) ? 'pi pi-circle-fill text-green-500' : 'pi pi-circle-fill text-gray-400'
+    return deviceActionsStore.isPoweredOn(deviceId) ? 'pi pi-circle-fill power-on' : 'pi pi-circle-fill power-off'
 }
 
 const getPowerStatusClass = (deviceId) => {
@@ -2023,7 +2033,17 @@ onUnmounted(() => {
     opacity: 0.7;
     cursor: not-allowed;
 }
-
+:deep(.pi-circle-fill.power-on) {
+    background: linear-gradient(135deg, #10b981, #059669) !important;
+    -webkit-background-clip: text !important;
+    -webkit-text-fill-color: transparent !important;
+    background-clip: text !important;
+    font-size: 0.75rem;
+}
+:deep(.pi-circle-fill.power-off) {
+    color: #9ca3af !important;
+    font-size: 0.75rem;
+}
 @media (max-width: 768px) {
     :deep(.p-tooltip) {
         font-size: 0.75rem;

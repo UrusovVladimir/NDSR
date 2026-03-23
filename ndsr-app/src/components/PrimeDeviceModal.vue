@@ -1,5 +1,6 @@
 <template>
   <Dialog 
+    :blockScroll="false"
     v-model:visible="visible" 
     :modal="true" 
     :header="modalTitle"
