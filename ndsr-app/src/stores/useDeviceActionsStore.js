@@ -76,7 +76,7 @@ export const useDeviceActionsStore = defineStore('deviceActions', () => {
   // ✅ Инициализация слушателей
   const initializePowerListeners = () => {
     socket.on('device:powerStatus', (data) => {
-      console.log(`🔌 Power status received for ${data.deviceId}: ${data.status}`);
+      // console.log(`🔌 Power status received for ${data.deviceId}: ${data.status}`);
       
       // Обновляем статус в Map - ТОЛЬКО реальные данные с сервера
       powerStatuses.value.set(data.deviceId, data.status);

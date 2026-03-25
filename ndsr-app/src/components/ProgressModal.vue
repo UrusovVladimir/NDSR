@@ -292,18 +292,29 @@ const operationConfigs = {
     }
   },
   
-  modeChange: {
-    title: 'Mode Change',
-    icon: 'pi pi-cog',
-    badgeClass: 'mode-change-badge',
-    getSteps: (operationData) => {
-      // console.log('📊 modeChange getSteps called with:', operationData);
+modeChange: {
+  title: 'Mode Change',
+  icon: 'pi pi-cog',
+  badgeClass: 'mode-change-badge',
+  getSteps: (operationData) => {
+    if (operationData?.action === 'disconnect') {
+      return [
+        { id: 'initializing', title: 'Initializing', description: 'Preparing disconnection' },
+        { id: 'applying_config', title: 'Applying Configuration', description: 'Sending disconnect command' },
+        { id: 'rebooting', title: 'Device Rebooting', description: 'Restarting with new mode' },
+        { id: 'waiting_online', title: 'Waiting for Device', description: 'Monitoring device status' },
+        { id: 'finalizing', title: 'Finalizing', description: 'Completing mode transition' },
+        { id: 'completed', title: 'Completed', description: 'Mode change finished' }
+      ];
+    } else {
+      const newMode = operationData?.newMode;
+      const WanOff = newMode === 'extender' || newMode === 'extender_connect';
       
-      // Для disconnect показываем другие шаги
-      if (operationData?.action === 'disconnect') {
+      if (WanOff) {
         return [
-          { id: 'initializing', title: 'Initializing', description: 'Preparing disconnection' },
-          { id: 'applying_config', title: 'Applying Configuration', description: 'Sending disconnect command' },
+          { id: 'initializing', title: 'Initializing', description: 'Preparing mode change' },
+          { id: 'applying_config', title: 'Applying Configuration', description: 'Sending new settings' },
+          { id: 'wan_off', title: 'WAN Configuration', description: `Disabling WAN interface for ${localDevice.value?.hwId} and setup Port forward` },
           { id: 'rebooting', title: 'Device Rebooting', description: 'Restarting with new mode' },
           { id: 'waiting_online', title: 'Waiting for Device', description: 'Monitoring device status' },
           { id: 'finalizing', title: 'Finalizing', description: 'Completing mode transition' },
@@ -319,16 +330,16 @@ const operationConfigs = {
           { id: 'completed', title: 'Completed', description: 'Mode change finished' }
         ];
       }
-    },
-    successMessage: (operationData) => {
-      return operationData?.action === 'disconnect' 
-        ? 'Device disconnected successfully' 
-        : 'Mode changed successfully';
     }
+  },
+  successMessage: (operationData) => {
+    return operationData?.action === 'disconnect' 
+      ? 'Device disconnected successfully' 
+      : 'Mode changed successfully';
   }
 }
+}
 
-// Computed properties
 const mobileView = computed(() => window.innerWidth <= 768)
 
 const operationConfig = computed(() => {
@@ -357,24 +368,20 @@ const operationDetails = computed(() => {
     const newMode = localOperationData.value?.newMode;
     const action = localOperationData.value?.action;
     
-    // Для отключения от роутера
     if (action === 'disconnect' || newMode === 'extender_disconnect') {
       return `🔌 Disconnecting from ${routerName} → Switching to Router mode`;
     }
     
-    // Для подключения к роутеру
     if (newMode === 'extender_connect') {
-      return `🔗 Switching to Extender mode → Connecting to ${routerName}`;
+      return `🔗 Switching to Extender mode → Connecting to ${routerName} (WAN will be disabled)`;
     }
     
-    // Для простого переключения в Extender без подключения
     if (newMode === 'extender') {
-      return `📡 Switching to Extender mode (standalone)`;
+      return `📡 Switching to Extender mode (standalone) (WAN will be disabled)`;
     }
     
-    // Для переключения в Router
     if (newMode === 'router') {
-      return `🌐 Switching to Router mode`;
+      return `🌐 Switching to Router mode (WAN remains as is)`;
     }
     
     return `Changing mode: ${localOperationData.value?.oldMode || '?'} → ${newMode || '?'}`;
@@ -670,7 +677,7 @@ const updateProgress = (newProgress, step, details = null) => {
       stepsList.value[targetStepIndex].status = 'current';
       currentStepId.value = step;
       addLog('info', `Started: ${stepsList.value[targetStepIndex].title}`);
-      // console.log('✅ Now current step:', step);
+      //  console.log('✅ Now current step:', step);
     }
     
     // Добавляем детали если есть
@@ -855,7 +862,9 @@ defineExpose({
   show,
   updateProgress,
   setStepError,
-  addLog
+  addLog,
+  localDevice,
+  visible
 })
 </script>
 

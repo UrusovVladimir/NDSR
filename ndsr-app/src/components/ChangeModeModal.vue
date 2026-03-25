@@ -27,7 +27,6 @@
         </Message>
       </div>
 
-      <!-- УЛУЧШЕННОЕ ОТОБРАЖЕНИЕ ТЕКУЩЕГО РЕЖИМА -->
       <div class="current-mode-section mb-4" v-if="hasValidPassword">
         <h6 class="section-title mb-2">Current Mode:</h6>
         <div class="mode-display-container">
@@ -40,10 +39,10 @@
         </div>
       </div>
 
-      <!-- Информация о пароле -->
+      <!-- Информация о пароле
       <div v-if="hasValidPassword && !authError" class="password-info mb-3">
         <Chip :label="`Using ${passwordSource} password`" icon="pi pi-key" />
-      </div>
+      </div> -->
 
       <div v-if="hasValidPassword && !authError" class="action-selection-section mb-4">
         <h6 class="section-title mb-3">Select Action:</h6>
@@ -176,7 +175,7 @@
                     <strong>Device Password</strong>
                   </div>
                   <small class="block text-color-secondary">
-                    Same as device
+                    Same as Router
                   </small>
                 </label>
               </div>
@@ -352,7 +351,7 @@
         </div>
         <div class="mt-1 text-xs">
           <div><strong>Device:</strong> {{ currentDevice?.hwId }} ({{ currentDevice?.id }})</div>
-          <div><strong>Password:</strong> {{ devicePassword ? '••••••••' : 'None' }} ({{ passwordSource }})</div>
+          <div><strong>Password:</strong> {{ devicePassword ? `'${devicePassword}'` : 'None' }} ({{ passwordSource }})</div>
           <div><strong>Auth Error:</strong> {{ authError }}</div>
           <div><strong>Current Mode:</strong> {{ currentDeviceBaseMode || 'Unknown' }}</div>
           <div><strong>Available Routers:</strong> {{ availableBookedRoutersFormatted.length }}</div>
@@ -754,10 +753,20 @@ const loadCurrentMode = async () => {
 const confirmAction = async () => {
   if ((!canConfirm.value && !authError.value) || (!canConfirmAuthError.value && authError.value)) return
   
+  if (!currentDevice.value) {
+    toast.add({ 
+      severity: 'error', 
+      summary: 'Error', 
+      detail: 'Device information is missing', 
+      life: 5000 
+    })
+    return
+  }
+  
   isLoading.value = true
   
   try {
-    let mode, routerId
+    let mode, routerId, action = null
     
     switch (selectedAction.value) {
       case 'router':
@@ -767,14 +776,16 @@ const confirmAction = async () => {
       case 'extender':
         mode = 'extender' 
         routerId = null
+        action = 'wan_off'
         break
       case 'extenderConnect':
         mode = 'extender_connect'
         routerId = selectedRouterId.value
+        action = 'wan_off'
         break
       case 'disconnectRouter':
         mode = 'extender_disconnect'
-        routerId = selectedRouterId.value 
+        routerId = selectedRouterId.value
         break
       default:
         throw new Error('Invalid action selected')
@@ -788,25 +799,31 @@ const confirmAction = async () => {
         routerPasswordToUse = manualRouterPassword.value
       }
     }
-      setTimeout((
-      // Открываем ProgressModal
-      emit('operationStarted', {
-        deviceId: currentDevice.value.id,
-        operationType: 'modeChange',
-        operationData: {
-          oldMode: currentDeviceBaseMode.value || 'unknown',
-          newMode: mode,
-          routerId: routerId,
-          action: selectedAction.value
-        }
-      }),1000))
-      
+    
+    const deviceId = currentDevice.value.id
+    
+  emit('operationStarted', {
+    deviceId: deviceId,
+    operationType: 'modeChange',
+    operationData: {
+      oldMode: currentDeviceBaseMode.value || 'unknown',
+      newMode: mode,
+      routerId: routerId,
+      action: selectedAction.value
+    }
+  })
+    
+    // ✅ НЕБОЛЬШАЯ ЗАДЕРЖКА, ЧТОБЫ МОДАЛКА УСПЕЛА ОТКРЫТЬСЯ
+    await new Promise(resolve => setTimeout(resolve, 100))
+    
+    // ✅ ПОСЛЕ ОТКРЫТИЯ МОДАЛКИ ОТПРАВЛЯЕМ ЗАПРОС
     const result = await modeStore.changeMode(
-      currentDevice.value.id, 
+      deviceId,
       mode,
       routerId, 
       devicePassword.value,
-      routerPasswordToUse
+      routerPasswordToUse,
+      action
     )
     
     if (result.success) {
@@ -815,17 +832,15 @@ const confirmAction = async () => {
         successMessage += ` and connected to ${routerId} via MWS`
       }
       
-      // toast.add({ severity: 'success', summary: 'Operation Completed', detail: successMessage, life: 5000 })
-      
-        emit('modeChanged', {
-          deviceId: currentDevice.value.id,
-          mode: mode,
-          routerId: routerId,
-          action: selectedAction.value,
-          mwsConnected: result.mwsConnected || false,
-          passwordUsed: useDevicePassword.value ? 'device' : 'manual'
-        })
-        closeModal()
+      emit('modeChanged', {
+        deviceId: deviceId,
+        mode: mode,
+        routerId: routerId,
+        action: selectedAction.value,
+        mwsConnected: result.mwsConnected || false,
+        passwordUsed: useDevicePassword.value ? 'device' : 'manual'
+      })
+      closeModal()
       
     } else {
       throw new Error(result.message)
@@ -1342,6 +1357,8 @@ defineExpose({ show })
   margin-top: 1rem;
   padding-top: 1rem;
   border-top: 1px solid var(--surface-200);
+  position: relative;
+  min-height: 80px; 
 }
 
 .info-message {

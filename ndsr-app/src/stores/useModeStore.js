@@ -418,55 +418,70 @@ const validateAPDeviceModes = () => {
     return userMessage
   }
 
-  const changeMode = async (deviceId, mode, routerId = null, password = null, routerPassword = null) => {
-    // console.log(`РЕЖИМ РАБОТЫ ИЗМЕНЯЕТСЯ НА ${mode}`)
-    isLoading.value = true
-    error.value = null
-    
-    try {
-      return await new Promise((resolve, reject) => {
-        // console.log('🔄 Changing mode:', { deviceId, mode, routerId })
+const changeMode = async (deviceId, mode, routerId = null, password = null, routerPassword = null, action = null) => {
+  // console.log(`РЕЖИМ РАБОТЫ ИЗМЕНЯЕТСЯ НА ${mode} с action: ${action}`)
+  isLoading.value = true
+  error.value = null
+  
+  try {
+    return await new Promise((resolve, reject) => {
+      // console.log('🔄 Changing mode:', { deviceId, mode, routerId, action })
 
-        const timeout = setTimeout(() => {
-          showErrorToast('Operation timeout - device is not responding', 'Timeout')
-          reject(new Error('Request timeout (180s)'))
-        }, 180000)
+      const timeout = setTimeout(() => {
+        showErrorToast('Operation timeout - device is not responding', 'Timeout')
+        reject(new Error('Request timeout (180s)'))
+      }, 180000)
 
-        socket.emit('device:changeMode', { 
-          deviceId: String(deviceId),
-          mode: String(mode),
-          routerId: routerId ? String(routerId) : null,
-          password: password ? String(password) : null,
-          routerPassword: routerPassword ? String(routerPassword) : null
-        }, (response) => {
-          clearTimeout(timeout)
+      socket.emit('device:changeMode', { 
+        deviceId: String(deviceId),
+        mode: String(mode),
+        routerId: routerId ? String(routerId) : null,
+        password: password ? String(password) : null,
+        routerPassword: routerPassword ? String(routerPassword) : null,
+        action: action ? String(action) : null  // 👈 Добавляем action
+      }, (response) => {
+        clearTimeout(timeout)
+        
+        if (response?.success) {
+          let finalMode = mode
+          let finalRouterId = routerId
           
-          if (response?.success) {
-            let finalMode = mode
-            let finalRouterId = routerId
-            
-            updateDeviceMode(deviceId, {
-              mode: finalMode,
-              routerId: finalRouterId
-            })
-            
-            showSuccessWithIcon(`Mode changed to ${mode}`, 'Success')
-            resolve(response)
-          } else {
-            const errorMessage = response?.error || 'Failed to change mode'
-            const userMessage = handleModeError(new Error(errorMessage), 'change mode')
-            reject(new Error(userMessage))
+          
+          if (action === 'wan_off') {
+            if (mode === 'extender' && routerId) {
+              finalMode = 'extender_connect'
+            } else if (mode === 'extender' && !routerId) {
+              finalMode = 'extender'
+            } else if (mode === 'extender_connect') {
+              finalMode = 'extender_connect'
+            }
+          } else if (action === 'wan_on') {
+            finalMode = 'router'
+            finalRouterId = null
           }
-        })
+          
+          updateDeviceMode(deviceId, {
+            mode: finalMode,
+            routerId: finalRouterId
+          })
+          
+          showSuccessWithIcon(`Mode changed to ${finalMode}`, 'Success')
+          resolve(response)
+        } else {
+          const errorMessage = response?.error || 'Failed to change mode'
+          const userMessage = handleModeError(new Error(errorMessage), 'change mode')
+          reject(new Error(userMessage))
+        }
       })
-    } catch (error) {
-      const userMessage = handleModeError(error, 'change mode')
-      error.value = userMessage
-      throw new Error(userMessage)
-    } finally {
-      isLoading.value = false
-    }
+    })
+  } catch (error) {
+    const userMessage = handleModeError(error, 'change mode')
+    error.value = userMessage
+    throw new Error(userMessage)
+  } finally {
+    isLoading.value = false
   }
+}
 
 const getCurrentMode = async (deviceId, password) => {
   isLoading.value = true

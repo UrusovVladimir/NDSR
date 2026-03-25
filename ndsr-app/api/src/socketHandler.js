@@ -68,7 +68,7 @@ let dailyPasswords = {
   }
 };
 
-const universalPromptRegex = /.*[# ]/i;
+const universalPromptRegex = /.*/i;
 
 const syncPowerStatusesToClient = (socket) => {
   console.log('🔌 Syncing power statuses to client');
@@ -2082,181 +2082,196 @@ function setupEvents(socket, io) {
   });
 
 
-  socket.on('device:changeMode', async (data, callback) => {
-    let deviceId;
+socket.on('device:changeMode', async (data, callback) => {
+  console.log("СТАТУС ИЗМЕНЕНИЯ WAN ИНТЕРФЕЙСА", data.action)
+  let deviceId;
+  
+  try {
+    const { deviceId: id, mode, routerId, password, routerPassword, action } = data;
+    deviceId = id;
     
-    try {
-      const { deviceId: id, mode, routerId, password, routerPassword } = data;
-      deviceId = id;
+    console.log(`🔄 Processing mode change: ${mode} for device ${deviceId}, action: ${action}`);
+    
+    if (typeof callback === 'function') {
+      callback({ 
+        success: true, 
+        message: 'Operation started',
+        async: true
+      });
+    }
+    
+    if (mode === 'extender_connect' && routerId) {
+      currentModes.set(deviceId, {
+        mode: 'extender_connect',
+        routerId: routerId,
+        timestamp: Date.now()
+      });
+    } else if (mode === 'extender_disconnect') {
+      currentModes.delete(deviceId);
+    }
+    
+    deviceStatusCache.delete(deviceId);
+    
+    sendModeChangeProgress(io, deviceId, 10, 'initializing');
+    
+    let result;
+    const device = getDeviceById(deviceId);
+    
+    if (!device) {
+      throw new Error(`Device ${deviceId} not found`);
+    }
+    
+    sendModeChangeProgress(io, deviceId, 30, 'applying_config');
+    
+    let targetUrl = device.checkDeviceMode || device.checkUrl || device.URL;
+    
+    if (action === 'wan_off') {
+      console.log(`🔧 Выключаем WAN интерфейс для устройства ${deviceId}`);
+      sendModeChangeProgress(io, deviceId, 35, 'wan_off');
       
-      console.log(`🔄 Processing mode change: ${mode} for device ${deviceId}`);
+      try {
+        // ✅ Вызываем changeWanType для выключения WAN
+        await changeWanType(deviceId, null, universalPromptRegex);
+        console.log(`✅ WAN интерфейс выключен для ${deviceId}`);
+      } catch (wanError) {
+        console.warn(`⚠️ Ошибка при выключении WAN: ${wanError.message}`);
+      }
+    }
+    
+    // ✅ ВЫПОЛНЯЕМ СМЕНУ РЕЖИМА
+    switch (mode) {
+      case 'router':
+        result = await changeSystemMode(deviceId, null, 'router', password, null, io, 'direct', targetUrl);
+        break;
+      case 'extender':
+        result = await changeSystemMode(deviceId, null, 'extender', password, null, io, 'direct', targetUrl);
+        break;
+      case 'extender_connect':
+        result = await changeSystemMode(deviceId, routerId, 'extender', password, routerPassword, io, 'direct', targetUrl);
+        break;
+      case 'extender_disconnect':
+        result = await disconnectAndChangeToRouter(deviceId, routerId, password, routerPassword, io, 'router', targetUrl);
+        break;
+      default:
+        throw new Error(`Unknown mode: ${mode}`);
+    }
+    
+    if (result.success) {
+      sendModeChangeProgress(io, deviceId, 60, 'rebooting');
       
-      if (typeof callback === 'function') {
-        callback({ 
-          success: true, 
-          message: 'Operation started',
-          async: true
-        });
+      console.log(`⏳ Waiting for device ${deviceId} to reboot...`);
+      await new Promise(resolve => setTimeout(resolve, 15000));
+      
+      sendModeChangeProgress(io, deviceId, 80, 'waiting_online');
+      
+      console.log(`🔍 Checking if device ${deviceId} is back online via checkUrl: ${device.checkUrl}...`);
+      
+      let deviceOnline = false;
+      let attempts = 0;
+      const maxAttempts = 24;
+      
+      while (attempts < maxAttempts && !deviceOnline) {
+        attempts++;
+        await new Promise(resolve => setTimeout(resolve, 5000));
+        
+        try {
+          console.log(`🔍 Проверка статуса ${deviceId} (${attempts}/${maxAttempts}) через ${device.checkUrl}/rci/show/version`);
+          const urlCorrect = `${device.checkUrl}/rci/show/version`
+          const status = await getDeviceStatusCode(device, urlCorrect);
+          console.log(`📊 Device ${deviceId} status check ${attempts}/${maxAttempts}: ${status}`);
+          
+          if (status === 200) {
+            deviceOnline = true;
+            console.log(`✅ Device ${deviceId} is back online!`);
+            sendModeChangeProgress(io, deviceId, 95, 'finalizing');
+            await new Promise(resolve => setTimeout(resolve, 3000));
+            
+            sendModeChangeProgress(io, deviceId, 100, 'completed');
+            break;
+          }
+        } catch (error) {
+          console.log(`⚠️ Status check ${attempts} failed:`, error.message);
+        }
       }
       
-      if (mode === 'extender_connect' && routerId) {
-        currentModes.set(deviceId, {
-          mode: 'extender_connect',
+      if (!deviceOnline) {
+        console.warn(`⚠️ Device ${deviceId} did not come back online within timeout`);
+        sendModeChangeProgress(io, deviceId, 100, 'completed_with_warning');
+      }
+      
+      // ОБНОВЛЯЕМ РЕЖИМ
+      let finalMode = mode;
+      let finalRouterId = null;
+      
+      if (mode === 'extender_disconnect') {
+        finalMode = 'router';
+      } else if (mode === 'extender_connect') {
+        finalMode = 'extender_connect';
+        finalRouterId = routerId;
+      } else {
+        finalMode = mode;
+      }
+      
+      currentModes.set(deviceId, {
+        mode: finalMode,
+        routerId: finalRouterId,
+        timestamp: Date.now()
+      });
+      
+      console.log(`💾 Final mode saved for device ${deviceId}:`, { mode: finalMode, routerId: finalRouterId });
+      
+      io.emit('device:modeUpdated', {
+        deviceId,
+        mode: finalMode,
+        routerId: finalRouterId,
+        action: action, // Передаем action в ответе
+        success: true,
+        message: result.message,
+        source: 'mode_change'
+      });
+      
+      if (mode === 'extender_connect') {
+        io.emit('device:mwsStatusUpdated', {
+          deviceId: deviceId,
           routerId: routerId,
+          status: 'connected',
           timestamp: Date.now()
         });
       } else if (mode === 'extender_disconnect') {
-        currentModes.delete(deviceId);
-      }
-      
-      deviceStatusCache.delete(deviceId);
-      
-      sendModeChangeProgress(io, deviceId, 10, 'initializing');
-      
-      let result;
-      const device = getDeviceById(deviceId);
-      
-      if (!device) {
-        throw new Error(`Device ${deviceId} not found`);
-      }
-      
-      sendModeChangeProgress(io, deviceId, 30, 'applying_config');
-      
-      let targetUrl = device.checkDeviceMode || device.checkUrl || device.URL;
-      
-      switch (mode) {
-        case 'router':
-          result = await changeSystemMode(deviceId, null, 'router', password, null, io, 'direct', targetUrl);
-          break;
-        case 'extender':
-          result = await changeSystemMode(deviceId, null, 'extender', password, null, io, 'direct', targetUrl);
-          break;
-        case 'extender_connect':
-          result = await changeSystemMode(deviceId, routerId, 'extender', password, routerPassword, io, 'direct', targetUrl);
-          break;
-        case 'extender_disconnect':
-          result = await disconnectAndChangeToRouter(deviceId, routerId, password, routerPassword, io, 'router', targetUrl);
-          break;
-        default:
-          throw new Error(`Unknown mode: ${mode}`);
-      }
-      
-      if (result.success) {
-        sendModeChangeProgress(io, deviceId, 60, 'rebooting');
-        
-        console.log(`⏳ Waiting for device ${deviceId} to reboot...`);
-        await new Promise(resolve => setTimeout(resolve, 15000));
-        
-        sendModeChangeProgress(io, deviceId, 80, 'waiting_online');
-        
-        console.log(`🔍 Checking if device ${deviceId} is back online via checkUrl: ${device.checkUrl}...`);
-        
-        let deviceOnline = false;
-        let attempts = 0;
-        const maxAttempts = 24;
-        
-        while (attempts < maxAttempts && !deviceOnline) {
-          attempts++;
-          await new Promise(resolve => setTimeout(resolve, 5000));
-          
-          try {
-            console.log(`🔍 Проверка статуса ${deviceId} (${attempts}/${maxAttempts}) через ${device.checkUrl}`);
-            const status = await getDeviceStatusCode(device, device.checkUrl);
-            console.log(`📊 Device ${deviceId} status check ${attempts}/${maxAttempts}: ${status}`);
-            
-            if (status === 200) {
-              deviceOnline = true;
-              console.log(`✅ Device ${deviceId} is back online!`);
-              sendModeChangeProgress(io, deviceId, 95, 'finalizing');
-              await new Promise(resolve => setTimeout(resolve, 3000));
-              
-              // ✅ ВАЖНО: ОТПРАВЛЯЕМ 100% ПРОГРЕСС!
-              sendModeChangeProgress(io, deviceId, 100, 'completed');
-              break;
-            }
-          } catch (error) {
-            console.log(`⚠️ Status check ${attempts} failed:`, error.message);
-          }
-        }
-        
-        if (!deviceOnline) {
-          console.warn(`⚠️ Device ${deviceId} did not come back online within timeout`);
-          // ✅ Даже если не онлайн, отправляем 100% с предупреждением
-          sendModeChangeProgress(io, deviceId, 100, 'completed_with_warning');
-        }
-        
-        // ОБНОВЛЯЕМ РЕЖИМ
-        let finalMode = mode;
-        let finalRouterId = null;
-        
-        if (mode === 'extender_disconnect') {
-          finalMode = 'router';
-        } else if (mode === 'extender_connect') {
-          finalMode = 'extender_connect';
-          finalRouterId = routerId;
-        } else {
-          finalMode = mode;
-        }
-        
-        currentModes.set(deviceId, {
-          mode: finalMode,
-          routerId: finalRouterId,
+        io.emit('device:mwsStatusUpdated', {
+          deviceId: deviceId,
+          routerId: routerId,
+          status: 'disconnected', 
           timestamp: Date.now()
         });
-        
-        console.log(`💾 Final mode saved for device ${deviceId}:`, { mode: finalMode, routerId: finalRouterId });
-        
-        io.emit('device:modeUpdated', {
-          deviceId,
-          mode: finalMode,
-          routerId: finalRouterId,
-          success: true,
-          message: result.message,
-          source: 'mode_change'
-        });
-        
-        if (mode === 'extender_connect') {
-          io.emit('device:mwsStatusUpdated', {
-            deviceId: deviceId,
-            routerId: routerId,
-            status: 'connected',
-            timestamp: Date.now()
-          });
-        } else if (mode === 'extender_disconnect') {
-          io.emit('device:mwsStatusUpdated', {
-            deviceId: deviceId,
-            routerId: routerId,
-            status: 'disconnected', 
-            timestamp: Date.now()
-          });
-        }
-        
-      } else {
-        sendModeChangeProgress(io, deviceId, 0, 'error');
-        
-        if (typeof callback === 'function') {
-          callback({ 
-            success: false, 
-            error: result.message 
-          });
-        }
       }
       
-    } catch (error) {
-      console.error('❌ Error in device:changeMode:', error);
-      
-      if (deviceId) {
-        sendModeChangeProgress(io, deviceId, 0, 'error');
-      }
+    } else {
+      sendModeChangeProgress(io, deviceId, 0, 'error');
       
       if (typeof callback === 'function') {
         callback({ 
           success: false, 
-          error: error.message 
+          error: result.message 
         });
       }
     }
-  });
+    
+  } catch (error) {
+    console.error('❌ Error in device:changeMode:', error);
+    
+    if (deviceId) {
+      sendModeChangeProgress(io, deviceId, 0, 'error');
+    }
+    
+    if (typeof callback === 'function') {
+      callback({ 
+        success: false, 
+        error: error.message 
+      });
+    }
+  }
+});
 
   socket.on('device:getCurrentMode', async (data, callback) => {
     try {

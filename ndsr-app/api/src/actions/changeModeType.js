@@ -1,5 +1,5 @@
-import { devices, getParamRouter, getDeviceById, getDeviceStatusCode } from "../devices.js";
-import { makeAuthenticatedRequest, keeneticAuth } from "./athentication.js";
+import { getParamRouter, getDeviceById, getDeviceStatusCode } from "../devices.js";
+import { makeAuthenticatedRequest } from "./athentication.js";
 import axios from "axios";
 import { connectToMws } from "./connectToMws.js"; 
 import { SSHManager } from "./sshManager.js";
@@ -9,68 +9,7 @@ import { DisconnectManager } from "../utils/disconnectManager.js";
 
 const universalPromptRegex = /.*[# ]/i;
 
-// ✅ ФУНКЦИЯ ДЛЯ ПОЛУЧЕНИЯ ПРАВИЛЬНОГО URL ДЛЯ УСТРОЙСТВА
-function getCorrectDeviceUrl(deviceId, scenario = 'status', targetMode = null) {
-    const device = getDeviceById(deviceId);
-    if (!device) {
-        console.error(`❌ Устройство ${deviceId} не найдено`);
-        return null;
-    }
-    
-    console.log(`🔍 Получение URL для устройства ${deviceId}:`);
-    console.log(`   - Сценарий: ${scenario}`);
-    console.log(`   - Целевой режим: ${targetMode || 'не указан'}`);
-    console.log(`   - CheckDeviceMode: ${device.checkDeviceMode}`);
-    console.log(`   - CheckUrl: ${device.checkUrl}`);
-    console.log(`   - URL: ${device.URL}`);
-    
-    // ✅ ЛОГИКА:
-    // 1. Для смены режима на 'router' -> ВСЕГДА используем прямой URL (checkDeviceMode)
-    // 2. Для смены режима на 'extender_connect' -> используем URL через роутер
-    // 3. Для проверки статуса -> в зависимости от текущего режима
-    
-    if (scenario === 'mode_change') {
-        if (targetMode === 'router') {
-            // ✅ ПЕРЕВОД В ROUTER: ВСЕГДА используем прямой URL
-            const directUrl = device.checkDeviceMode || device.checkUrl || device.URL;
-            console.log(`🔧 Для перевода в router используем прямой URL: ${directUrl}`);
-            return directUrl;
-        } else if (targetMode === 'extender_connect' || targetMode === 'extender_disconnect') {
-            // ✅ ДЛЯ ПОДКЛЮЧЕНИЯ/ОТКЛЮЧЕНИЯ: используем через роутер
-            // Предполагаем, что routerId есть в контексте, или нужно передать его
-            // Пока возвращаем стандартный URL, но эта логика должна быть дополнена
-            const defaultUrl = device.checkUrl || device.URL;
-            console.log(`🔧 Для ${targetMode} используем URL: ${defaultUrl}`);
-            return defaultUrl;
-        }
-    }
-    
-    // ✅ По умолчанию возвращаем стандартный URL
-    const defaultUrl = device.checkUrl || device.URL;
-    console.log(`🔧 Используем URL по умолчанию: ${defaultUrl}`);
-    return defaultUrl;
-}
 
-// ✅ ФУНКЦИЯ ДЛЯ ПОЛУЧЕНИЯ URL ЧЕРЕЗ РОУТЕР
-function getRouterUrlForDevice(deviceId, routerId) {
-    const device = getDeviceById(deviceId);
-    const router = getParamRouter(routerId);
-    
-    if (!device || !router) {
-        console.log(`❌ Устройство ${deviceId} или роутер ${routerId} не найдены`);
-        return null;
-    }
-    
-    if (router && router.ip) {
-        const routerIp = router.ip.split('/')[0];
-        const url = `http://${routerIp}:${deviceId}`;
-        console.log(`🔧 URL через роутер ${routerId} для устройства ${deviceId}: ${url}`);
-        return url;
-    }
-    
-    console.log(`⚠️ Роутер ${routerId} не имеет IP`);
-    return device.checkUrl || device.URL;
-}
 
 // ✅ ФУНКЦИЯ ДЛЯ ОТПРАВКИ СТАТУСА (принимает io как параметр)
 function broadcastDeviceStatus(io, deviceId, status) {
@@ -168,39 +107,57 @@ export const checkDeviceMode = async (url, login, password) => {
     }
 };
 
-async function pollMwsCandidates(routerUrl, login, routerPassword, maxAttempts = 60, delay = 5000) {
-    console.log(`🔍 Начинаем опрос MWS кандидатов: ${routerUrl}/rci/show/mws/candidate`);
-    
-    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-        try {
-            console.log(`🔍 Попытка ${attempt}/${maxAttempts}: запрос MWS кандидатов...`);
-            
-            const candidatesData = await makeAuthenticatedRequest(
-                routerUrl,
-                login,
-                routerPassword,
-                '/rci/show/mws/candidate',
-                'GET'
-            );
+// В начале файла добавить
+let activeMwsRequests = 0;
+const MAX_CONCURRENT_MWS_REQUESTS = 3;
+const mwsRequestQueue = [];
 
-            console.log(`✅ MWS кандидаты получены (попытка ${attempt}/${maxAttempts})`);
-            return candidatesData;
+async function executeMwsRequest(fn) {
+  return new Promise((resolve, reject) => {
+    const execute = async () => {
+      if (activeMwsRequests >= MAX_CONCURRENT_MWS_REQUESTS) {
+        mwsRequestQueue.push(execute);
+        return;
+      }
 
-        } catch (error) {
-            console.log(`⚠️ Ошибка запроса MWS кандидатов (попытка ${attempt}/${maxAttempts}):`, error.message);
-            
-            if (error.message.includes('401') || error.message.includes('authentication')) {
-                console.log(`🔐 Ошибка аутентификации при запросе MWS кандидатов`);
-                throw new Error(`Ошибка аутентификации при запросе MWS кандидатов. Проверьте пароль роутера.`);
-            }
-            
-            if (attempt === maxAttempts) {
-                throw new Error(`Не удалось получить MWS кандидаты после ${maxAttempts} попыток: ${error.message}`);
-            }
-            
-            await new Promise(resolve => setTimeout(resolve, delay));
+      activeMwsRequests++;
+      try {
+        const result = await fn();
+        resolve(result);
+      } catch (error) {
+        reject(error);
+      } finally {
+        activeMwsRequests--;
+        if (mwsRequestQueue.length > 0) {
+          const next = mwsRequestQueue.shift();
+          setTimeout(next, 100);
         }
+      }
+    };
+    
+    execute();
+  });
+}
+
+//  pollMwsCandidates для использования ограничителя
+async function pollMwsCandidates(routerUrl, login, routerPassword, maxAttempts = 1, delay = 5000) {
+  return executeMwsRequest(async () => {
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      try {
+        const candidatesData = await makeAuthenticatedRequest(
+          routerUrl,
+          login,
+          routerPassword,
+          '/rci/show/mws/candidate',
+          'GET'
+        );
+        return candidatesData;
+      } catch (error) {
+        if (attempt === maxAttempts) throw error;
+        await new Promise(resolve => setTimeout(resolve, delay));
+      }
     }
+  });
 }
 
 async function manageIptablesForExtender(deviceId, routerId, device, routerPassword = null) {
@@ -215,7 +172,7 @@ async function manageIptablesForExtender(deviceId, routerId, device, routerPassw
             throw new Error(`Роутер ${routerId} не найден`);
         }
 
-        // ✅ ВАЖНО: ПРОВЕРЯЕМ ЧТО ПЕРЕДАН device ОБЪЕКТ
+        // !!!!ВАЖНО: ПРОВЕРЯЕМ ЧТО ПЕРЕДАН device ОБЪЕКТ
         if (!device) {
             throw new Error(`Device объект не передан для устройства ${deviceId}`);
         }
@@ -253,203 +210,252 @@ async function manageIptablesForExtender(deviceId, routerId, device, routerPassw
         }
     }
 }
-
+async function pollNeighbors(routerUrl, login, routerPassword, targetMac, maxAttempts = 60, delay = 5000) {
+  console.log(`🔍 Поиск extender'а ${targetMac} в таблице соседей...`);
+  
+  const normalizedTargetMac = targetMac.replace(/:/g, '').toLowerCase();
+  
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      const neighborsData = await makeAuthenticatedRequest(
+        routerUrl,
+        login,
+        routerPassword,
+        '/rci/show/ip/neighbor',
+        'GET'
+      );
+      
+      if (neighborsData && Array.isArray(neighborsData)) {
+        const foundDevice = neighborsData.find(neighbor => {
+          if (!neighbor.mac) return false;
+          const neighborMac = neighbor.mac.replace(/:/g, '').toLowerCase();
+          return neighborMac === normalizedTargetMac;
+        });
+        
+        if (foundDevice) {
+          console.log(`✅ Extender найден в таблице соседей! IP: ${foundDevice.ip}`);
+          return {
+            ...foundDevice,
+            source: 'neighbor'
+          };
+        }
+      }
+      
+      if (attempt < maxAttempts) {
+        await new Promise(resolve => setTimeout(resolve, delay));
+      }
+      
+    } catch (error) {
+      console.log(`⚠️ Ошибка запроса таблицы соседей: ${error.message}`);
+      if (attempt === maxAttempts) throw error;
+      await new Promise(resolve => setTimeout(resolve, delay));
+    }
+  }
+  
+  return null;
+}
 async function waitForExtenderInMwsCandidates(routerId, extenderMac, routerPassword, maxAttempts = 60, delay = 5000) {
-    try {
-        console.log(`🔍 Ожидание появления extender'а ${extenderMac} в MWS кандидатах`);
-        
-        const router = getParamRouter(routerId);
-        if (!router) {
-            throw new Error(`Роутер ${routerId} не найден`);
-        }
-
-        const routerUrl = router.URL;
-        const login = 'admin';
-        const normalizedTargetMac = extenderMac.replace(/:/g, '').toLowerCase();
-
-        for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-            try {
-                console.log(`🔍 Попытка ${attempt}/${maxAttempts}: поиск extender'а в MWS кандидатах...`);
-                
-                const candidatesData = await pollMwsCandidates(routerUrl, login, routerPassword, 1, delay);
-
-                if (candidatesData && Array.isArray(candidatesData)) {
-                    console.log(`📋 Получено кандидатов: ${candidatesData.length}`);
-                    
-                    const foundExtender = candidatesData.find(candidate => {
-                        if (!candidate.mac) return false;
-                        const candidateMac = candidate.mac.replace(/:/g, '').toLowerCase();
-                        return candidateMac === normalizedTargetMac;
-                    });
-
-                    if (foundExtender) {
-                        console.log(`✅ Extender найден в MWS кандидатах!`);
-                        return foundExtender;
-                    } else {
-                        console.log(`⌛ Extender еще не появился в MWS кандидатах...`);
-                    }
-                }
-
-            } catch (error) {
-                console.log(`⚠️ Ошибка поиска extender'а: ${error.message}`);
-                if (error.message.includes('401')) {
-                    throw new Error(`Ошибка аутентификации при запросе MWS кандидатов. Проверьте пароль роутера.`);
-                }
-            }
-
-            if (attempt === maxAttempts) {
-                throw new Error(`Extender не появился в MWS кандидатах после ${maxAttempts} попыток`);
-            }
-
-            await new Promise(resolve => setTimeout(resolve, delay));
-        }
-
-    } catch (error) {
-        console.error(`❌ Ошибка ожидания extender'а в MWS:`, error);
-        throw error;
+  try {
+    console.log(`🔍 Ожидание появления extender'а ${extenderMac} в MWS кандидатах`);
+    
+    const router = getParamRouter(routerId);
+    if (!router) {
+      throw new Error(`Роутер ${routerId} не найден`);
     }
-}
 
+    const routerUrl = router.URL;
+    const login = 'admin';
+    const normalizedTargetMac = extenderMac.replace(/:/g, '').toLowerCase();
+    
+    let lastError = null;
+
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      try {
+        // ✅ Экспоненциальная задержка
+        const currentDelay = Math.min(delay * (1 + (attempt - 1) * 0.2), 30000);
+        
+        const candidatesData = await pollMwsCandidates(routerUrl, login, routerPassword, 1, currentDelay);
+
+        if (candidatesData && Array.isArray(candidatesData)) {
+          console.log(`📋 Получено кандидатов: ${candidatesData.length}`);
+          
+          const foundExtender = candidatesData.find(candidate => {
+            if (!candidate.mac) return false;
+            const candidateMac = candidate.mac.replace(/:/g, '').toLowerCase();
+            return candidateMac === normalizedTargetMac;
+          });
+
+          if (foundExtender) {
+            console.log(`✅ Extender найден в MWS кандидатах!`);
+            return {
+              ...foundExtender,
+              source: 'mws_candidate',
+              ip: foundExtender.ip || null
+            };
+          }
+        }
+        
+        // ✅ Если прошло больше половины попыток и extender не найден, пробуем поискать в соседях
+        if (attempt > maxAttempts / 2 && attempt % 5 === 0) {
+          console.log(`🔍 Пробуем найти extender в таблице соседей (попытка ${attempt}/${maxAttempts})...`);
+          
+          const neighborResult = await pollNeighbors(
+            routerUrl, 
+            login, 
+            routerPassword, 
+            extenderMac,
+            5, 
+            delay
+          );
+          
+          if (neighborResult) {
+            console.log(`✅ Extender найден в таблице соседей! IP: ${neighborResult.ip}`);
+            return {
+              ...neighborResult,
+              source: 'neighbor',
+              state: 'CONNECTED'
+            };
+          }
+        }
+
+      } catch (error) {
+        console.log(`⚠️ Ошибка поиска extender'а: ${error.message}`);
+        lastError = error;
+        
+        if (error.message.includes('401')) {
+          throw new Error(`Ошибка аутентификации при запросе MWS кандидатов. Проверьте пароль роутера.`);
+        }
+      }
+
+      if (attempt === maxAttempts) {
+        // Последняя попытка - проверяем соседей перед завершением
+        console.log(`⚠️ Extender не найден в MWS кандидатах, финальная проверка в таблице соседей...`);
+        
+        const finalNeighborCheck = await pollNeighbors(
+          routerUrl, 
+          login, 
+          routerPassword, 
+          extenderMac,
+          3,
+          delay
+        );
+        
+        if (finalNeighborCheck) {
+          console.log(`✅ Extender найден в таблице соседей! IP: ${finalNeighborCheck.ip}`);
+          return {
+            ...finalNeighborCheck,
+            source: 'neighbor_final',
+            state: 'CONNECTED'
+          };
+        }
+        
+        throw new Error(`Extender не появился в MWS кандидатах и не найден в таблице соседей после ${maxAttempts} попыток: ${lastError?.message || 'неизвестная ошибка'}`);
+      }
+
+      // Увеличиваем интервал между попытками
+      const waitTime = Math.min(delay * (1 + (attempt - 1) * 0.2), 30000);
+      await new Promise(resolve => setTimeout(resolve, waitTime));
+    }
+
+  } catch (error) {
+    console.error(`❌ Ошибка ожидания extender'а:`, error);
+    throw error;
+  }
+}
 async function waitForExtenderConnection(routerId, extenderMac, routerPassword, maxAttempts = 60, delay = 5000) {
-    try {
-        console.log(`🔗 Ожидание успешного подключения extender'а ${extenderMac}`);
-        
-        const router = getParamRouter(routerId);
-        if (!router) {
-            throw new Error(`Роутер ${routerId} не найден`);
-        }
-
-        const routerUrl = router.URL;
-        const login = 'admin';
-        const normalizedTargetMac = extenderMac.replace(/:/g, '').toLowerCase();
-
-        for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-            try {
-                console.log(`🔍 Попытка ${attempt}/${maxAttempts}: проверка состояния подключения...`);
-                
-                const candidatesData = await pollMwsCandidates(routerUrl, login, routerPassword, 1, delay);
-
-                if (candidatesData && Array.isArray(candidatesData)) {
-                    const extender = candidatesData.find(candidate => {
-                        if (!candidate.mac) return false;
-                        const candidateMac = candidate.mac.replace(/:/g, '').toLowerCase();
-                        return candidateMac === normalizedTargetMac;
-                    });
-
-                    if (extender) {
-                        console.log(`📊 Состояние extender'а: ${extender.state}`);
-
-                        if (extender.state === 'CONNECTED' || extender.state === 'COMPATIBLE_UPDATE' || extender.state === 'COMPATIBLE') {
-                            console.log(`🎉 Extender успешно подключен к роутеру!`);
-                            return extender;
-                        }
-                    }
-                }
-
-            } catch (error) {
-                console.log(`⚠️ Ошибка проверки подключения: ${error.message}`);
-                if (error.message.includes('401') || error.message.includes('authentication')) {
-                    throw error;
-                }
-            }
-
-            if (attempt === maxAttempts) {
-                throw new Error(`Extender не подключился к роутеру после ${maxAttempts} попыток`);
-            }
-
-            await new Promise(resolve => setTimeout(resolve, delay));
-        }
-
-    } catch (error) {
-        console.error(`❌ Ошибка ожидания подключения:`, error);
-        throw error;
+  try {
+    console.log(`🔗 Ожидание успешного подключения extender'а ${extenderMac}`);
+    
+    const router = getParamRouter(routerId);
+    if (!router) {
+      throw new Error(`Роутер ${routerId} не найден`);
     }
-}
 
-// async function waitForDeviceBoot(io, deviceUrl, deviceId, routerId = null, mode = 'router', maxAttempts = 30, delay = 10000) {
-//     console.log(`⏳ Ожидание загрузки устройства: ${deviceUrl}, режим: ${mode}`);
-    
-//     const device = getDeviceById(deviceId);
-//     if (!device) {
-//         throw new Error(`Устройство ${deviceId} не найдено`);
-//     }
-    
-//     // ✅ ОПРЕДЕЛЯЕМ ПРАВИЛЬНЫЙ URL ДЛЯ ПРОВЕРКИ
-//     let checkUrl = deviceUrl;
-//     if (mode === 'extender' && routerId) {
-//         const router = getParamRouter(routerId);
-//         if (router && router.ip) {
-//             const routerIp = router.ip.split('/')[0];
-//             checkUrl = `http://${routerIp}:${deviceId}`;
-//             console.log(`🔧 Для проверки загрузки экстендера используем URL через роутер: ${checkUrl}`);
-//         }
-//     }
-    
-//     console.log(`🔧 Для проверки загрузки используем URL: ${checkUrl}`);
-    
-//     broadcastDeviceStatus(io, deviceId, 0);
-    
-//     console.log(`⏳ Защитная пауза 10 секунд перед началом проверок...`);
-//     await new Promise(resolve => setTimeout(resolve, 10000));
-    
-//     let stableAccessCount = 0;
-//     const requiredStableAccess = 2;
-    
-//     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-//         try {
-//             console.log(`🔍 Попытка ${attempt}/${maxAttempts}: проверка доступности устройства...`);
+    const routerUrl = router.URL;
+    const login = 'admin';
+    const normalizedTargetMac = extenderMac.replace(/:/g, '').toLowerCase();
+    let lastState = null;
+
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      try {
+        console.log(`🔍 Попытка ${attempt}/${maxAttempts}: проверка состояния подключения...`);
+        
+        // Сначала проверяем MWS кандидатов
+        let candidatesData = null;
+        try {
+          candidatesData = await pollMwsCandidates(routerUrl, login, routerPassword, 1, delay);
+        } catch (error) {
+          console.log(`⚠️ Ошибка запроса MWS кандидатов: ${error.message}`);
+        }
+
+        if (candidatesData && Array.isArray(candidatesData)) {
+          const extender = candidatesData.find(candidate => {
+            if (!candidate.mac) return false;
+            const candidateMac = candidate.mac.replace(/:/g, '').toLowerCase();
+            return candidateMac === normalizedTargetMac;
+          });
+
+          if (extender) {
+            console.log(`📊 Состояние extender'а в MWS: ${extender.state}`);
+            lastState = extender.state;
             
-//             await new Promise(resolve => setTimeout(resolve, 2000));
-            
-//             const response = await axios.get(`${checkUrl}/`, { 
-//                 timeout: 8000,
-//                 validateStatus: (status) => status < 500
-//             });
-            
-//             console.log(`✅ Базовая доступность есть! HTTP статус: ${response.status}`);
-            
-//             broadcastDeviceStatus(io, deviceId, 100);
-            
-//             if (response.status < 500) {
-//                 stableAccessCount++;
-//                 console.log(`📈 Стабильная доступность: ${stableAccessCount}/${requiredStableAccess}`);
-                
-//                 if (stableAccessCount >= requiredStableAccess) {
-//                     console.log(`✅ Устройство доступно после перезагрузки`);
-//                     broadcastDeviceStatus(io, deviceId, response.status);
-//                     return true;
-//                 }
-//             } else {
-//                 stableAccessCount = 0;
-//             }
-            
-//             console.log(`⏳ Устройство загружается... стабильность: ${stableAccessCount}/${requiredStableAccess}`);
-            
-//         } catch (error) {
-//             const timeRemaining = ((maxAttempts - attempt) * delay) / 60000;
-            
-//             if (error.code === 'ECONNREFUSED' || error.code === 'ETIMEDOUT') {
-//                 console.log(`⌛ Устройство еще загружается... Осталось попыток: ${maxAttempts - attempt}`);
-//                 stableAccessCount = 0;
-//                 broadcastDeviceStatus(io, deviceId, 0);
-//             } else {
-//                 console.log(`⚠️ Ошибка подключения: ${error.message}`);
-//                 stableAccessCount = 0;
-//             }
-            
-//             if (attempt === maxAttempts) {
-//                 console.log(`⚠️ Устройство все еще загружается после ${maxAttempts} попыток`);
-//                 broadcastDeviceStatus(io, deviceId, 0);
-//                 return true;
-//             }
-            
-//             console.log(`💤 Ожидание ${delay / 1000} секунд перед следующей попыткой...`);
-//             await new Promise(resolve => setTimeout(resolve, delay));
-//         }
-//     }
-    
-//     return true;
-// }
+            if (extender.state === 'CONNECTED' || extender.state === 'COMPATIBLE_UPDATE' || extender.state === 'COMPATIBLE') {
+              console.log(`🎉 Extender успешно подключен к роутеру!`);
+              return {
+                ...extender,
+                source: 'mws_candidate',
+                ip: extender.ip || null
+              };
+            }
+          }
+        }
+        
+        // Если в MWS кандидатах нет, проверяем таблицу соседей
+        const neighborData = await pollNeighbors(
+          routerUrl, 
+          login, 
+          routerPassword, 
+          extenderMac,
+          1,
+          delay
+        );
+        
+        if (neighborData) {
+          console.log(`📊 Extender найден в таблице соседей, IP: ${neighborData.ip}`);
+          console.log(`🎉 Extender успешно подключен к роутеру (найден в таблице соседей)!`);
+          return {
+            ...neighborData,
+            source: 'neighbor',
+            state: 'CONNECTED'
+          };
+        }
+        
+        // Логируем прогресс
+        if (attempt % 10 === 0) {
+          console.log(`⏳ Ожидание подключения... ${attempt}/${maxAttempts} попыток, последнее состояние: ${lastState || 'неизвестно'}`);
+        }
+
+      } catch (error) {
+        console.log(`⚠️ Ошибка проверки подключения: ${error.message}`);
+        if (error.message.includes('401') || error.message.includes('authentication')) {
+          throw error;
+        }
+      }
+
+      if (attempt === maxAttempts) {
+        throw new Error(`Extender не подключился к роутеру после ${maxAttempts} попыток`);
+      }
+
+      // Увеличиваем интервал между попытками
+      const waitTime = Math.min(delay * (1 + (attempt - 1) * 0.1), 15000);
+      await new Promise(resolve => setTimeout(resolve, waitTime));
+    }
+
+  } catch (error) {
+    console.error(`❌ Ошибка ожидания подключения:`, error);
+    throw error;
+  }
+}
 
 async function waitForDeviceBoot(io, deviceUrl, deviceId, routerId = null, mode = 'router', maxAttempts = 60, delay = 10000) {
     console.log(`⏳ Ожидание загрузки устройства: ${deviceUrl}, режим: ${mode}`);

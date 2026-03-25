@@ -387,7 +387,7 @@ const handleFirmwareUpdated = (data) => {
 };
 
 const handleBatchFirmwareUpdated = (data) => {
-  console.log('📡 Batch firmware updated:', data);
+  // console.log('📡 Batch firmware updated:', data);
   if (data.successful) {
     data.successful.forEach(item => {
       const device = deviceStore.devices.find(d => d.id === item.deviceId);
@@ -663,7 +663,6 @@ const handleModalSave = (data) => {
   }
 };
 
-// ========== LIFECYCLE ==========
 onMounted(() => {
   deviceStore.loadCollapsedState()
   
@@ -677,28 +676,50 @@ onMounted(() => {
   socket.on('device:wanTypeUpdated', handleWanTypeUpdated)
   socket.on('device:operationCompleted', handleOperationCompleted)
   
-  // Прогресс слушатели
+  // ✅ ИСПРАВЛЕННЫЕ ПРОГРЕСС СЛУШАТЕЛИ - используем localDevice из ProgressModal
   socket.on('device:mwsOperationProgress', (data) => {
     // console.log('📡 PROGRESS: device:mwsOperationProgress received:', data);
-    if (progressModal.value && data.deviceId === selectedDevice.value?.id) {
+    if (progressModal.value && progressModal.value.localDevice?.id === data.deviceId) {
       progressModal.value.updateProgress(data.progress, data.step, data.details);
     }
   });
 
   socket.on('device:operationProgress', (data) => {
     // console.log('📡 PROGRESS: device:operationProgress received:', data);
-    if (progressModal.value && data.deviceId === selectedDevice.value?.id) {
+    if (progressModal.value && progressModal.value.localDevice?.id === data.deviceId) {
       progressModal.value.updateProgress(data.progress, data.step, data.details);
     }
   });
 
-  socket.on('device:modeChangeProgress', (data) => {
-    // console.log('📡 PROGRESS: device:modeChangeProgress received:', data);
-    if (progressModal.value && data.deviceId === selectedDevice.value?.id) {
+socket.on('device:modeChangeProgress', (data) => {
+  // console.log('📡 PROGRESS: device:modeChangeProgress received:', data);
+  
+  // Проверяем ProgressModal
+  if (progressModal.value) {
+    // Если модалка еще не видима, но скоро станет, добавляем небольшую задержку
+    if (!progressModal.value.visible) {
+      // console.log('⏳ ProgressModal not visible yet, waiting...');
+      setTimeout(() => {
+        if (progressModal.value && 
+            progressModal.value.visible && 
+            progressModal.value.localDevice?.id === data.deviceId) {
+          // console.log('✅ ProgressModal now visible, updating progress');
+          progressModal.value.updateProgress(data.progress, data.step, data.details);
+        }
+      }, 50);
+      return;
+    }
+    
+    // Если модалка видима и для правильного устройства
+    if (progressModal.value.visible && 
+        progressModal.value.localDevice?.id === data.deviceId) {
       progressModal.value.updateProgress(data.progress, data.step, data.details);
     }
+  } else {
+    // console.log('⚠️ ProgressModal ref not available');
+  }
   });
-})
+});
 
 onBeforeUnmount(() => {
   // ✅ ОЧИЩАЕМ ВСЕ СЛУШАТЕЛИ

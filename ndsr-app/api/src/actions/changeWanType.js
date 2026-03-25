@@ -26,6 +26,7 @@ async function changeWanType(deviceId, checkedWanTypeIds, universalPromptRegex) 
         console.log("Выбрано", selectedWanType);
         await connection.executeCommand('configure', null, universalPromptRegex);
         
+        // ✅ Убираем все настройки VLAN с порта
         for (let cmd of OFF_VLAN.commands) {
             for (let wan of wanVlan) {
                 await connection.executeCommand("vlan", wan, universalPromptRegex);
@@ -34,39 +35,42 @@ async function changeWanType(deviceId, checkedWanTypeIds, universalPromptRegex) 
             }
         }
         
-        let vlan = selectedWanType.vlanId; // ✅ Используем selectedWanType, а не selectedWanTypes
+        let vlan = selectedWanType.vlanId;
         console.log("vlan выбран", vlan);
         
+        // ✅ Настраиваем PVID
         for (let cmd of PVID.commands) {
             await connection.executeCommand(cmd, cmd === 'interface port-channel' ? device.switchPortWan : (cmd === 'pvid' ? vlan : null), universalPromptRegex);
         }
         
-        // ✅ ЭТОТ БЛОК НИКОГДА НЕ ВЫПОЛНЯЛСЯ, потому что условие было неправильным
-        if (selectedWanType.vlanId === "4094") {
-            await connection.executeCommand("inactive", null, universalPromptRegex);
-        }
-        
+        // ✅ АКТИВИРУЕМ ПОРТ (убираем inactive)
         await connection.executeCommand("no inactive", null, universalPromptRegex);
         await connection.executeCommand("exit", null, universalPromptRegex);
-        await connection.executeCommand("vlan", vlan, universalPromptRegex);
         
+        // ✅ Настраиваем VLAN на порту
+        await connection.executeCommand("vlan", vlan, universalPromptRegex);
         for (let cmd of VLAN.commands) {
             await connection.executeCommand(cmd, device.switchPortWan, universalPromptRegex);
         }
+        
     } else {
-        console.error(`No WAN types matching the given VLAN IDs found. Applying fake vlan`);
+        // ✅ Если WAN тип не выбран (выключение WAN)
+        console.log(`Выключение WAN для устройства ${deviceId}`);
         let OFF_PVID = wanTypes.find(command => "offVlanPVID" === command.setting);
         await connection.executeCommand('configure', null, universalPromptRegex);
         
+        // ✅ Настраиваем PVID на 4094 (fake vlan)
         for (let cmd of OFF_PVID.commands) {
             let fakeVlan = "4094";
             await connection.executeCommand(cmd, cmd === 'interface port-channel' ? device.switchPortWan : (cmd === 'pvid' ? fakeVlan : null), universalPromptRegex);
         }
         
-        // ✅ КОМАНДА inactive ДОЛЖНА ВЫПОЛНИТЬСЯ ЗДЕСЬ
+        // ✅ ДЕАКТИВИРУЕМ ПОРТ (inactive) - это и есть выключение WAN
         await connection.executeCommand("inactive", null, universalPromptRegex);
+        console.log(`✅ Порт ${device.switchPortWan} деактивирован (inactive)`);
         await connection.executeCommand("exit", null, universalPromptRegex);
         
+        // ✅ Убираем все VLAN с порта
         for (let cmd of OFF_VLAN.commands) {
             for (let wan of wanVlan) {
                 await connection.executeCommand("vlan", wan, universalPromptRegex);
@@ -81,6 +85,6 @@ async function changeWanType(deviceId, checkedWanTypeIds, universalPromptRegex) 
     await connection.end();
 }
 
- export{
+export {
     changeWanType
- }
+}

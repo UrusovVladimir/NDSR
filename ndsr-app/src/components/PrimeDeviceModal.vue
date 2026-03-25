@@ -924,7 +924,7 @@ const saveChanges = async (action = 'connect') => {
       
       emit('operationStarted', {
         deviceId: deviceId,
-        operationType: 'mwsConnection',  // Важно: используем правильный тип
+        operationType: 'mwsConnection',  
         operationData: {
           action: action,
           routerId: modalValue.value,
@@ -994,27 +994,22 @@ const saveChanges = async (action = 'connect') => {
 
       emit('save', saveData);    
     
-    // closeModal();
     
   } catch (error) {
     console.error('❌ Save changes error:', error)
     toast.add({ severity: 'error', summary: 'Error', detail: error.message, life: 5000 })
   }
 }
-// ✅ ИСПРАВЛЕННАЯ ФУНКЦИЯ saveWanChanges
 const saveWanChanges = () => {
-  // Показываем индикатор загрузки
   isLoading.value = true
   operationInProgress.value = true
   operationType.value = 'wan'
   progressMessage.value = 'Configuring switch...'
   
-  // Создаем объект с callback для асинхронной операции
   const saveData = {
     value: modalValue.value,
     type: 'wanTypes',
     callback: (success, message) => {
-      // Скрываем индикатор загрузки
       isLoading.value = false
       operationInProgress.value = false
       operationType.value = ''
@@ -1028,7 +1023,6 @@ const saveWanChanges = () => {
           detail: message,
           life: 3000
         })
-        // ✅ ЗАКРЫВАЕМ МОДАЛКУ ТОЛЬКО ПОСЛЕ УСПЕШНОГО ЗАВЕРШЕНИЯ
         closeModal()
       } else {
         console.error('❌ Failed to save WAN type:', message)
@@ -1038,17 +1032,14 @@ const saveWanChanges = () => {
           detail: message,
           life: 5000
         })
-        // В случае ошибки оставляем модалку открытой для повторной попытки
       }
     }
   }
   
-  // Отправляем событие с данными
   emit('save', saveData)
   
 }
 
-// Watchers
 watch(modalValue, (newVal) => {
   showPPPoECredentials.value = newVal === '747'
   showResetHint.value = newVal === null
