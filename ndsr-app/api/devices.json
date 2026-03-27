@@ -22,7 +22,8 @@
         "consoleID": "1",
         "macAddress": "50:ff:20:7c:1d:7b",
         "servicetag": "558098824301253",
-        "serialNumber": "S2208WF008172"
+        "serialNumber": "S2208WF008172",
+        "tftpInterfaceName": "kn27100"
     },
     {
         "id": "1713",
@@ -47,7 +48,8 @@
         "consoleID": "1",
         "macAddress": "50:ff:20:a7:38:c6",
         "servicetag": "422924041169320",
-        "serialNumber": "S2311RJ001681"
+        "serialNumber": "S2311RJ001681",
+        "tftpInterfaceName": "kn17130"
     },
         {
         "id": "3812",
@@ -72,7 +74,8 @@
         "consoleID": "1",
         "macAddress": "50:ff:20:c1:75:21",
         "servicetag": "555741616442606",
-        "serialNumber": "S2421WF000211"
+        "serialNumber": "S2421WF000211",
+        "tftpInterfaceName": "kn38120"
     },
         {
         "id": "2510",
@@ -97,7 +100,8 @@
         "consoleID": "1",
         "macAddress": "50:ff:20:4e:bd:89",
         "servicetag": "984822963152441",
-        "serialNumber": "S2049WF000004"
+        "serialNumber": "S2049WF000004",
+        "tftpInterfaceName": "kn25100"
     },
     {
         "id": "1012",
@@ -122,7 +126,8 @@
         "consoleID": "1",
         "macAddress": "50:ff:20:b8:c9:51",
         "servicetag": "558719240072734",
-        "serialNumber": "S2415WF011518"
+        "serialNumber": "S2415WF011518",
+        "tftpInterfaceName": "kn10120"
     },
     {
         "id": "2312",
@@ -147,7 +152,8 @@
         "consoleID": "1",
         "macAddress": "50:ff:20:f8:61:43",
         "servicetag": "636812826840976",
-        "serialNumber": "S2513UX000486"
+        "serialNumber": "S2513UX000486",
+        "tftpInterfaceName": "kn23120"
     },
         {
         "id": "4110",
@@ -172,7 +178,8 @@
         "consoleID": "1",
         "macAddress": "50:ff:20:ff:2f:c9",
         "servicetag": "807918353960534",
-        "serialNumber": "S2547UX000962"
+        "serialNumber": "S2547UX000962",
+        "tftpInterfaceName": "kn41100"
     },
         {
         "id": "1811",
@@ -197,7 +204,8 @@
         "consoleID": "2",
         "macAddress": "50:ff:20:9c:58:56",
         "servicetag": "763564121508333",
-        "serialNumber": "S2303WF019932"
+        "serialNumber": "S2303WF019932",
+        "tftpInterfaceName": "kn18110"
     },
     {
         "id": "2212",
@@ -222,7 +230,8 @@
         "consoleID": "1",
         "macAddress": "50:ff:20:b3:58:99",
         "servicetag": "356710931455212",
-        "serialNumber": "S2352UX001159"
+        "serialNumber": "S2352UX001159",
+        "tftpInterfaceName": "kn22120"
     },
     {
         "id": "2113",
@@ -247,7 +256,8 @@
         "consoleID": "1",
         "macAddress": "50:ff:20:f5:26:a2",
         "servicetag": "348135195438262",
-        "serialNumber": "S2517UX000030"
+        "serialNumber": "S2517UX000030",
+        "tftpInterfaceName": "kn21130"
     },
     {
         "id": "4010",
@@ -271,7 +281,8 @@
         "macAddress": "50:ff:20:c7:a2:19",
         "servicetag": "818027893812863",
         "serialNumber": "S2434RJ400007",
-        "hwType": "yes"
+        "hwType": "yes",
+        "tftpInterfaceName": "kn40100"
     },
     {
         "id": "3411",
@@ -295,6 +306,7 @@
         "macAddress": "50:ff:20:e6:9b:8d",
         "servicetag": "504652047898510",
         "serialNumber": "S2443RJ700003",
-        "hwType": "yes"
+        "hwType": "yes",
+        "tftpInterfaceName": "kn34110"
     }
 ]

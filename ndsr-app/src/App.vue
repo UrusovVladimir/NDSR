@@ -60,6 +60,10 @@ import SidebarContent from '@/components/SidebarContent.vue'
 import ChatWidget from '@/components/chat/ChatWidget.vue'
 import GlobalProgressDialog from '@/components/GlobalProgressDialog.vue' 
 import PrimeDeviceModal from './components/PrimeDeviceModal.vue'
+
+// ✅ Убедитесь, что все импорты корректны
+// Удаляем импорт FileManager из App.vue, так как он используется только в AppHeader
+
 // Socket
 import { socket } from '@/socket'
 
@@ -137,7 +141,6 @@ const toggleCron = async () => {
 }
 
 const openFaqModal = () => {
-  // console.log('Opening FAQ modal')
   if (faqModal.value) {
     faqModal.value.show('faq')
     isSidebarOpen.value = false
@@ -151,26 +154,22 @@ const copyToClipboard = async (text) => {
   await clipboardStore.copyToClipboard(text)
 }
 
-// ✅ УПРОЩЕННАЯ ЛОГИКА - только логирование событий
+// Обработчик бронирования устройства
 const handleDeviceBooked = async (event) => {
     const { deviceId, password } = event.detail;
-    // console.log(`📱 App: Device ${deviceId} booked, delegating mode detection to store`);
     
-    // ✅ ДЕЛЕГИРУЕМ ВСЮ ЛОГИКУ STORE
     setTimeout(async () => {
         try {
             await modeStore.updateModeFromDetection(deviceId, password);
-            // console.log(`✅ App: Mode detection completed for ${deviceId}`);
         } catch (error) {
-            // console.log(`⚠️ App: Mode detection failed for ${deviceId}:`, error.message);
+            console.error(`⚠️ Mode detection failed for ${deviceId}:`, error.message);
         }
     }, 3000);
 };
 
-// ✅ ТОЛЬКО ЛОГИРОВАНИЕ MWS СТАТУСОВ
+// Обработчик обновления MWS статусов
 const handleMwsStatusUpdate = (data) => {
-  // console.log('📱 App: MWS Status Update received:', data.deviceId, data.status);
-  // ✅ ВСЯ ЛОГИКА ОБРАБОТКИ ПЕРЕМЕЩЕНА В STORE
+  // Логика обрабатывается в store
 };
 
 const initializeApp = async () => {
@@ -182,22 +181,21 @@ const initializeApp = async () => {
     
     // Инициализируем режимы устройств
     await modeStore.initializeModes()
-    // console.log('✅ Device modes initialized')
     
-    // ✅ ВАЛИДАЦИЯ РЕЖИМОВ С ЗАЩИТОЙ ОТ ПОВТОРНОГО ВЫЗОВА
+    // Валидация режимов
     setTimeout(() => {
         if (modeStore.validateAndFixModes && !modeStore.validationInProgress) {
             modeStore.validateAndFixModes()
         }
     }, 2000)
     
-    // ✅ УПРОЩЕННЫЕ СЛУШАТЕЛИ - только логирование
+    // Слушатели обновлений
     const modeUnsubscribe = modeStore.listenForModeUpdates((data) => {
-      // console.log('📱 App: Mode update received:', data.deviceId, data.mode)
+      // Обработка обновлений режимов
     })
     
     const mwsUnsubscribe = modeStore.listenForMwsUpdates((data) => {
-      // console.log('📱 App: MWS update received:', data.deviceId, data.status)
+      // Обработка обновлений MWS
     })
     
     unsubscribeCallbacks.value.push(modeUnsubscribe, mwsUnsubscribe)
@@ -207,13 +205,13 @@ const initializeApp = async () => {
   }
 }
 
-// ✅ УПРОЩЕННЫЙ WATCHER - только логирование
+// Watcher для отслеживания изменений режимов
 watch(
   () => modeStore.currentMode,
   (newModes) => {
     const deviceCount = Object.keys(newModes).length;
     if (deviceCount > 0) {
-      // console.log('📱 App: Mode store updated -', deviceCount, 'devices');
+      // Логирование
     }
   },
   { deep: true, flush: 'post' }
@@ -225,44 +223,57 @@ let timer
 onMounted(() => {
   console.log('📱 App mounted - starting initialization');
   
-  // ✅ БЫСТРАЯ ИНИЦИАЛИЗАЦИЯ
+  // Инициализация
   initializeApp();
 
-  // ✅ ОСНОВНЫЕ SOCKET СЛУШАТЕЛИ (только данные, не логика)
-  socket.on('DAILY_PASSWORDS', (data) => {
-    passwordOfDays.value = [
-      { label: 'Today', password: data.today.value },
-      { label: 'Yesterday', password: data.yesterday.value }
-    ]
-  });
-  
-  socket.on('CLIENT_IP', (clientIp) => {
-    deviceStore.setCurrentUserId(clientIp);
-  });
+  // Socket слушатели
+  if (socket) {
+    socket.on('DAILY_PASSWORDS', (data) => {
+      if (data && data.today && data.yesterday) {
+        passwordOfDays.value = [
+          { label: 'Today', password: data.today.value || '' },
+          { label: 'Yesterday', password: data.yesterday.value || '' }
+        ]
+      }
+    });
+    
+    socket.on('CLIENT_IP', (clientIp) => {
+      if (deviceStore && deviceStore.setCurrentUserId) {
+        deviceStore.setCurrentUserId(clientIp);
+      }
+    });
 
-  socket.on('device:wanTypes', (data) => {
-    wanTypes.value = data;
-  });
+    socket.on('device:wanTypes', (data) => {
+      wanTypes.value = data || [];
+    });
 
-  socket.on('device:users', (data) => {
-    users.value = data;
-    deviceStore.setUsers(data);
-  });
+    socket.on('device:users', (data) => {
+      users.value = data || [];
+      if (deviceStore && deviceStore.setUsers) {
+        deviceStore.setUsers(data);
+      }
+    });
+  }
 
-  // ✅ СЛУШАТЕЛЬ СОБЫТИЙ БРОНИРОВАНИЯ
+  // Слушатель событий бронирования
   window.addEventListener('device-booked', handleDeviceBooked);
-
-  // ✅ ИНИЦИАЛИЗАЦИЯ STORE
-  deviceStore.initializeSocketListeners();
+  
+  // Инициализация слушателей в store
+  if (deviceStore && deviceStore.initializeSocketListeners) {
+    deviceStore.initializeSocketListeners();
+  }
   
   // Таймер для обновления времени
   timer = setInterval(() => {
     currentDateTime.value = new Date();
   }, 1000);
 
-  escapeStore.registerEscapeHandler(closeSidebar);
+  // Регистрация обработчика Escape
+  if (escapeStore && escapeStore.registerEscapeHandler) {
+    escapeStore.registerEscapeHandler(closeSidebar);
+  }
   
-  // ✅ СОХРАНЕНИЕ ДЛЯ ОЧИСТКИ
+  // Сохранение для очистки
   unsubscribeCallbacks.value.push(
     () => window.removeEventListener('device-booked', handleDeviceBooked)
   );
@@ -271,13 +282,13 @@ onMounted(() => {
 onUnmounted(() => {
   console.log('🧹 Cleaning up App.vue...')
   
-  // 1. Очищаем таймер
+  // Очищаем таймер
   if (timer) {
     clearInterval(timer)
     timer = null
   }
   
-  // 2. Очищаем все слушатели
+  // Очищаем все слушатели
   unsubscribeCallbacks.value.forEach(unsubscribe => {
     if (unsubscribe && typeof unsubscribe === 'function') {
       try {
@@ -289,18 +300,24 @@ onUnmounted(() => {
   })
   unsubscribeCallbacks.value = []
   
-  // 3. Очищаем слушатели store
-  deviceStore.cleanupSocketListeners()
+  // Очищаем слушатели store
+  if (deviceStore && deviceStore.cleanupSocketListeners) {
+    deviceStore.cleanupSocketListeners()
+  }
   
-  // 4. Очищаем escape handlers
-  escapeStore.unregisterEscapeHandler(closeSidebar)
+  // Очищаем escape handlers
+  if (escapeStore && escapeStore.unregisterEscapeHandler) {
+    escapeStore.unregisterEscapeHandler(closeSidebar)
+  }
   
-  // 5. Очищаем socket слушатели
-  socket.off('DAILY_PASSWORDS')
-  socket.off('CLIENT_IP') 
-  socket.off('device:wanTypes')
-  socket.off('device:users')
-  socket.off('device:mwsStatusUpdated')
+  // Очищаем socket слушатели
+  if (socket) {
+    socket.off('DAILY_PASSWORDS')
+    socket.off('CLIENT_IP') 
+    socket.off('device:wanTypes')
+    socket.off('device:users')
+    socket.off('device:mwsStatusUpdated')
+  }
   
   console.log('✅ App.vue cleanup completed')
 })

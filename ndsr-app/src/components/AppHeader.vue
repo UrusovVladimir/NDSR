@@ -24,31 +24,41 @@
           <i class="pi pi-copy copy-icon" v-tooltip="'Copy password'"></i>
         </div>
       </div>
+      
+      <!-- Кнопка File Manager -->
+      <Button 
+        icon="pi pi-folder" 
+        class="action-toggle"
+        @click="openFileManager"
+        v-tooltip.bottom="'File Manager'"
+      />
 
       <div class="header-actions">
         <Button 
           :icon="cronEnabled ? 'pi pi-times' : 'pi pi-stopwatch'" 
-          class="cron-toggle"
+          class="action-toggle"
           :class="{ 'cron-enabled': cronEnabled }"
           @click="$emit('toggle-cron')"
-          v-tooltip.bottom
-          ="cronEnabled ? 'Disable device auto-reset' : 'Enable device auto-reset'"
+          v-tooltip.bottom="cronEnabled ? 'Disable auto-reset all devices' : 'Enable auto-reset all devices'"
         />
         
         <Button 
           icon="pi pi-sync" 
-          class="day-toggle"
+          class="action-toggle"
           @click="$emit('toggle-day')"
           v-tooltip.bottom="'Toggle password day'"
         />
       </div>
     </div>
+
+    <FileManager ref="fileManagerRef" />
   </header>
 </template>
 
 <script setup>
-import { ref, watch } from 'vue'
+import { ref } from 'vue'
 import Button from 'primevue/button'
+import FileManager from '@/components/FileManager.vue'
 
 const props = defineProps({
   isSidebarOpen: Boolean,
@@ -67,10 +77,20 @@ const emit = defineEmits([
   'copy-password'
 ])
 
+const fileManagerRef = ref(null)
+
 const handleCopyPassword = () => {
   const password = props.passwordOfDays[props.currentDay].password
   if (password) {
     emit('copy-password', password)
+  }
+}
+
+const openFileManager = () => {
+  if (fileManagerRef.value) {
+    fileManagerRef.value.show()
+  } else {
+    console.error('FileManager ref is not available')
   }
 }
 </script>
@@ -223,8 +243,8 @@ const handleCopyPassword = () => {
   gap: 0.5rem;
 }
 
-.cron-toggle,
-.day-toggle {
+/* Единый стиль для всех кнопок-переключателей */
+.action-toggle {
   color: #ffc107 !important;
   border: 1px solid rgba(255, 193, 7, 0.3) !important;
   background: rgba(255, 193, 7, 0.1) !important;
@@ -234,13 +254,13 @@ const handleCopyPassword = () => {
   transition: all 0.3s ease;
 }
 
-.cron-toggle:hover,
-.day-toggle:hover {
+.action-toggle:hover {
   background: rgba(255, 193, 7, 0.2) !important;
   border-color: #ffc107 !important;
   transform: scale(1.05);
 }
 
+/* Специальный стиль для включенного cron */
 .cron-enabled {
   background: rgba(76, 175, 80, 0.2) !important;
   border-color: rgba(76, 175, 80, 0.5) !important;
@@ -307,8 +327,7 @@ const handleCopyPassword = () => {
     gap: 0.375rem;
   }
 
-  .cron-toggle,
-  .day-toggle,
+  .action-toggle,
   .sidebar-toggle {
     width: 2.25rem;
     height: 2.25rem;
@@ -333,8 +352,7 @@ const handleCopyPassword = () => {
 /* Улучшения для touch devices */
 @media (hover: none) and (pointer: coarse) {
   .sidebar-toggle,
-  .cron-toggle,
-  .day-toggle,
+  .action-toggle,
   .password-display {
     min-height: 44px;
   }
@@ -344,8 +362,7 @@ const handleCopyPassword = () => {
   }
 
   .sidebar-toggle:active,
-  .cron-toggle:active,
-  .day-toggle:active,
+  .action-toggle:active,
   .password-display:active {
     transform: scale(0.98);
     opacity: 0.8;
@@ -354,8 +371,7 @@ const handleCopyPassword = () => {
 
 /* Убираем подсветку при тапе на iOS */
 .sidebar-toggle,
-.cron-toggle,
-.day-toggle,
+.action-toggle,
 .password-display {
   -webkit-tap-highlight-color: transparent;
 }
