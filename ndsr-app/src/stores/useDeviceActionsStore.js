@@ -11,6 +11,7 @@ export const useDeviceActionsStore = defineStore('deviceActions', () => {
   const deviceStore = useDeviceStore()
   const modeStore = useModeStore()
   const toast = useToast()
+  const powerStatusVersion = ref(0)
 
   // ✅ States
   const activeOperations = ref(new Map())
@@ -73,35 +74,27 @@ export const useDeviceActionsStore = defineStore('deviceActions', () => {
     return powerStatuses.value.has(deviceId) // проверяем, есть ли статус
   }
 
-  // ✅ Инициализация слушателей
   const initializePowerListeners = () => {
     socket.on('device:powerStatus', (data) => {
-      // console.log(`🔌 Power status received for ${data.deviceId}: ${data.status}`);
+      const oldStatus = powerStatuses.value.get(data.deviceId)
+      const statusChanged = oldStatus !== data.status
       
-      // Обновляем статус в Map - ТОЛЬКО реальные данные с сервера
-      powerStatuses.value.set(data.deviceId, data.status);
+      // Обновляем статус
+      powerStatuses.value.set(data.deviceId, data.status)
       
-      // Обновляем статус в deviceStore (опционально)
-      const device = deviceStore.devices.find(d => d.id === data.deviceId);
-      if (device) {
-        device.powerStatus = data.status;
+      // ✅ Увеличиваем счетчик ТОЛЬКО при реальном изменении
+      if (statusChanged || data.isInitial) {
+        powerStatusVersion.value++
+        // console.log(`🔄 Power status version: ${powerStatusVersion.value} (${data.deviceId}: ${data.status})`)
       }
       
-      // Показываем уведомление если статус изменился
-      if (data.changed) {
-        toast.add({
-          severity: 'info',
-          summary: 'Power Status Changed',
-          detail: `Device ${data.deviceId} is now ${data.status}`,
-          life: 3000
-        });
-      }
-    });
-  };
-
-  // Вызываем инициализацию
-  initializePowerListeners();
-
+      // Обновляем в deviceStore
+      const device = deviceStore.devices?.find(d => d.id === data.deviceId)
+      if (device) device.powerStatus = data.status
+    })
+  }
+  initializePowerListeners()
+  const getPowerStatusVersion = () => powerStatusVersion.value
   // ✅ Очистка слушателей (важно для предотвращения утечек памяти)
   const cleanupPowerListeners = () => {
     socket.off('device:powerStatus');
@@ -653,6 +646,9 @@ const powerDevice = async (device, action) => {
     powerDevice,
     cleanupPowerListeners,
     silentRebootDevice,
-    silentPowerDevice
+    silentPowerDevice,
+    powerStatusVersion,
+    getPowerStatusVersion,
+    initializePowerListeners
   }
 })

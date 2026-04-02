@@ -1,5 +1,5 @@
 <template>
-    <div class="booked-devices-section" v-if="hasBookedDevices" :key="tableKey">
+    <div class="booked-devices-section" v-if="hasBookedDevices" :key="`booked-section-${deviceActionsStore.powerStatusVersion}`">
         <div class="common-section-header">
             <div class="header-left">
                 <h3 class="common-section-title">
@@ -10,7 +10,6 @@
             </div>
             
             <div class="header-right">
-                <!-- Счетчик устройств -->
                 <span class="common-devices-count">
                     {{ deviceStore.bookedDevicesCount }} device{{ deviceStore.bookedDevicesCount !== 1 ? 's' : '' }}
                 </span>
@@ -26,7 +25,6 @@
                     :disabled="releasingAllDevices"
                 />
                 
-                <!-- Кнопка сворачивания -->
                 <Button 
                     icon="pi pi-eye-slash" 
                     class="p-button-text p-button-sm close-btn"
@@ -37,6 +35,7 @@
         </div>
         
         <DataTable
+            :key="`booked-table-${tableKey}-${deviceActionsStore.powerStatusVersion}`"
             :value="deviceStore.bookedDevices"
             :loading="loading"
             data-key="id"
@@ -67,7 +66,6 @@
                                 v-tooltip="'View device details'"></i>
                             </div>
                             
-                            <!-- Сгруппировать остальные строки -->
                             <div class="common-device-hwid">
                                 Current Mode: <b>{{ getDisplayMode(data.id) }}</b>
                                 <i class="pi pi-refresh details-inline" 
@@ -148,7 +146,6 @@
                 <template #body="{ data }">
                     <div class="actions-container">
                         <div class="device-controls">
-                            <!-- Console -->
                             <Button
                                 v-tooltip.bottom="consoleStore.isConsoleOpen(data.id) ? 'Focus Console' : 'Open Console'"
                                 :icon="consoleStore.isConsoleOpen(data.id) ? 'bi bi-terminal-fill' : 'bi bi-terminal'"
@@ -157,7 +154,6 @@
                                 :class="{ 'console-open': consoleStore.isConsoleOpen(data.id) }"
                             />
                             
-                            <!-- Единая кнопка Power Management -->
                             <Button
                                 v-if="data.rebootPort"
                                 v-tooltip.bottom="'Power Management'"
@@ -168,7 +164,6 @@
                                 :disabled="!canPowerManage(data) || isAnyOperationOnThisDevice(data)"
                             />
                             
-                            <!-- Reset Configuration -->
                             <Button
                                 v-tooltip.bottom="isResetting(data) ? 'Resetting...' : 'Reset Configuration'"
                                 :icon="isResetting(data) ? 'pi pi-spinner pi-spin' : 'pi pi-refresh'"
@@ -177,7 +172,6 @@
                                 @click="showResetConfirm(data)"
                             />
                             
-                            <!-- MWS Connection (для AP) -->
                             <Button
                                 v-if="data.type === 'AP'"
                                 v-tooltip.bottom="'Connection AP to Router(MWS)'"
@@ -187,7 +181,6 @@
                                 :disabled="!canMwsConnect(data)"
                             />
                             
-                            <!-- Change Mode (для роутеров) -->
                             <Button
                                 v-if="data.type === 'router' && data.hWtype !== 'HardwareAP'"
                                 v-tooltip.bottom="'Change Mode'"
@@ -197,7 +190,6 @@
                                 :disabled="!canChangeMode(data)"
                             />
                             
-                            <!-- DSL Reset -->
                             <Button
                                 v-if="data.dslPort"
                                 v-tooltip.bottom="isResettingDsl(data) ? 'Resetting DSL...' : 'Reset DSL Line'"
@@ -207,7 +199,6 @@
                                 @click="showDslResetConfirm(data)"
                             />
                             
-                            <!-- VNC -->
                             <Button
                                 v-if="data.type === 'router' && data.vncUrl"
                                 v-tooltip.bottom="'LAN VNC'"
@@ -217,7 +208,6 @@
                                 :disabled="!canOpenVnc(data)"
                             />
                             
-                            <!-- Device Interface -->
                             <Button
                                 v-if="data.URL"
                                 v-tooltip.bottom="'Open Device Interface'"
@@ -226,7 +216,6 @@
                                 @click="openDeviceInterface(data)"
                             />
                             
-                            <!-- Initialization -->
                             <Button
                                 v-if="data.type === 'router'"
                                 v-tooltip.bottom="isInitializing(data) ? 'Initializing...' : 'Skip Wizard - set password'"
@@ -383,7 +372,7 @@
             </template>
         </Dialog>
 
-        <!-- Диалог подтверждения перезагрузки (оставлен для обратной совместимости) -->
+        <!-- Диалог подтверждения перезагрузки -->
         <Dialog 
             v-model:visible="showRebootConfirmDialog" 
             modal 
@@ -494,7 +483,7 @@
             </template>
         </Dialog>
 
-        <!-- НОВЫЙ: Диалог меню питания -->
+        <!-- Диалог меню питания -->
         <Dialog 
             :blockScroll="false"
             v-model:visible="showPowerMenuDialog" 
@@ -507,7 +496,6 @@
                 <p class="mb-3">Select action for <strong>{{ powerActionDevice?.hwId }}</strong>:</p>
                 
                 <div class="power-options">
-                    <!-- Reboot - всегда доступно -->
                     <div 
                         class="power-option p-3 border-round surface-ground mb-2"
                         @click="selectPowerAction('reboot')"
@@ -521,7 +509,6 @@
                         </div>
                     </div>
                     
-                    <!-- Power On - только если устройство выключено -->
                     <div 
                         v-if="powerActionDevice && deviceActionsStore.isPoweredOff(powerActionDevice.id)"
                         class="power-option p-3 border-round surface-ground mb-2"
@@ -536,7 +523,6 @@
                         </div>
                     </div>
                     
-                    <!-- Power Off - только если устройство включено -->
                     <div 
                         v-if="powerActionDevice && deviceActionsStore.isPoweredOn(powerActionDevice.id)"
                         class="power-option p-3 border-round surface-ground mb-2"
@@ -551,7 +537,6 @@
                         </div>
                     </div>
                     
-                    <!-- Индикатор загрузки статуса -->
                     <div 
                         v-if="powerActionDevice && !deviceActionsStore.hasPowerStatus(powerActionDevice.id)"
                         class="power-option p-3 border-round surface-ground mb-2"
@@ -577,7 +562,7 @@
             </template>
         </Dialog>
 
-        <!-- НОВЫЙ: Диалог подтверждения действия питания -->
+        <!-- Диалог подтверждения действия питания -->
         <Dialog 
             :blockScroll="false"
             v-model:visible="showPowerActionConfirmDialog" 
@@ -640,7 +625,6 @@
             :contentStyle="{ maxHeight: '70vh' }"
         >
             <div v-if="selectedDevice" class="device-details-horizontal">
-                <!-- Основная информация -->
                 <div class="detail-section">
                     <h4>Basic Information</h4>
                     <div class="horizontal-grid">
@@ -671,7 +655,6 @@
                     </div>
                 </div>
 
-                <!-- Техническая информация -->
                 <div class="detail-section">
                     <h4>Technical Information</h4>
                     <div class="horizontal-grid">
@@ -714,7 +697,6 @@
                     </div>
                 </div>
 
-                <!-- Сетевая информация -->
                 <div class="detail-section">
                     <h4>Network Information</h4>
                     <div class="horizontal-grid">
@@ -769,7 +751,6 @@
                     </div>
                 </div>
 
-                <!-- Порты и конфигурация -->
                 <div class="detail-section">
                     <h4>Ports & Configuration</h4>
                     <div class="horizontal-grid compact-grid">
@@ -848,7 +829,6 @@
         </Dialog>
     </div>
 </template>
-
 <script setup>
 import { ref, computed, inject, onMounted, onUnmounted, watch, nextTick } from 'vue'
 import { useToast } from 'primevue/usetoast'
@@ -889,10 +869,9 @@ const showReleaseAllConfirmDialog = ref(false)
 const releasingAllDevices = ref(false)
 const showDetailsDialog = ref(false)
 
-// НОВЫЕ: состояния для меню питания
 const showPowerMenuDialog = ref(false)
 const showPowerActionConfirmDialog = ref(false)
-const selectedPowerAction = ref(null) // 'reboot', 'on', 'off'
+const selectedPowerAction = ref(null)
 const powerActionDevice = ref(null)
 
 const props = defineProps({
@@ -914,6 +893,17 @@ const extendOptions = [
     { label: '12 hours', value: 43200 }
 ]
 
+// ✅ WATCH для отслеживания изменений версии статуса питания
+watch(
+    () => deviceActionsStore.powerStatusVersion,
+    (newVersion, oldVersion) => {
+        if (newVersion !== oldVersion && isMounted.value) {
+            // console.log(`🔄 Power status version changed: ${oldVersion} -> ${newVersion}, refreshing UI...`)
+            safeUpdateTable()
+        }
+    }
+)
+
 // ========== МЕТОДЫ ДЛЯ ПИТАНИЯ ==========
 const showPowerMenu = (device) => {
     powerActionDevice.value = device
@@ -924,7 +914,6 @@ const selectPowerAction = (action) => {
     selectedPowerAction.value = action
     showPowerMenuDialog.value = false
     
-    // Небольшая задержка для плавности
     setTimeout(() => {
         showPowerActionConfirmDialog.value = true
     }, 100)
@@ -948,7 +937,6 @@ const confirmPowerAction = () => {
             break
     }
     
-    // Сброс состояния
     showPowerActionConfirmDialog.value = false
     setTimeout(() => {
         powerActionDevice.value = null
@@ -989,17 +977,22 @@ const getPowerActionSeverity = (action) => {
     return severities[action] || 'secondary'
 }
 
+// ✅ Обновленные методы получения статуса (будут пересчитываться при изменении powerStatusVersion)
 const getPowerStatusText = (deviceId) => {
+    // Добавляем зависимость от версии для реактивности
+    const _ = deviceActionsStore.powerStatusVersion
     if (!deviceActionsStore.hasPowerStatus(deviceId)) return 'Loading...'
     return deviceActionsStore.isPoweredOn(deviceId) ? 'On' : 'Off'
 }
 
 const getPowerStatusIcon = (deviceId) => {
+    const _ = deviceActionsStore.powerStatusVersion
     if (!deviceActionsStore.hasPowerStatus(deviceId)) return 'pi pi-spinner pi-spin'
     return deviceActionsStore.isPoweredOn(deviceId) ? 'pi pi-circle-fill power-on' : 'pi pi-circle-fill power-off'
 }
 
 const getPowerStatusClass = (deviceId) => {
+    const _ = deviceActionsStore.powerStatusVersion
     if (!deviceActionsStore.hasPowerStatus(deviceId)) return 'text-secondary'
     return deviceActionsStore.isPoweredOn(deviceId) ? 'text-green-600' : 'text-gray-500'
 }
@@ -1010,7 +1003,7 @@ const canPowerManage = (device) => {
            device.rebootPort
 }
 
-// ========== СУЩЕСТВУЮЩИЕ МЕТОДЫ ==========
+// ========== ОСТАЛЬНЫЕ МЕТОДЫ (без изменений) ==========
 const handleConsoleClick = (device) => {
     if (consoleStore.isConsoleOpen(device.id)) {
         consoleStore.focusConsole(device.id)
@@ -1023,9 +1016,7 @@ const hasBookedDevices = computed(() => {
     return !deviceStore.isBookedSectionCollapsed && deviceStore.bookedDevicesCount > 0
 })
 
-const isAnyOperationInProgress = computed(() => 
-    deviceActionsStore.isAnyOperationActive
-)
+const isAnyOperationInProgress = computed(() => deviceActionsStore.isAnyOperationActive)
 
 const isInitializing = (device) => deviceActionsStore.getDeviceOperation(device.id) === 'initializing'
 const isResetting = (device) => deviceActionsStore.getDeviceOperation(device.id) === 'resetting'
@@ -1050,9 +1041,7 @@ const getDisplayMode = (deviceId) => {
     const modeInfo = modeStore.getDeviceModeInfo(deviceId)
     const cacheKey = `${deviceId}_${modeInfo?.mode}_${modeInfo?.routerId}`
     const cached = modeDisplayCache.value.get(cacheKey)
-    if (cached) {
-        return cached
-    }
+    if (cached) return cached
     if (!modeInfo || !modeInfo.mode) {
         modeDisplayCache.value.set(cacheKey, 'Unknown')
         return 'Unknown'
@@ -1115,29 +1104,14 @@ const startTimer = () => {
 
 const isOffline = (device) => device.statusCode !== 200
 
-const canInitialize = (device) => 
-    isCurrentUserBooking(device) && 
-    !isOffline(device) && 
-    !isAnyOperationOnThisDevice(device)
-
+const canInitialize = (device) => isCurrentUserBooking(device) && !isOffline(device) && !isAnyOperationOnThisDevice(device)
 const canOpenInterface = (device) => isCurrentUserBooking(device) && !isOffline(device) && device.URL
-
-const canMwsConnect = (device) => isCurrentUserBooking(device) 
-
+const canMwsConnect = (device) => isCurrentUserBooking(device)
 const canChangeMode = (device) => isCurrentUserBooking(device) && !isOffline(device)
-
 const canOpenVnc = (device) => isCurrentUserBooking(device) && !isOffline(device) && device.vncUrl
-
-const canReboot = (device) => 
-    isCurrentUserBooking(device) && 
-    !isAnyOperationOnThisDevice(device)
-
-const canResetConfig = (device) => 
-    isCurrentUserBooking(device) && 
-    !isAnyOperationOnThisDevice(device)
-
+const canReboot = (device) => isCurrentUserBooking(device) && !isAnyOperationOnThisDevice(device)
+const canResetConfig = (device) => isCurrentUserBooking(device) && !isAnyOperationOnThisDevice(device)
 const canResetDsl = (device) => isCurrentUserBooking(device) && device.dslPort
-
 const canOpenConsole = (device) => isCurrentUserBooking(device)
 
 const extendBooking = async (deviceId, additionalDuration = 3600) => {
@@ -1539,9 +1513,7 @@ watch(
     () => deviceActionsStore.operationChanges,
     (newChanges, oldChanges) => {
         if (isProcessingChanges) return
-        const hasRealChanges = 
-            newChanges.started.length > 0 || 
-            newChanges.finished.length > 0
+        const hasRealChanges = newChanges.started.length > 0 || newChanges.finished.length > 0
         if (hasRealChanges) {
             isProcessingChanges = true
             nextTick(() => {
@@ -1665,7 +1637,6 @@ onUnmounted(() => {
     flex-wrap: wrap;
 }
 
-/* Адаптивность для Grid */
 @media (max-width: 768px) {
     .common-section-header {
         grid-template-columns: 1fr auto; 
@@ -1706,9 +1677,7 @@ onUnmounted(() => {
 }
 
 .booked-devices-section:hover {
-    box-shadow: 
-        0 10px 15px -3px rgba(0, 0, 0, 0.1), 
-        0 4px 6px -2px rgba(0, 0, 0, 0.05);
+    box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
 }
 
 .time-left-container {
@@ -1847,7 +1816,6 @@ onUnmounted(() => {
     border-bottom: none;
 }
 
-/* НОВЫЕ: Стили для меню питания */
 .power-option {
     cursor: pointer;
     transition: all 0.2s ease;
@@ -1873,7 +1841,6 @@ onUnmounted(() => {
     background-color: var(--warning-50) !important;
 }
 
-/* Стили для статуса питания */
 .text-green-600 {
     color: #10b981;
 }
@@ -1882,7 +1849,6 @@ onUnmounted(() => {
     color: #6b7280;
 }
 
-/* Медиа-запросы */
 @media (max-width: 768px) {
     .section-header {
         padding: 0.75rem 1rem;
@@ -1951,9 +1917,7 @@ onUnmounted(() => {
         gap: 0.25rem;
     }
 }
-</style>
 
-<style scoped>
 :deep(.firmware-column) {
     text-align: center !important;
     justify-content: center !important;
@@ -2033,6 +1997,7 @@ onUnmounted(() => {
     opacity: 0.7;
     cursor: not-allowed;
 }
+
 :deep(.pi-circle-fill.power-on) {
     background: linear-gradient(135deg, #10b981, #059669) !important;
     -webkit-background-clip: text !important;
@@ -2040,10 +2005,12 @@ onUnmounted(() => {
     background-clip: text !important;
     font-size: 0.75rem;
 }
+
 :deep(.pi-circle-fill.power-off) {
     color: #9ca3af !important;
     font-size: 0.75rem;
 }
+
 @media (max-width: 768px) {
     :deep(.p-tooltip) {
         font-size: 0.75rem;
