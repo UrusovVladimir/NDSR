@@ -14,7 +14,7 @@ const __dirname = path.dirname(__filename);
 
 // ✅ Используем переменные из .env
 const UPLOAD_DIR = process.env.UPLOAD_DIR || path.join(__dirname, 'uploads');
-const PORT = process.env.WS_PORT || 3000; // Используем WS_PORT из .env
+const PORT = process.env.WS_PORT || 3000; 
 const STATUS_CHECK_INTERVAL = Math.max(5, parseInt(process.env.STATUS_CHECK_INTERVAL) || 10);
 
 console.log(`🚀 Fast status check interval: ${STATUS_CHECK_INTERVAL} seconds`);
@@ -41,12 +41,12 @@ const upload = multer({
     storage,
     limits: { fileSize: 100 * 1024 * 1024 }, // 100MB
     fileFilter: (req, file, cb) => {
-        const allowedTypes = ['.bin', '.img', '.tar', '.gz', '.zip'];
+        const allowedTypes = ['.bin'];
         const ext = path.extname(file.originalname).toLowerCase();
         if (allowedTypes.includes(ext)) {
             cb(null, true);
         } else {
-            cb(new Error('Invalid file type. Allowed: .bin, .img, .tar, .gz, .zip'));
+            cb(new Error('Invalid file type. Allowed: .bin'));
         }
     }
 });

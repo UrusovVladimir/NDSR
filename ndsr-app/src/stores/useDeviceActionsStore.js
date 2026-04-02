@@ -458,7 +458,76 @@ const powerDevice = async (device, action) => {
       throw error;
   }
 };
+  const silentRebootDevice = async (device) => {
+    try {
+      console.log(`[SILENT_REBOOT] Sending reboot command to ${device.hwId}`);
+      
+      // Отправляем команду без отслеживания прогресса
+      const result = await new Promise((resolve, reject) => {
+        const timeoutId = setTimeout(() => {
+          reject(new Error('Reboot command timeout'));
+        }, 30000);
 
+        const socketCallback = (error, response) => {
+          clearTimeout(timeoutId);
+          
+          if (error) {
+            reject(error);
+          } else {
+            resolve(response);
+          }
+        };
+
+        socket.timeout(30000).emit('device:reboot', device.id, socketCallback);
+      });
+
+      if (result?.status === 'ok') {
+        console.log(`[SILENT_REBOOT] Command sent successfully to ${device.hwId}`);
+        return result;
+      } else {
+        throw new Error(result?.error || 'Reboot failed');
+      }
+    } catch (error) {
+      console.error(`[SILENT_REBOOT] Failed for ${device.hwId}:`, error);
+      throw error;
+    }
+  };
+  const silentPowerDevice = async (device, action) => {
+    try {
+      console.log(`[SILENT_POWER] Sending power ${action} command to ${device.hwId}`);
+      
+      const result = await new Promise((resolve, reject) => {
+        const timeoutId = setTimeout(() => {
+          reject(new Error(`Power ${action} command timeout`));
+        }, 30000);
+  
+        const socketCallback = (error, response) => {
+          clearTimeout(timeoutId);
+          
+          if (error) {
+            reject(error);
+          } else {
+            resolve(response);
+          }
+        };
+  
+        socket.timeout(30000).emit('device:power', {
+          deviceId: device.id,
+          action: action
+        }, socketCallback);
+      });
+  
+      if (result?.status === 'ok') {
+        console.log(`[SILENT_POWER] Power ${action} command sent successfully to ${device.hwId}`);
+        return result;
+      } else {
+        throw new Error(result?.error || `Power ${action} failed`);
+      }
+    } catch (error) {
+      console.error(`[SILENT_POWER] Failed for ${device.hwId}:`, error);
+      throw error;
+    }
+  };
   const resetDslLine = async (device) => {
     try {
       const response = await executeDeviceAction(device, 'resettingDsl', 'device:resetDslLine', null, 60000)
@@ -583,5 +652,7 @@ const powerDevice = async (device, action) => {
     initializationDevice,
     powerDevice,
     cleanupPowerListeners,
+    silentRebootDevice,
+    silentPowerDevice
   }
 })

@@ -2,7 +2,7 @@
   <Dialog
     v-model:visible="visible"
     :modal="true"
-    header="Apply File to Device"
+    header="Device to update"
     :style="{ width: '500px', maxWidth: '95vw' }"
     :breakpoints="{ '960px': '85vw', '641px': '95vw' }"
     :contentStyle="{ padding: '1.5rem' }"
@@ -96,7 +96,7 @@
       </Message>
 
       <!-- Прогресс применения -->
-      <div v-if="applying" class="apply-progress">
+      <!-- <div v-if="applying" class="apply-progress">
         <div class="progress-info">
           <i class="pi pi-spin pi-spinner"></i>
           <span>Sending command to device...</span>
@@ -106,7 +106,7 @@
         <div class="progress-details" v-if="applyDetails">
           <small>{{ applyDetails }}</small>
         </div>
-      </div>
+      </div> -->
 
       <Message 
         v-if="error" 
@@ -152,12 +152,12 @@ import ProgressBar from 'primevue/progressbar'
 import Message from 'primevue/message'
 import { useDeviceStore } from '@/stores/useDeviceStore'
 import { useConsoleStore } from '@/stores/useConsoleStore'
-import { socket } from '@/socket'
+import { useDeviceActionsStore} from '@/stores/useDeviceActionsStore'
 
 const toast = useToast()
 const deviceStore = useDeviceStore()
 const consoleStore = useConsoleStore()
-
+const deviceActionsStore = useDeviceActionsStore()
 // ✅ Добавляем emit
 const emit = defineEmits(['close-files'])
 
@@ -238,7 +238,6 @@ const selectDevice = (deviceId) => {
     selectedDeviceId.value = deviceId
   }
 }
-
 const applyToDevice = async () => {
   if (!selectedDeviceId.value) {
     error.value = 'Please select a device'
@@ -252,87 +251,63 @@ const applyToDevice = async () => {
   }
 
   applying.value = true
-  applyProgress.value = 0
-  applyDetails.value = 'Preparing command...'
-  error.value = null
 
   try {
-    // Симулируем прогресс
-    const progressInterval = setInterval(() => {
-      if (applyProgress.value < 90 && applying.value) {
-        applyProgress.value += 10
-        if (applyProgress.value === 30) {
-          applyDetails.value = 'Connecting to device...'
-        } else if (applyProgress.value === 60) {
-          applyDetails.value = 'Sending TFTP command...'
-        } else if (applyProgress.value === 80) {
-          applyDetails.value = 'Waiting for device confirmation...'
-        }
-      }
-    }, 500)
-
-    // Ждем завершения прогресса
-    setTimeout(async () => {
-      clearInterval(progressInterval)
-      applyProgress.value = 100
-      applyDetails.value = 'Complete!'
-      
-      // Закрываем DeviceSelector
-      closeModal()
-      
-      // Эмитим событие для закрытия FileManager
-      emit('close-files')
-      
-      // Открываем консоль
-      setTimeout(async () => {
-        try {
-          console.log(`📱 Opening console for device ${device.id} (${device.shortName || device.hwId})`)
-          
-          if (consoleStore.isConsoleOpen(device.id)) {
-            consoleStore.focusConsole(device.id)
-            toast.add({
-              severity: 'info',
-              summary: 'Console Focused',
-              detail: `Console for ${device.shortName || device.hwId} is already open`,
-              life: 3000
-            })
-          } else {
-            await consoleStore.handleOpenConsole(device)
-          }
-        } catch (consoleError) {
-          console.error('❌ Failed to open console via store:', consoleError)
-          const deviceIp = device.ip?.split('/')[0] || device.managementIp
-          if (deviceIp && deviceIp !== 'N/A') {
-            const consoleUrl = `http://${deviceIp}`
-            window.open(consoleUrl, '_blank')
-            toast.add({
-              severity: 'info',
-              summary: 'Web Interface',
-              detail: `Device web interface opened: ${deviceIp}`,
-              life: 3000
-            })
-          }
-        }
-        
-        applying.value = false
-      }, 500)
-      
-    }, 2000)
+    // Проверяем статус питания
+    const powerStatus = deviceActionsStore.getPowerStatus(device.id)
+    console.log(`[DeviceSelector] Power status for ${device.hwId}: ${powerStatus}`)
+    
+    // Управление питанием (без прогресса)
+    if (powerStatus === 'on') {
+      // Используем тихий ребут без прогресса
+      deviceActionsStore.silentRebootDevice(device).catch(err => {
+        console.error('Reboot error:', err)
+      })
+      toast.add({
+        severity: 'info',
+        summary: 'Reboot Command Sent',
+        detail: `Device ${device.shortName} is rebooting`,
+        life: 3000
+      })
+    } else if (powerStatus === 'off') {
+      // Используем тихое включение без прогресса
+      deviceActionsStore.silentPowerDevice(device, 'on').catch(err => {
+        console.error('Power on error:', err)
+      })
+      toast.add({
+        severity: 'info',
+        summary: 'Power On Command Sent',
+        detail: `Device ${device.shortName} is powering on`,
+        life: 3000
+      })
+    }
+    
+    // Закрываем DeviceSelector
+    closeModal()
+    
+    // Открываем консоль
+    if (consoleStore.isConsoleOpen(device.id)) {
+      consoleStore.focusConsole(device.id)
+    } else {
+      await consoleStore.handleOpenConsole(device)
+    }
+    
+    // Эмитим событие для закрытия FileManager
+    emit('close-files')
+    
+    applying.value = false
 
   } catch (err) {
-    console.error('❌ Failed to apply firmware:', err)
-    error.value = err.message
+    console.error('❌ Failed:', err)
     toast.add({
       severity: 'error',
-      summary: 'Apply Failed',
+      summary: 'Failed',
       detail: err.message,
       life: 5000
     })
     applying.value = false
-    applyProgress.value = 0
   }
 }
-
 defineExpose({ show })
 </script>
 <style scoped>

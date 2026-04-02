@@ -16,6 +16,7 @@ import { connectToMws } from "./actions/connectToMws.js";
 import { generatePassword } from "./actions/generatePassword.js";
 import { keeneticAuth } from "./actions/athentication.js";
 import { getManagmentID } from "./actions/getManagmentID.js";
+import { getPortPowerStatus } from "./actions/getPortPowerStatus.js";
 import { 
   changeSystemMode, 
   checkDeviceMode, 
@@ -75,13 +76,16 @@ const syncPowerStatusesToClient = (socket) => {
   
   let sentCount = 0;
   devicePowerStatus.forEach((status, deviceId) => {
-    socket.emit('device:powerStatus', {
-      deviceId: deviceId,
-      status: status,
-      timestamp: Date.now()
-    });
-    sentCount++;
-    console.log(`📡 Sent power status for ${deviceId}: ${status}`);
+    // Отправляем только если устройство забронировано
+    if (deviceBookings.has(deviceId)) {
+      socket.emit('device:powerStatus', {
+        deviceId: deviceId,
+        status: status,
+        timestamp: Date.now()
+      });
+      sentCount++;
+      console.log(`📡 Sent power status for ${deviceId}: ${status}`);
+    }
   });
   console.log(`✅ Synced ${sentCount} power statuses to client`);
 };
@@ -456,13 +460,16 @@ async function sendInitData(socket) {
       }
     });
 
-    // ✅ ОТПРАВЛЯЕМ СТАТУС ПИТАНИЯ ДЛЯ КАЖДОГО УСТРОЙСТВА
+    // ✅ ОТПРАВЛЯЕМ СТАТУС ПИТАНИЯ ДЛЯ КАЖДОГО ЗАБРОНИРОВАННОГО УСТРОЙСТВА
     devicesWithBookings.forEach(device => {
-      if (device.rebootPort) {
+      if (device.rebootPort && device.booking?.isBooked) {
+        const powerStatus = devicePowerStatus.get(device.id);
+        // Отправляем статус, даже если его нет - отправим 'unknown'
         socket.emit('device:powerStatus', {
           deviceId: device.id,
-          status: device.powerStatus,
-          timestamp: Date.now()
+          status: powerStatus || 'unknown',
+          timestamp: Date.now(),
+          isInitial: true
         });
       }
     });
@@ -620,14 +627,24 @@ async function initializeStatusSystem() {
 async function initializePowerStatus() {
   console.log('🔌 Initializing power status for devices...');
   
-  for (const device of devices) {
-    if (device.rebootPort) {
-      devicePowerStatus.set(device.id, 'on');
+  // Запускаем асинхронно, не блокируя старт сервера
+  (async () => {
+    for (const device of devices) {
+      if (device.rebootPort) {
+        try {
+          const status = await getPortPowerStatus(device.id);
+          devicePowerStatus.set(device.id, status);
+          console.log(`📡 Power status for ${device.id}: ${status}`);
+        } catch (error) {
+          console.error(`❌ Failed to get power status for ${device.id}:`, error.message);
+          devicePowerStatus.set(device.id, 'on'); // По умолчанию
+        }
+      }
     }
-  }
-  
-  console.log(`✅ Initialized power status for ${devicePowerStatus.size} devices`);
+    console.log(`✅ Initialized power status for ${devicePowerStatus.size} devices`);
+  })();
 }
+  
 function clearFirmwareCache(deviceId) {
   if (currentFirmwareVersion.has(deviceId)) {
     currentFirmwareVersion.delete(deviceId);
@@ -997,30 +1014,37 @@ function setupEvents(socket, io) {
       if (!deviceId || !duration) {
         throw new Error('Device ID and duration are required');
       }
-
+    
       const existingBooking = deviceBookings.get(deviceId);
       if (existingBooking && existingBooking.bookedBy !== bookedBy) {
         const errorMsg = 'Device is already booked by another user';
         return callback?.({ success: false, message: errorMsg });
       }
-
+    
       const expiresAt = Math.floor(Date.now() / 1000) + duration;
       const remainingTime = duration;
       
+      // ✅ СНАЧАЛА БРОНИРУЕМ - МГНОВЕННО
       deviceBookings.set(deviceId, {
         bookedBy: bookedBy,
         expiresAt,
         accessPassword: dailyPasswords.today.value
       });
-
+      
+      // ✅ Получаем статус из кэша (если есть)
+      const cachedPowerStatus = devicePowerStatus.get(deviceId);
+      
+      // ✅ ОТВЕЧАЕМ СРАЗУ с тем статусом, который есть в кэше
       const response = { 
         success: true, 
         expiresAt, 
-        accessPassword: dailyPasswords.today.value 
+        accessPassword: dailyPasswords.today.value,
+        powerStatus: cachedPowerStatus || 'unknown'
       };
-
+      
       callback?.(response);
-
+      
+      // ✅ ОТПРАВЛЯЕМ ОБНОВЛЕНИЕ БРОНИРОВАНИЯ ВСЕМ (с текущим статусом)
       io.emit('device:bookingUpdated', {
         deviceId: deviceId,
         booking: {
@@ -1029,9 +1053,35 @@ function setupEvents(socket, io) {
           accessPassword: dailyPasswords.today.value,
           expiresAt: expiresAt,
           remainingTime: remainingTime
-        }
+        },
+        powerStatus: cachedPowerStatus || 'unknown'
       });
-
+      
+      // ✅ АСИНХРОННО ПОЛУЧАЕМ СТАТУС В ФОНЕ, ЕСЛИ ЕГО НЕТ В КЭШЕ
+      if (!cachedPowerStatus) {
+        (async () => {
+          try {
+            console.log(`[BOOK] Fetching power status for ${deviceId} in background...`);
+            const powerStatus = await getPortPowerStatus(deviceId);
+            devicePowerStatus.set(deviceId, powerStatus);
+            console.log(`[BOOK] Power status for ${deviceId}: ${powerStatus}`);
+            
+            // ✅ Отправляем ТОЛЬКО обновление статуса (не бронирования)
+            socket.emit('device:powerStatus', {
+              deviceId: deviceId,
+              status: powerStatus,
+              timestamp: Date.now(),
+              changed: false
+            });
+            
+          } catch (error) {
+            console.error(`[BOOK] Failed to get power status for ${deviceId}:`, error.message);
+          }
+        })();
+      } else {
+        console.log(`[BOOK] Using cached power status for ${deviceId}: ${cachedPowerStatus}`);
+      }
+      
     } catch (error) {
       callback?.({ success: false, error: error.message });
     }
@@ -1659,39 +1709,59 @@ function setupEvents(socket, io) {
   
   socket.on('device:reboot', setupDeviceOperation('device:reboot', 'rebooting', rebootDevice, 120000));
   socket.on('device:power', async (data, callback) => {
-    console.log("ПОЛУЧИЛИ ПАРАМЕТРЫ",data)
-  const { deviceId, action } = data;
-  
-  try {
-    console.log(`[POWER] Request received: ${action} for device ${deviceId}`);
-    const previousStatus = devicePowerStatus.get(deviceId);
-    await powerSetup(deviceId, action);
-    devicePowerStatus.set(deviceId, action);
-    io.emit('device:powerStatus', {
-      deviceId: deviceId,
-      status: action,
-      timestamp: Date.now(),
-      changed: previousStatus !== action
-    });
-    console.log(`[POWER] Status updated for ${deviceId}: ${previousStatus || 'unknown'} -> ${action}`);
+    console.log("ПОЛУЧИЛИ ПАРАМЕТРЫ", data);
+    const { deviceId, action } = data;
     
-    callback({ 
-      status: 'ok', 
-      message: `Device powered ${action} successfully` 
-    });
-    
-    setTimeout(() => {
-      checkAndUpdateDeviceStatusImmediately(io, deviceId);
-    }, 5000);
-    
-  } catch (error) {
-    console.error(`[POWER] Error:`, error);
-    callback({ 
-      status: 'error', 
-      error: error.message 
-    });
-  }
-});
+    try {
+      console.log(`[POWER] Request received: ${action} for device ${deviceId}`);
+      
+      // Проверяем, что устройство забронировано
+      const booking = deviceBookings.get(deviceId);
+      if (!booking) {
+        throw new Error('Device is not booked');
+      }
+      
+      const previousStatus = devicePowerStatus.get(deviceId);
+      await powerSetup(deviceId, action);
+      
+      // ✅ ПОЛУЧАЕМ АКТУАЛЬНЫЙ СТАТУС ПОСЛЕ ОПЕРАЦИИ
+      let newStatus = action;
+      try {
+        const actualStatus = await getPortPowerStatus(deviceId);
+        if (actualStatus) {
+          newStatus = actualStatus;
+        }
+      } catch (error) {
+        console.error(`[POWER] Failed to verify power status:`, error.message);
+      }
+      
+      devicePowerStatus.set(deviceId, newStatus);
+      io.emit('device:powerStatus', {
+        deviceId: deviceId,
+        status: newStatus,
+        timestamp: Date.now(),
+        changed: previousStatus !== newStatus
+      });
+      console.log(`[POWER] Status updated for ${deviceId}: ${previousStatus || 'unknown'} -> ${newStatus}`);
+      
+      callback({ 
+        status: 'ok', 
+        message: `Device powered ${action} successfully`,
+        powerStatus: newStatus
+      });
+      
+      setTimeout(() => {
+        checkAndUpdateDeviceStatusImmediately(io, deviceId);
+      }, 5000);
+      
+    } catch (error) {
+      console.error(`[POWER] Error:`, error);
+      callback({ 
+        status: 'error', 
+        error: error.message 
+      });
+    }
+  });
 
   socket.on('device:resetConfig', setupDeviceOperation('device:resetConfig', 'resetting', resetConfig, 180000));
 

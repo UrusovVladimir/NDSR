@@ -1,67 +1,74 @@
-import {Telnet} from "telnet-client"
-class TelnetConnection {
-    constructor(host,login,password) {
-        this.params = {
-            host: host,
-            port: "23",
-            negotiationMandatory: false,
-            timeout: 3500,
-            sendTimeout: 2500,
-            login: login,
-            password: password
-        };
+import { Telnet } from "telnet-client";
+
+class JeromeClient {
+    constructor(host, port = 2424) {
+        this.host = host;
+        this.port = port;
         this.connection = null;
     }
-
+    
     async connect() {
-        try {
-            this.connection = new Telnet();
-            await this.connection.connect(this.params);
-            console.log("Соединение установлено");
-            await this.connection.send(this.params.login);
-        } catch (error) {
-            console.error("Ошибка при установлении соединения:", error);
-            throw error;
-        }
+        if (this.connection) return;
+        
+        this.connection = new Telnet();
+        await this.connection.connect({
+            host: this.host,
+            port: this.port,
+            negotiationMandatory: false,
+            timeout: 2000,
+            sendTimeout: 2000,
+            execTimeout: 3000,
+        });
+        
+        // Минимальная задержка после подключения
+        await new Promise(resolve => setTimeout(resolve, 100));
     }
-
+    
+    async getPortStatus(portNumber) {
+        await this.connect();
+        
+        const response = await this.connection.send(`$KE,RID,${portNumber}`, { 
+            ors: "\r\n",
+            waitfor: /#RID,\d+,\d+/
+        });
+        
+        const match = response.match(/#RID,(\d+),(\d+)/);
+        if (match) {
+            return {
+                port: parseInt(match[1]),
+                status: match[2] === '1' ? 'on' : 'off'
+            };
+        }
+        
+        return null;
+    }
+    
     async end() {
         if (this.connection) {
             await this.connection.end();
-            console.log("Соединение завершено");
-        } else {
-            console.log("Соединение не было установлено");
-        }
-    }
-
-    async executeCommand(cmd, arg, prompt) {
-        if (!this.connection) {
-            throw new Error("Сначала установите соединение");
-        }
-
-        const command = arg ? `${cmd} ${arg}` : cmd;
-        try {
-            const res = await this.connection.exec(command, { shellPrompt: prompt });
-            console.log(command, res);
-            return res;
-        } catch (error) {
-            console.error("Ошибка выполнения команды:", error);
-            throw error;
+            this.connection = null;
         }
     }
 }
 
-// Пример использования
+// Тестирование
 (async () => {
-    const telnetConnection = new TelnetConnection("192.168.77.112");
-
+    const startTime = Date.now();
+    const jerome = new JeromeClient("172.16.77.246", 2424);
+    
     try {
-        await telnetConnection.connect();
-        const result = await telnetConnection.executeCommand("show login",null,/MGS3520-Techsupport[# ]/i);
-        console.log("Результат команды:", result);
+        // Проверяем несколько портов за одно соединение
+        for (let i = 1; i <= 11; i++) {
+            const status = await jerome.getPortStatus(i);
+            console.log(`Port ${status.port}: ${status.status === 'on' ? '🟢 ON' : '🔴 OFF'}`);
+        }
+        
+        const endTime = Date.now();
+        console.log(`\n⏱️ Total time for 3 ports: ${endTime - startTime}ms`);
+        
     } catch (error) {
-        console.error("Ошибка:", error);
+        console.error('❌ Error:', error.message);
     } finally {
-        await telnetConnection.end();
+        await jerome.end();
     }
 })();

@@ -21,7 +21,7 @@
           name="files"
           :url="uploadUrl"
           :multiple="true"
-          :auto="true"
+          :auto="false"
           :maxFileSize="104857600"
           :customUpload="true"
           @uploader="onUpload"
@@ -30,34 +30,58 @@
           @error="onUploadError"
           :accept="acceptedFileTypes"
         >
-          <template #empty>
-            <div class="upload-empty-state">
+          <template #content="{ files: uploadedFiles, removeFileCallback }">
+            <div v-if="uploadedFiles && uploadedFiles.length" class="selected-files-preview">
+              <div class="preview-title">
+                <i class="pi pi-paperclip"></i>
+                <span>Ready to Upload ({{ uploadedFiles.length }} file{{ uploadedFiles.length > 1 ? 's' : '' }})</span>
+              </div>
+              <div class="preview-list">
+                <div v-for="(file, index) in uploadedFiles" :key="file.name" class="preview-item">
+                  <div class="preview-item-icon">
+                    <i :class="getFileIcon(file.name)"></i>
+                  </div>
+                  <div class="preview-item-info">
+                    <div class="preview-item-name">{{ file.name }}</div>
+                    <div class="preview-item-size">{{ formatFileSize(file.size) }}</div>
+                  </div>
+                  <Button
+                    icon="pi pi-times"
+                    class="p-button-text p-button-sm p-button-rounded"
+                    @click="removeFileCallback(index)"
+                    v-tooltip="'Remove file'"
+                  />
+                </div>
+              </div>
+            </div>
+            <div v-else class="upload-empty-state">
               <i class="pi pi-cloud-upload"></i>
               <p>Drag and drop files here or click to browse</p>
               <small class="text-color-secondary">
-                Supported files: .bin, .img, .tar, .gz, .zip (max 100MB)
+                Supported files: .bin (max 100MB)
               </small>
             </div>
           </template>
         </FileUpload>
 
-        <!-- Прогресс загрузки -->
-        <div v-if="uploading" class="upload-progress">
-          <div class="progress-info">
-            <span>
-              <i class="pi pi-spin pi-spinner"></i>
-              {{ currentFile?.name || 'Uploading...' }}
-            </span>
-            <span>{{ uploadProgress }}%</span>
-            <Button
-              icon="pi pi-times"
-              class="p-button-text p-button-sm"
-              @click="cancelUpload"
-              v-tooltip="'Cancel upload'"
-            />
-          </div>
-          <ProgressBar :value="uploadProgress" :showValue="false" />
+      <!-- Прогресс загрузки -->
+      <div v-if="uploading" class="upload-progress">
+        <div class="progress-info">
+          <span class="file-info-with-icon">
+            <i :class="getFileIcon(currentFile?.name)" class="file-icon-spinner"></i>
+            <i v-if="!currentFile?.name" class="pi pi-spin pi-spinner"></i>
+            <span class="file-name-progress">{{ currentFile?.name || 'Uploading...' }}</span>
+          </span>
+          <span>{{ uploadProgress }}%</span>
+          <Button
+            icon="pi pi-times"
+            class="p-button-text p-button-sm"
+            @click="cancelUpload"
+            v-tooltip="'Cancel upload'"
+          />
         </div>
+        <ProgressBar :value="uploadProgress" :showValue="false" />
+      </div>
 
         <!-- Сообщение об успешной загрузке -->
         <Message 
@@ -79,7 +103,6 @@
           @close="uploadError = null"
           class="mt-2"
         >
-          <i class="pi pi-exclamation-circle"></i>
           {{ uploadError }}
         </Message>
       </div>
@@ -188,7 +211,6 @@ import Button from 'primevue/button'
 import ProgressBar from 'primevue/progressbar'
 import ConfirmDialog from 'primevue/confirmdialog'
 import Message from 'primevue/message'
-// ✅ ИМПОРТИРУЕМ DeviceSelector
 import DeviceSelector from './DeviceSelector.vue'
 
 const toast = useToast()
@@ -215,13 +237,13 @@ const handleCloseFiles = () => {
   console.log('✅ FileManager closed after firmware apply')
 }
 // URL для API
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://192.168.5.150:3000'
+const API_BASE_URL = import.meta.env.VITE_API_URL
 
 const uploadUrl = computed(() => {
   return `${API_BASE_URL}/api/upload`
 })
 
-const acceptedFileTypes = '.bin,.img,.tar,.gz,.zip'
+const acceptedFileTypes = '.bin'
 
 // ✅ Функция для получения размера файла
 const getFileSize = (fileName) => {
@@ -295,7 +317,7 @@ const onFileSelect = (event) => {
   if (file) {
     currentFile.value = file
     uploadProgress.value = 0
-    console.log(`📁 File selected: ${file.name} (${formatFileSize(file.size)})`)
+    // console.log(`📁 File selected: ${file.name} (${formatFileSize(file.size)})`)
     
     toast.add({
       severity: 'info',
@@ -371,13 +393,30 @@ const onUpload = async (event) => {
         } else if (xhr.status === 413) {
           reject(new Error('File too large (max 100MB)'))
         } else {
-          reject(new Error(`Upload failed with status ${xhr.status}`))
+          // Пытаемся извлечь ошибку из HTML или plain text ответа
+          let errorMessage = `Upload failed with status ${xhr.status}`
+          
+          // Пытаемся распарсить как JSON
+          try {
+            const errorResponse = JSON.parse(xhr.response)
+            errorMessage = errorResponse.message || errorResponse.error || errorMessage
+          } catch (e) {
+            // Если не JSON, ищем в HTML
+            if (xhr.response.includes('Error:')) {
+              const match = xhr.response.match(/Error: ([^<]+)/)
+              if (match && match[1]) {
+                errorMessage = match[1].trim()
+              }
+            }
+          }
+          
+          reject(new Error(errorMessage))
         }
       }
       xhr.onerror = () => reject(new Error('Network error - check if backend is running'))
       xhr.open('POST', uploadUrl.value)
       xhr.send(formData)
-    })
+})
 
     await uploadPromise
     
@@ -500,14 +539,14 @@ const deleteFile = async (fileName) => {
 
 const selectFile = (fileName) => {
   selectedFile.value = selectedFile.value === fileName ? null : fileName
-  if (selectedFile.value) {
-    toast.add({
-      severity: 'info',
-      summary: 'File Selected',
-      detail: `Selected: ${fileName}`,
-      life: 2000
-    })
-  }
+  // if (selectedFile.value) {
+  //   toast.add({
+  //     severity: 'info',
+  //     summary: 'File Selected',
+  //     detail: `Selected: ${fileName}`,
+  //     life: 2000
+  //   })
+  // }
 }
 
 // ✅ ОБНОВЛЕННАЯ ФУНКЦИЯ applyToDevice
@@ -529,39 +568,31 @@ const applyToDevice = () => {
 }
 
 const getFileIcon = (fileName) => {
-  if (!fileName) return 'pi-file'
+  if (!fileName) return 'pi pi-file'
   
   const extension = fileName.split('.').pop().toLowerCase()
   
   const iconMap = {
-    'bin': 'pi-microchip',
-    'img': 'pi-image',
-    'tar': 'pi-box',
-    'gz': 'pi-box',
-    'zip': 'pi-file-archive',
-    'pdf': 'pi-file-pdf',
-    'txt': 'pi-file',
-    'json': 'pi-code',
-    'xml': 'pi-code',
-    'html': 'pi-code',
-    'css': 'pi-code',
-    'js': 'pi-code',
-    'png': 'pi-image',
-    'jpg': 'pi-image',
-    'jpeg': 'pi-image',
-    'gif': 'pi-image',
-    'svg': 'pi-image',
-    'mp4': 'pi-video',
-    'mp3': 'pi-volume-up',
-    'doc': 'pi-file-word',
-    'docx': 'pi-file-word',
-    'xls': 'pi-file-excel',
-    'xlsx': 'pi-file-excel',
-    'ppt': 'pi-file-powerpoint',
-    'pptx': 'pi-file-powerpoint'
+    'bin': 'pi pi-microchip',
+    'zip': 'pi pi-file-archive',
+    'pdf': 'pi pi-file-pdf',
+    'jpg': 'pi pi-image',
+    'jpeg': 'pi pi-image',
+    'png': 'pi pi-image',
+    'gif': 'pi pi-image',
+    'mp4': 'pi pi-video',
+    'mp3': 'pi pi-volume-up',
+    'wav': 'pi pi-volume-up',
+    'txt': 'pi pi-file',
+    'json': 'pi pi-code',
+    'html': 'pi pi-code',
+    'css': 'pi pi-code',
+    'js': 'pi pi-code',
+    'vue': 'pi pi-code',
+    'py': 'pi pi-code'
   }
   
-  return iconMap[extension] || 'pi-file'
+  return iconMap[extension] || 'pi pi-file'
 }
 
 const formatFileSize = (bytes) => {
@@ -770,5 +801,130 @@ defineExpose({ show })
     flex-direction: column;
     gap: 0.25rem;
   }
+}
+/* Стили для выбранных файлов */
+.selected-files-preview {
+  border: 1px solid var(--surface-border);
+  border-radius: 8px;
+  background: var(--surface-card);
+  margin-top: 0.5rem;
+  overflow: hidden;
+}
+
+.preview-title {
+  padding: 0.75rem 1rem;
+  background: var(--surface-ground);
+  border-bottom: 1px solid var(--surface-border);
+  font-weight: 600;
+  font-size: 0.9rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.preview-list {
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.preview-item {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid var(--surface-border);
+  transition: background-color 0.2s;
+}
+
+.preview-item:hover {
+  background: var(--surface-hover);
+}
+
+.preview-item-icon {
+  flex-shrink: 0;
+  width: 2rem;
+  height: 2rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--surface-ground);
+  border-radius: 6px;
+  font-size: 1.2rem;
+}
+
+.preview-item-icon .pi-microchip {
+  color: #4caf50;
+}
+
+.preview-item-icon .pi-file-archive {
+  color: #ff9800;
+}
+
+.preview-item-icon .pi-file-pdf {
+  color: #f44336;
+}
+
+.preview-item-icon .pi-image {
+  color: #9c27b0;
+}
+
+.preview-item-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.preview-item-name {
+  font-weight: 500;
+  font-size: 0.9rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.preview-item-size {
+  font-size: 0.75rem;
+  color: var(--text-color-secondary);
+}
+
+.file-info-with-icon {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.file-icon-spinner {
+  font-size: 1rem;
+}
+
+.file-name-progress {
+  max-width: 250px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.selected-files-list {
+  padding: 0.5rem;
+}
+
+.selected-file-item {
+  display: flex;
+  align-items: center;
+  padding: 0.5rem;
+  background: var(--surface-card);
+  border-radius: 6px;
+  margin-bottom: 0.5rem;
+}
+
+.selected-file-item i {
+  font-size: 1rem;
+}
+
+.mr-2 {
+  margin-right: 0.5rem;
+}
+
+.ml-2 {
+  margin-left: 0.5rem;
 }
 </style>
