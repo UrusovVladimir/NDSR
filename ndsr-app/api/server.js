@@ -33,13 +33,26 @@ const storage = multer.diskStorage({
         cb(null, UPLOAD_DIR);
     },
     filename: (req, file, cb) => {
-        cb(null, file.originalname);
+        const originalName = file.originalname;
+        const filePath = path.join(UPLOAD_DIR, originalName);
+        
+        if (fs.existsSync(filePath)) {
+            const nameWithoutExt = path.parse(originalName).name;
+            const ext = path.parse(originalName).ext;
+            const timestamp = Date.now();
+            cb(null, `${nameWithoutExt}_${timestamp}${ext}`);
+        } else {
+            cb(null, originalName);
+        }
     }
 });
 
 const upload = multer({
     storage,
-    limits: { fileSize: 100 * 1024 * 1024 }, // 100MB
+    limits: { 
+        fileSize: 100 * 1024 * 1024, // 100MB per file
+        files: 50
+    },
     fileFilter: (req, file, cb) => {
         const allowedTypes = ['.bin'];
         const ext = path.extname(file.originalname).toLowerCase();
@@ -70,21 +83,81 @@ app.use((req, res, next) => {
 
 // ========== FILE MANAGER API ENDPOINTS ==========
 
-// ✅ Загрузка файла
-app.post('/api/upload', upload.single('file'), (req, res) => {
-    if (!req.file) {
-        return res.status(400).json({ error: 'No file uploaded' });
-    }
+// ✅ Загрузка файлов
+app.post('/api/upload', (req, res) => {
+    console.log('📤 Upload request received');
     
-    console.log(`✅ File uploaded: ${req.file.originalname} (${req.file.size} bytes)`);
-    
-    res.json({
-        success: true,
-        file: {
-            name: req.file.originalname,
-            size: req.file.size,
-            path: req.file.path
+    upload.array('files', 50)(req, res, (err) => {
+        // Обработка ошибок multer
+        if (err) {
+            console.error('❌ Upload error:', err);
+            console.error('❌ Error code:', err.code);
+            console.error('❌ Error message:', err.message);
+            
+            if (err.code === 'LIMIT_FILE_SIZE') {
+                return res.status(413).json({ 
+                    success: false,
+                    error: `File too large. Maximum size is 100MB per file.`,
+                    code: 'FILE_TOO_LARGE'
+                });
+            }
+            
+            if (err.code === 'LIMIT_FILE_COUNT') {
+                return res.status(400).json({ 
+                    success: false,
+                    error: 'Too many files. Maximum 50 files per request.',
+                    code: 'TOO_MANY_FILES'
+                });
+            }
+            
+            return res.status(400).json({ 
+                success: false,
+                error: err.message,
+                code: err.code || 'UNKNOWN_ERROR'
+            });
         }
+        
+        // Проверяем, есть ли файлы
+        if (!req.files || req.files.length === 0) {
+            return res.status(400).json({ 
+                success: false,
+                error: 'No files uploaded' 
+            });
+        }
+        
+        // Проверяем каждый файл на размер (дополнительная защита)
+        const oversizedFiles = req.files.filter(f => f.size > 100 * 1024 * 1024);
+        if (oversizedFiles.length > 0) {
+            return res.status(413).json({ 
+                success: false,
+                error: `File(s) too large: ${oversizedFiles.map(f => f.originalname).join(', ')} (max 100MB)`,
+                code: 'FILE_TOO_LARGE'
+            });
+        }
+        
+        const uploadedFiles = req.files.map(file => ({
+            name: file.originalname,
+            size: file.size,
+            path: file.path,
+            savedName: file.filename
+        }));
+        
+        console.log(`✅ Uploaded ${uploadedFiles.length} file(s):`, uploadedFiles.map(f => f.name).join(', '));
+        
+        // Если загружен один файл
+        if (uploadedFiles.length === 1) {
+            return res.json({
+                success: true,
+                file: uploadedFiles[0]
+            });
+        }
+        
+        // Если несколько файлов
+        res.json({
+            success: true,
+            files: uploadedFiles,
+            count: uploadedFiles.length
+        });
     });
 });
 
@@ -112,6 +185,8 @@ app.get('/api/files', (req, res) => {
             }
         }).filter(file => file !== null);
         
+        fileList.sort((a, b) => new Date(b.modified) - new Date(a.modified));
+        
         res.json({ files: fileList });
     });
 });
@@ -121,7 +196,6 @@ app.get('/api/files/:filename', (req, res) => {
     const filename = req.params.filename;
     const filePath = path.join(UPLOAD_DIR, filename);
     
-    // Проверяем безопасность имени файла (защита от path traversal)
     const safePath = path.normalize(filePath);
     if (!safePath.startsWith(UPLOAD_DIR)) {
         return res.status(403).json({ error: 'Access denied' });
@@ -139,7 +213,6 @@ app.delete('/api/files/:filename', (req, res) => {
     const filename = req.params.filename;
     const filePath = path.join(UPLOAD_DIR, filename);
     
-    // Проверяем безопасность имени файла
     const safePath = path.normalize(filePath);
     if (!safePath.startsWith(UPLOAD_DIR)) {
         return res.status(403).json({ error: 'Access denied' });
@@ -155,39 +228,10 @@ app.delete('/api/files/:filename', (req, res) => {
     });
 });
 
-// ✅ Опционально: получить информацию о конкретном файле
-app.get('/api/files/:filename/info', (req, res) => {
-    const filename = req.params.filename;
-    const filePath = path.join(UPLOAD_DIR, filename);
-    const safePath = path.normalize(filePath);
-    
-    if (!safePath.startsWith(UPLOAD_DIR)) {
-        return res.status(403).json({ error: 'Access denied' });
-    }
-    
-    if (fs.existsSync(safePath)) {
-        try {
-            const stats = fs.statSync(safePath);
-            res.json({
-                name: filename,
-                size: stats.size,
-                modified: stats.mtime,
-                type: path.extname(filename).substring(1)
-            });
-        } catch (error) {
-            res.status(500).json({ error: 'Failed to read file info' });
-        }
-    } else {
-        res.status(404).json({ error: 'File not found' });
-    }
-});
-
 // ========== СОЗДАЕМ HTTP СЕРВЕР ==========
 
-// ✅ СОЗДАЕМ HTTP СЕРВЕР
 const server = http.createServer(app);
 
-// ✅ СОЗДАЕМ SOCKET.IO НА ОСНОВЕ HTTP СЕРВЕРА
 const io = new Server(server, {
     path: "/socket.io/",
     cors: {
@@ -199,7 +243,6 @@ const io = new Server(server, {
     maxHttpBufferSize: 1e8
 });
 
-// ✅ ИНИЦИАЛИЗАЦИЯ
 initPasswordSystem(io);
 
 io.on("connection", (socket) => {
@@ -213,7 +256,6 @@ io.on("connection", (socket) => {
     });
 });
 
-// ✅ ПЕРИОДИЧЕСКАЯ ПРОВЕРКА СТАТУСОВ
 const interval = setInterval(() => {
     try {
         broadcastDevicesStatus(io);
@@ -222,7 +264,6 @@ const interval = setInterval(() => {
     }
 }, STATUS_CHECK_INTERVAL * 1000);
 
-// ✅ Graceful shutdown
 const cleanup = () => {
     console.log('🛑 Received shutdown signal, cleaning up...');
     clearInterval(interval);
@@ -236,7 +277,6 @@ const cleanup = () => {
 process.on('SIGTERM', cleanup);
 process.on('SIGINT', cleanup);
 
-// ✅ ЗАПУСК СЕРВЕРА
 server.listen(PORT, () => {
     console.log(`✅ HTTP & WebSocket server started on port ${PORT}`);
     console.log(`📁 Upload directory: ${UPLOAD_DIR}`);

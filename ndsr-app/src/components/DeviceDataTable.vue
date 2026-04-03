@@ -387,7 +387,6 @@ const handleFirmwareUpdated = (data) => {
 };
 
 const handleBatchFirmwareUpdated = (data) => {
-  // console.log('📡 Batch firmware updated:', data);
   if (data.successful) {
     data.successful.forEach(item => {
       const device = deviceStore.devices.find(d => d.id === item.deviceId);
@@ -395,7 +394,8 @@ const handleBatchFirmwareUpdated = (data) => {
     });
   }
   
-  if (data.failed && data.failed.length > 0) {
+  // ✅ Показываем тост ТОЛЬКО при ручной проверке и если есть ошибки
+  if (data.isManual && data.failed && data.failed.length > 0) {
     toast.add({
       severity: 'warn',
       summary: 'Some checks failed',
@@ -403,8 +403,7 @@ const handleBatchFirmwareUpdated = (data) => {
       life: 5000
     });
   }
-};
-
+}
 const handleMwsStatusUpdated = (data) => {
   // console.log('📡 MWS status updated:', data);
 };
@@ -665,7 +664,7 @@ const handleModalSave = (data) => {
 
 onMounted(() => {
   deviceStore.loadCollapsedState()
-  
+  window.addEventListener('firmware:batchUpdated', handleBatchFirmwareUpdated)
   // ✅ ЕДИНСТВЕННЫЕ СЛУШАТЕЛИ - ВСЕ В ОДНОМ МЕСТЕ
   socket.on('device:firmwareUpdated', handleFirmwareUpdated)
   socket.on('device:batchFirmwareUpdated', handleBatchFirmwareUpdated)
@@ -723,6 +722,7 @@ socket.on('device:modeChangeProgress', (data) => {
 
 onBeforeUnmount(() => {
   // ✅ ОЧИЩАЕМ ВСЕ СЛУШАТЕЛИ
+  window.removeEventListener('firmware:batchUpdated', handleBatchFirmwareUpdated)
   socket.off('device:firmwareUpdated', handleFirmwareUpdated)
   socket.off('device:batchFirmwareUpdated', handleBatchFirmwareUpdated)
   socket.off('device:mwsStatusUpdated', handleMwsStatusUpdated)

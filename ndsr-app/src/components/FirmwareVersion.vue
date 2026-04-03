@@ -1,7 +1,6 @@
 <template>
   <div class="firmware-version" :class="{ 'mobile-layout': isMobileLayout }">
     <div class="version-display">
-      <!-- Отображение версии с баджем -->
       <Chip 
         v-if="displayVersion && !isError"
         :label="`v${displayVersion}`"
@@ -35,13 +34,12 @@
         class="status-tag"
       />
       
-      <!-- Кнопка обновления - на десктопе справа, на мобильных под баджем -->
       <i 
         v-if="device.statusCode === 200"
         class="pi pi-refresh details-inline refresh-small"
         @click="refreshFirmware"
         v-tooltip.bottom="getRefreshTooltip"
-    />
+      />
     </div>
 
     <!-- Диалог подтверждения -->
@@ -112,7 +110,7 @@ const initialLoadDone = ref(false)
 const showConfirmDialog = ref(false)
 const isMobileLayout = ref(false)
 
-// ✅ Debounce таймеры
+// Debounce таймеры
 let loadFirmwareTimeout = null
 let statusChangeTimeout = null
 
@@ -172,12 +170,11 @@ const getDevicePassword = () => {
   return props.todayPassword
 }
 
-// Проверяем мобильный layout
 const checkMobileLayout = () => {
   const column = document.querySelector('.firmware-column')
   if (column) {
     const width = column.offsetWidth
-    isMobileLayout.value = width < 160 // Переключаемся на мобильный layout при ширине меньше 160px
+    isMobileLayout.value = width < 160
   }
 }
 
@@ -214,11 +211,12 @@ const loadFirmwareVersion = async (forceRefresh = false, isManualRefresh = false
       props.device.firmwareVersion = version
       emit('firmwareUpdated', { deviceId: props.device.id, version })
       
+      // ✅ ТОСТ ТОЛЬКО ПРИ РУЧНОМ ОБНОВЛЕНИИ
       if (isManualRefresh) {
         toast.add({
           severity: 'success',
           summary: 'Firmware Updated',
-          detail: `Firmware version for ${props.device.hwId} refreshed`,
+          detail: `Version ${version} for ${props.device.hwId}`,
           life: 3000
         })
       }
@@ -226,19 +224,17 @@ const loadFirmwareVersion = async (forceRefresh = false, isManualRefresh = false
   } catch (error) {
     lastError.value = error.message
     
+    // ✅ ТОСТ ТОЛЬКО ПРИ РУЧНОМ ОБНОВЛЕНИИ
     if (isManualRefresh) {
-      console.error(`Failed to load firmware for ${props.device.hwId}:`, error.message)
-      
       let toastMessage = `Cannot get firmware version for ${props.device.hwId}`
       let toastSeverity = 'error'
       
       const errorLower = error.message.toLowerCase()
       if (errorLower.includes('authentication failed') || 
-          errorLower.includes('incorrect password') ||
-          errorLower.includes('ошибка авторизации')) {
-        toastMessage = `Wrong password for ${props.device.hwId}. Please check credentials.`
+          errorLower.includes('incorrect password')) {
+        toastMessage = `Wrong password for ${props.device.hwId}`
         toastSeverity = 'warn'
-      } else if (errorLower.includes('device is offline')) {
+      } else if (errorLower.includes('offline')) {
         toastMessage = `Device ${props.device.hwId} is offline`
         toastSeverity = 'info'
       }
@@ -272,14 +268,14 @@ const resetFirmwareState = async () => {
   await firmwareStore.clearFirmwareCache(props.device.id)
 }
 
-// ✅ Обработчики событий от store
+// Обработчики событий от store (без тостов)
 const handleAutoCheckEvent = (event) => {
   if (event.detail.deviceId === props.device.id) {
     if (loadFirmwareTimeout) clearTimeout(loadFirmwareTimeout)
     
     loadFirmwareTimeout = setTimeout(() => {
       if (props.device.statusCode === 200) {
-        loadFirmwareVersion(true, false)
+        loadFirmwareVersion(true, false) // isManualRefresh = false
       }
     }, 5000)
   }
@@ -293,7 +289,7 @@ const handleBookingUpdateEvent = (event) => {
       if (loadFirmwareTimeout) clearTimeout(loadFirmwareTimeout)
       
       loadFirmwareTimeout = setTimeout(() => {
-        loadFirmwareVersion(true, false)
+        loadFirmwareVersion(true, false) // isManualRefresh = false
       }, 2000)
     }
   }
@@ -305,7 +301,7 @@ const handleDeviceActionEvent = (event) => {
     
     loadFirmwareTimeout = setTimeout(() => {
       if (props.device.statusCode === 200) {
-        loadFirmwareVersion(true, false)
+        loadFirmwareVersion(true, false) // isManualRefresh = false
       }
     }, 10000)
   }
@@ -313,12 +309,10 @@ const handleDeviceActionEvent = (event) => {
 
 // Автоматическая загрузка при монтировании
 onMounted(() => {
-  // Слушаем события от store
   window.addEventListener('firmware:autoCheck', handleAutoCheckEvent)
   window.addEventListener('firmware:bookingUpdated', handleBookingUpdateEvent)
   window.addEventListener('firmware:deviceAction', handleDeviceActionEvent)
 
-  // Проверяем мобильный layout
   checkMobileLayout()
   window.addEventListener('resize', checkMobileLayout)
 
@@ -336,16 +330,16 @@ onMounted(() => {
     initialLoadDone.value = true
   }
 
-  // ПЕРВОНАЧАЛЬНАЯ ЗАГРУЗКА
+  // Первоначальная загрузка (без тоста)
   if (canCheckFirmware.value && !initialLoadDone.value) {
     loadFirmwareTimeout = setTimeout(() => {
-      loadFirmwareVersion()
+      loadFirmwareVersion(false, false) // isManualRefresh = false
       initialLoadDone.value = true
     }, 1000)
   }
 })
 
-// Watch для статуса устройства
+// Watch для статуса устройства (без тоста)
 watch(() => props.device.statusCode, (newStatus, oldStatus) => {
   if (statusChangeTimeout) {
     clearTimeout(statusChangeTimeout)
@@ -354,7 +348,7 @@ watch(() => props.device.statusCode, (newStatus, oldStatus) => {
   if (newStatus === 200 && oldStatus !== 200) {
     statusChangeTimeout = setTimeout(() => {
       if (props.device.statusCode === 200) {
-        loadFirmwareVersion(true, false)
+        loadFirmwareVersion(true, false) // isManualRefresh = false
       }
     }, 8000)
   } 
@@ -364,13 +358,13 @@ watch(() => props.device.statusCode, (newStatus, oldStatus) => {
   }
 })
 
-// Следим за изменением пароля
+// Следим за изменением пароля (без тоста)
 watch(() => props.todayPassword, () => {
   if (canCheckFirmware.value && hasLoaded.value) {
     if (loadFirmwareTimeout) clearTimeout(loadFirmwareTimeout)
     
     loadFirmwareTimeout = setTimeout(() => {
-      loadFirmwareVersion(true, false)
+      loadFirmwareVersion(true, false) // isManualRefresh = false
     }, 1000)
   }
 })
@@ -385,14 +379,19 @@ onUnmounted(() => {
   window.removeEventListener('resize', checkMobileLayout)
 })
 </script>
+
 <style scoped>
-.firmware-container {
+.firmware-version {
   display: flex;
-  flex-direction: column;
   align-items: center;
   justify-content: center;
-  text-align: center;
-  width: 100%;
+  gap: 0.5rem;
+}
+
+.version-display {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
 }
 
 .firmware-chip {
@@ -400,27 +399,31 @@ onUnmounted(() => {
   font-family: 'JetBrains Mono', monospace;
 }
 
-.loading-tag,
-.offline-tag,
-.error-tag,
-.unknown-tag {
+.status-tag {
   font-size: 0.75rem;
-  min-width: 70px;
-  justify-content: center;
 }
 
-.refresh-btn {
-  width: 20px;
-  height: 20px;
-  margin-left: 0.25rem;
-}
-
-:deep(.refresh-btn .p-button-icon) {
+.refresh-small {
+  cursor: pointer;
   font-size: 0.8rem;
+  color: var(--primary-color);
+  transition: all 0.2s ease;
+  opacity: 0.7;
 }
 
-:deep(.refresh-btn:disabled) {
-  opacity: 0.5;
-  cursor: not-allowed;
+.refresh-small:hover {
+  opacity: 1;
+  transform: rotate(180deg);
+}
+
+@media (max-width: 768px) {
+  .firmware-version.mobile-layout {
+    flex-direction: column;
+    gap: 0.25rem;
+  }
+  
+  .refresh-small {
+    font-size: 0.7rem;
+  }
 }
 </style>

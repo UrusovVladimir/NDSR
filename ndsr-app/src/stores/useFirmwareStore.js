@@ -84,35 +84,66 @@ export const useFirmwareStore = defineStore('firmware', () => {
     }))
   }
 
-  const checkMultipleFirmwares = async (deviceIds, passwords = {}) => {
-    return new Promise((resolve, reject) => {
-      // console.log(`🔄 Batch firmware check for ${deviceIds.length} devices`)
-      
-      socket.emit('device:checkMultipleFirmwares', { 
-        deviceIds: deviceIds.map(id => String(id)),
-        passwords: passwords // Опционально: разные пароли для устройств
-      }, (response) => {
-        if (response?.success) {
-          // console.log(`✅ Batch firmware check completed: ${response.checked} devices`)
-          
-          // Обновляем кэш для успешных проверок
-          response.details.successful.forEach(({ deviceId, version }) => {
-            firmwareCache.value.set(deviceId, {
-              version: version,
-              timestamp: Date.now(),
-              error: null,
-              errorType: null
-            })
+const checkMultipleFirmwares = async (deviceIds, passwords = {}, isManual = false) => {
+  return new Promise((resolve, reject) => {
+    socket.emit('device:checkMultipleFirmwares', { 
+      deviceIds: deviceIds.map(id => String(id)),
+      passwords: passwords
+    }, (response) => {
+      if (response?.success) {
+        response.details.successful.forEach(({ deviceId, version }) => {
+          firmwareCache.value.set(deviceId, {
+            version: version,
+            timestamp: Date.now(),
+            error: null,
+            errorType: null
           })
-          
-          resolve(response)
-        } else {
-          console.error('❌ Batch firmware check failed:', response?.message)
-          reject(new Error(response?.message || 'Batch firmware check failed'))
-        }
-      })
+        })
+        
+        // ✅ Передаем флаг isManual в событие
+        window.dispatchEvent(new CustomEvent('firmware:batchUpdated', {
+          detail: {
+            ...response.details,
+            isManual: isManual
+          }
+        }))
+        
+        resolve(response)
+      } else {
+        console.error('❌ Batch firmware check failed:', response?.message)
+        reject(new Error(response?.message || 'Batch firmware check failed'))
+      }
     })
+  })
+}
+const checkAllBookedFirmwares = async (devices, currentUserId, todayPassword) => {
+  if (!devices || devices.length === 0) return
+  
+  // Фильтруем только онлайн устройства
+  const onlineDevices = devices.filter(d => d.statusCode === 200)
+  if (onlineDevices.length === 0) return
+  
+  // Собираем пароли для каждого устройства
+  const passwords = {}
+  onlineDevices.forEach(device => {
+    let password = todayPassword
+    if (device.booking?.isBooked && 
+        device.booking?.bookedBy === currentUserId && 
+        device.booking?.accessPassword) {
+      password = device.booking.accessPassword
+    }
+    passwords[device.id] = password
+  })
+  
+  const deviceIds = onlineDevices.map(d => d.id)
+  
+  try {
+    await checkMultipleFirmwares(deviceIds, passwords)
+    console.log(`✅ Batch firmware check completed for ${deviceIds.length} devices`)
+  } catch (error) {
+    console.error('❌ Batch firmware check failed:', error)
   }
+}
   // ✅ Обработчик действий с устройством
   const handleDeviceAction = (data) => {
     clearFirmwareCache(data.deviceId)
@@ -262,12 +293,14 @@ export const useFirmwareStore = defineStore('firmware', () => {
     cleanupSocketListeners()
   })
 
-  return {
+return {
     isLoadingFirmware,
     getFirmwareVersion,
     clearFirmwareCache,
     refreshFirmwareForDevice,
+    checkAllBookedFirmwares,
+    checkMultipleFirmwares,
     firmwareCache,
     pendingAutoChecks
-  }
+}
 })

@@ -24,7 +24,14 @@
                     :loading="releasingAllDevices"
                     :disabled="releasingAllDevices"
                 />
-                
+                <Button 
+                    icon="pi pi-refresh" 
+                    label="FW Check All"
+                    class="p-button-outlined p-button-sm"
+                    @click="manualCheckAllFirmwares"
+                    v-tooltip.bottom="'Check firmware for all devices'"
+                    :loading="isCheckingAllFirmwares"
+                />
                 <Button 
                     icon="pi pi-eye-slash" 
                     class="p-button-text p-button-sm close-btn"
@@ -841,6 +848,8 @@ import StatusIndicator from './StatusIndicator.vue'
 import FirmwareVersion from '@/components/FirmwareVersion.vue'
 import WanTypeDisplay from './WanTypeDisplay.vue'
 
+
+const isCheckingAllFirmwares = ref(false)
 const modeStore = useModeStore()
 const toast = useToast()
 const deviceStore = useDeviceStore()
@@ -917,6 +926,67 @@ const selectPowerAction = (action) => {
     setTimeout(() => {
         showPowerActionConfirmDialog.value = true
     }, 100)
+}
+const manualCheckAllFirmwares = async () => {
+    isCheckingAllFirmwares.value = true
+    
+    const onlineBookedDevices = deviceStore.bookedDevices.filter(d => d.statusCode === 200)
+    if (onlineBookedDevices.length === 0) {
+        toast.add({
+            severity: 'info',
+            summary: 'No Devices',
+            detail: 'No online devices to check',
+            life: 3000
+        })
+        isCheckingAllFirmwares.value = false
+        return
+    }
+    
+    try {
+        const passwords = {}
+        onlineBookedDevices.forEach(device => {
+            let password = todayPassword.value
+            if (device.booking?.isBooked && 
+                device.booking?.bookedBy === deviceStore.currentUserId && 
+                device.booking?.accessPassword) {
+                password = device.booking.accessPassword
+            }
+            passwords[device.id] = password
+        })
+        
+        const deviceIds = onlineBookedDevices.map(d => d.id)
+        
+        // ✅ Получаем response от checkMultipleFirmwares
+        const response = await firmwareStore.checkMultipleFirmwares(deviceIds, passwords, true)
+        
+        // ✅ Проверяем, были ли неудачные проверки
+        if (response && response.details && response.details.failed && response.details.failed.length > 0) {
+            toast.add({
+                severity: 'warn',
+                summary: 'Some checks failed',
+                detail: `${response.details.failed.length} device(s) could not be checked`,
+                life: 5000
+            })
+        } else {
+            toast.add({
+                severity: 'success',
+                summary: 'Firmware Check',
+                detail: `Checked ${onlineBookedDevices.length} devices`,
+                life: 4000
+            })
+        }
+        
+    } catch (error) {
+        console.error('❌ Manual firmware check failed:', error)
+        toast.add({
+            severity: 'error', 
+            summary: 'Firmware Check Failed',
+            detail: error.message,
+            life: 5000
+        })
+    } finally {
+        isCheckingAllFirmwares.value = false
+    }
 }
 
 const confirmPowerAction = () => {
@@ -1432,25 +1502,28 @@ const formatDuration = (seconds) => {
 const checkAllFirmwares = async () => {
     const onlineBookedDevices = deviceStore.bookedDevices.filter(d => d.statusCode === 200)
     if (onlineBookedDevices.length === 0) return
+    
     try {
+        const passwords = {}
+        onlineBookedDevices.forEach(device => {
+            let password = todayPassword.value
+            if (device.booking?.isBooked && 
+                device.booking?.bookedBy === deviceStore.currentUserId && 
+                device.booking?.accessPassword) {
+                password = device.booking.accessPassword
+            }
+            passwords[device.id] = password
+        })
+        
         const deviceIds = onlineBookedDevices.map(d => d.id)
-        await firmwareStore.checkMultipleFirmwares(deviceIds)
-        toast.add({
-            severity: 'success',
-            summary: 'Firmware Check',
-            detail: `Checked ${onlineBookedDevices.length} devices`,
-            life: 4000
-        })
+        
+        // ✅ Передаем false - это автоматическая проверка
+        await firmwareStore.checkMultipleFirmwares(deviceIds, passwords, false)
+        
     } catch (error) {
-        toast.add({
-            severity: 'error', 
-            summary: 'Firmware Check Failed',
-            detail: error.message,
-            life: 5000
-        })
+        console.error('❌ Batch firmware check failed:', error)
     }
 }
-
 let updateTimeout = null
 let lastTableUpdate = 0
 
@@ -1582,6 +1655,20 @@ watch(() => deviceStore.bookedDevices, () => {
     if (isMounted.value) safeUpdateTable()
 }, { deep: true })
 
+// onMounted(() => {
+//     startTimer()
+//     isMounted.value = true
+//     consoleStore.restoreConsoleState()
+//     unsubscribeModeUpdates = modeStore.listenForModeUpdates((data) => {
+//         if (isMounted.value) {
+//             setTimeout(() => {
+//                 if (isMounted.value) safeUpdateTable()
+//             }, 0)
+//         }
+//     })
+// })
+
+
 onMounted(() => {
     startTimer()
     isMounted.value = true
@@ -1593,7 +1680,48 @@ onMounted(() => {
             }, 0)
         }
     })
+    
+    // ✅ BATCH FIRMWARE CHECK при загрузке
+    if (deviceStore.bookedDevices.length > 0) {
+        setTimeout(() => {
+            checkAllFirmwares()
+        }, 2000) // Задержка 2 секунды после монтирования
+    }
 })
+
+// ✅ Следим за добавлением новых устройств
+watch(() => deviceStore.bookedDevices.length, (newLength, oldLength) => {
+    if (newLength > oldLength && newLength > 0 && isMounted.value) {
+        setTimeout(() => {
+            checkAllFirmwares()
+        }, 3000)
+    }
+})
+
+// ✅ Следим за статусом устройств (онлайн/оффлайн)
+watch(
+    () => deviceStore.bookedDevices.map(d => ({ id: d.id, status: d.statusCode })),
+    (newStatuses, oldStatuses) => {
+        if (!isMounted.value || !oldStatuses) return
+        
+        const becameOnline = []
+        for (let i = 0; i < newStatuses.length; i++) {
+            const oldStatus = oldStatuses.find(s => s.id === newStatuses[i].id)
+            if (oldStatus && oldStatus.status !== 200 && newStatuses[i].status === 200) {
+                becameOnline.push(newStatuses[i].id)
+            }
+        }
+        
+        if (becameOnline.length > 0) {
+            console.log(`🔄 Devices became online: ${becameOnline.join(', ')}, checking firmware...`)
+            setTimeout(() => {
+                checkAllFirmwares()
+            }, 5000)
+        }
+    },
+    { deep: true }
+)
+
 
 onUnmounted(() => {
     if (timerInterval) {
