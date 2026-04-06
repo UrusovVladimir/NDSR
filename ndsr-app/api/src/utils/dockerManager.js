@@ -1,22 +1,70 @@
 import { UniversalFirewallManager } from './UniversalFirewallManager.js';
 import { getParamRouter } from '../devices.js';
 import { makeAuthenticatedRequest } from '../actions/athentication.js';
-import { SSHManager } from '../actions/sshManager.js';
 const globalExtenderIps = new Map();
 const globalRouterIps = new Map();
 
 export class DockerManager {
-    constructor(sshManager) {  // ✅ меняем на маленькую букву
+    constructor(sshManager) {
         if (!sshManager) {
             throw new Error('SSHManager is required for DockerManager');
         }
-        this.sshManager = sshManager;  // ✅ меняем на маленькую букву
+        this.sshManager = sshManager;
         this.firewallManager = new UniversalFirewallManager(sshManager);
         this.extenderIps = globalExtenderIps;
         this.routerIps = globalRouterIps;
         console.log(`✅ DockerManager initialized with SSHManager`);
     }
-
+    async getInterfaceIp(containerName, interfaceName) {
+    try {
+        console.log(`🔍 Getting IP for container ${containerName}, interface: ${interfaceName}`);
+        
+        if (!this.sshManager) {
+            throw new Error('SSHManager not available');
+        }
+        
+        // Проверяем соединение
+        if (!this.sshManager.conn || !this.sshManager.conn._connected) {
+            console.log('🔄 SSH connection not active, reconnecting...');
+            await this.sshManager.connect();
+        }
+        
+        // Проверяем, существует ли контейнер
+        const checkContainerCmd = `docker ps --filter "name=${containerName}" --format "{{.Names}}" | grep -Ex "${containerName}"`;
+        const containerCheck = await this.sshManager.executeCommand(checkContainerCmd, false);
+        let actualContainerName = containerCheck.stdout.trim();
+        
+        if (!actualContainerName) {
+            // Пробуем найти контейнер по части имени
+            const findContainerCmd = `docker ps --format "{{.Names}}" | grep -i "${containerName}" | head -1`;
+            const findResult = await this.sshManager.executeCommand(findContainerCmd, false);
+            actualContainerName = findResult.stdout.trim();
+            
+            if (!actualContainerName) {
+                throw new Error(`Container ${containerName} not found`);
+            }
+            console.log(`✅ Found container by pattern: ${actualContainerName}`);
+        }
+        
+        // Получаем IP интерфейса внутри контейнера
+        const command = `docker exec ${actualContainerName} ip addr show ${interfaceName} 2>/dev/null | grep "inet " | awk '{print $2}' | cut -d/ -f1`;
+        console.log(`🔧 Executing command: ${command}`);
+        
+        const result = await this.sshManager.executeCommand(command, false);
+        const ipAddress = result.stdout.trim();
+        
+        if (!ipAddress) {
+            throw new Error(`Interface ${interfaceName} in container ${actualContainerName} not found or has no IP address`);
+        }
+        
+        console.log(`✅ Container ${actualContainerName} interface ${interfaceName} IP: ${ipAddress}`);
+        return ipAddress;
+        
+    } catch (error) {
+        console.error(`❌ Failed to get IP:`, error);
+        throw error;
+    }
+    }
     /**
      * Получает IP адрес extender'а через запрос к роутеру
      */
@@ -490,4 +538,6 @@ export class DockerManager {
             return false;
         }
     }
+
+
 }

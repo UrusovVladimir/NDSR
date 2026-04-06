@@ -11,13 +11,12 @@ export const useDeviceActionsStore = defineStore('deviceActions', () => {
   const deviceStore = useDeviceStore()
   const modeStore = useModeStore()
   const toast = useToast()
+  
+  // ✅ Состояния
   const powerStatusVersion = ref(0)
-
-  // ✅ States
+  const tftpInterfaceIps = ref(new Map())
   const activeOperations = ref(new Map())
   const previousOperations = ref(new Map())
-  
-  // ✅ Состояние для статуса питания (только реальные значения с сервера)
   const powerStatuses = ref(new Map())
 
   // ✅ Computed Getters
@@ -55,25 +54,65 @@ export const useDeviceActionsStore = defineStore('deviceActions', () => {
     return changes
   })
 
-  // ✅ Геттеры для статуса питания (без значений по умолчанию)
+  // ✅ Геттеры для статуса питания
   const getPowerStatus = (deviceId) => {
-    return powerStatuses.value.get(deviceId) // Вернет undefined если статуса нет
+    return powerStatuses.value.get(deviceId)
   }
 
   const isPoweredOn = (deviceId) => {
     const status = getPowerStatus(deviceId)
-    return status === 'on' // только true если точно 'on'
+    return status === 'on'
   }
 
   const isPoweredOff = (deviceId) => {
     const status = getPowerStatus(deviceId)
-    return status === 'off' // только true если точно 'off'
+    return status === 'off'
   }
 
   const hasPowerStatus = (deviceId) => {
-    return powerStatuses.value.has(deviceId) // проверяем, есть ли статус
+    return powerStatuses.value.has(deviceId)
   }
 
+  // ✅ Геттеры для TFTP интерфейсов
+  const getTftpInterfaceIp = async (deviceId, tftpInterfaceName) => {
+    return new Promise((resolve, reject) => {
+      console.log(`📡 Запрос IP интерфейса TFTP для устройства ${deviceId}, интерфейс: ${tftpInterfaceName}`)
+      
+      socket.emit('tftp:getInterfaceIp', {
+        deviceId: deviceId,
+        tftpInterfaceName: tftpInterfaceName
+      }, (response) => {
+        if (response?.success) {
+          // Сохраняем в кэш
+          tftpInterfaceIps.value.set(deviceId, {
+            ip: response.interfaceIp,
+            interfaceName: response.interfaceName,
+            timestamp: Date.now()
+          })
+          
+          console.log(`✅ Получен IP для интерфейса ${tftpInterfaceName}: ${response.interfaceIp}`)
+          resolve(response.interfaceIp)
+        } else {
+          console.error(`❌ Ошибка получения IP: ${response?.error}`)
+          reject(new Error(response?.error || 'Failed to get interface IP'))
+        }
+      })
+      
+      setTimeout(() => {
+        reject(new Error('Request timeout'))
+      }, 10000)
+    })
+  }
+
+  const getCachedTftpInterfaceIp = (deviceId) => {
+    const cached = tftpInterfaceIps.value.get(deviceId)
+    if (cached && Date.now() - cached.timestamp < 5 * 60 * 1000) {
+      return cached.ip
+    }
+    return null
+  }
+
+  // ✅ Инициализация слушателей статуса питания
   const initializePowerListeners = () => {
     socket.on('device:powerStatus', (data) => {
       const oldStatus = powerStatuses.value.get(data.deviceId)
@@ -82,10 +121,9 @@ export const useDeviceActionsStore = defineStore('deviceActions', () => {
       // Обновляем статус
       powerStatuses.value.set(data.deviceId, data.status)
       
-      // ✅ Увеличиваем счетчик ТОЛЬКО при реальном изменении
+      // Увеличиваем счетчик ТОЛЬКО при реальном изменении
       if (statusChanged || data.isInitial) {
         powerStatusVersion.value++
-        // console.log(`🔄 Power status version: ${powerStatusVersion.value} (${data.deviceId}: ${data.status})`)
       }
       
       // Обновляем в deviceStore
@@ -93,20 +131,25 @@ export const useDeviceActionsStore = defineStore('deviceActions', () => {
       if (device) device.powerStatus = data.status
     })
   }
-  initializePowerListeners()
-  const getPowerStatusVersion = () => powerStatusVersion.value
-  // ✅ Очистка слушателей (важно для предотвращения утечек памяти)
-  const cleanupPowerListeners = () => {
-    socket.off('device:powerStatus');
-  };
 
+  // Вызываем инициализацию
+  initializePowerListeners()
+
+  const getPowerStatusVersion = () => powerStatusVersion.value
+
+  // ✅ Очистка слушателей
+  const cleanupPowerListeners = () => {
+    socket.off('device:powerStatus')
+  }
+
+  // ✅ Операции с устройствами
   const safeClearOperation = (deviceId) => {
     setTimeout(() => {
-        const newOperations = new Map(activeOperations.value)
-        if (newOperations.has(deviceId)) {
-            newOperations.delete(deviceId)
-            activeOperations.value = newOperations
-        }
+      const newOperations = new Map(activeOperations.value)
+      if (newOperations.has(deviceId)) {
+        newOperations.delete(deviceId)
+        activeOperations.value = newOperations
+      }
     }, 1000)
   }
 
@@ -114,22 +157,22 @@ export const useDeviceActionsStore = defineStore('deviceActions', () => {
     updateOperationProgress(deviceId, 100)
     
     setTimeout(async () => {
-        try {
-            const device = deviceStore.devices.find(d => d.id === deviceId)
-            if (device && device.booking?.accessPassword) {
-                await modeStore.forceModeCheck(deviceId, device.booking.accessPassword)
-            }
-        } catch (error) {
-            // console.log(`⚠️ Mode refresh after operation failed:`, error.message)
-        } finally {
-            const newOperations = new Map(activeOperations.value)
-            newOperations.delete(deviceId)
-            activeOperations.value = newOperations
+      try {
+        const device = deviceStore.devices.find(d => d.id === deviceId)
+        if (device && device.booking?.accessPassword) {
+          await modeStore.forceModeCheck(deviceId, device.booking.accessPassword)
         }
+      } catch (error) {
+        // Игнорируем ошибки
+      } finally {
+        const newOperations = new Map(activeOperations.value)
+        newOperations.delete(deviceId)
+        activeOperations.value = newOperations
+      }
     }, 2000)
   }
 
-  // ✅ Методы
+  // ✅ Основные методы операций
   const isDeviceBusy = (deviceId) => activeOperations.value.has(deviceId)
   
   const getDeviceOperation = (deviceId) => {
@@ -144,9 +187,9 @@ export const useDeviceActionsStore = defineStore('deviceActions', () => {
 
   const startOperation = (deviceId, operationType) => {
     activeOperations.value.set(deviceId, {
-        type: operationType,
-        progress: 0,
-        startedAt: Date.now()
+      type: operationType,
+      progress: 0,
+      startedAt: Date.now()
     })
     activeOperations.value = new Map(activeOperations.value) 
   }
@@ -154,12 +197,12 @@ export const useDeviceActionsStore = defineStore('deviceActions', () => {
   const updateOperationProgress = (deviceId, progress) => {
     const operation = activeOperations.value.get(deviceId)
     if (operation) {
-        const newOperations = new Map(activeOperations.value)
-        newOperations.set(deviceId, {
-            ...operation,
-            progress: Math.min(100, Math.max(0, progress))
-        })
-        activeOperations.value = newOperations
+      const newOperations = new Map(activeOperations.value)
+      newOperations.set(deviceId, {
+        ...operation,
+        progress: Math.min(100, Math.max(0, progress))
+      })
+      activeOperations.value = newOperations
     }
   }
 
@@ -203,6 +246,12 @@ export const useDeviceActionsStore = defineStore('deviceActions', () => {
           summary: 'Device Rebooting', 
           detail: `${hwId} is restarting...`,
           life: 4000
+        },
+        finished: {
+          severity: 'success',
+          summary: 'Reboot Complete',
+          detail: `${hwId} has been rebooted`,
+          life: 3000
         }
       },
       resetting: {
@@ -211,6 +260,12 @@ export const useDeviceActionsStore = defineStore('deviceActions', () => {
           summary: 'Resetting Configuration',
           detail: `${hwId} configuration is being reset...`,
           life: 5000
+        },
+        finished: {
+          severity: 'success',
+          summary: 'Reset Complete',
+          detail: `${hwId} configuration has been reset`,
+          life: 3000
         }
       },
       resettingDsl: {
@@ -233,6 +288,12 @@ export const useDeviceActionsStore = defineStore('deviceActions', () => {
           summary: 'Initializing Device',
           detail: `${hwId} is being initialized...`,
           life: 4000
+        },
+        finished: {
+          severity: 'success',
+          summary: 'Initialization Complete',
+          detail: `${hwId} has been initialized`,
+          life: 3000
         }
       }
     }
@@ -301,9 +362,10 @@ export const useDeviceActionsStore = defineStore('deviceActions', () => {
     }
   }
 
+  // ✅ Действия с устройствами
   const resetConfig = async (device) => {
     try {
-      const response = await executeDeviceAction(device, 'resetting', 'device:resetConfig', device.id);
+      const response = await executeDeviceAction(device, 'resetting', 'device:resetConfig', device.id)
       
       if (response?.status === 'ok') {
         toast.add({
@@ -311,29 +373,29 @@ export const useDeviceActionsStore = defineStore('deviceActions', () => {
           summary: 'Configuration Reset',
           detail: `Configuration successfully reset for ${device.shortName} (${device.hwId})`,
           life: 4000
-        });
+        })
       } else {
-        throw new Error(response?.error || 'Reset failed');
+        throw new Error(response?.error || 'Reset failed')
       }
     } catch (error) {
-      console.error(`❌ Reset config failed for ${device.hwId}:`, error);
+      console.error(`❌ Reset config failed for ${device.hwId}:`, error)
       
-      if (error.message.includes('timeout') || error.message.includes('Status update timeout')) {
+      if (error.message.includes('timeout')) {
         toast.add({
           severity: 'warn',
           summary: 'Reset Taking Longer',
-          detail: `${device.shortName} reset initiated but taking longer to complete. Device may still reset successfully.`,
+          detail: `${device.shortName} reset initiated but taking longer to complete.`,
           life: 5000
-        });
+        })
       } else {
         toast.add({
           severity: 'error',
           summary: 'Reset Failed',
           detail: `Failed to reset ${device.shortName}: ${error.message}`,
           life: 5000
-        });
+        })
       }
-      throw error;
+      throw error
     }
   }
 
@@ -354,11 +416,11 @@ export const useDeviceActionsStore = defineStore('deviceActions', () => {
     } catch (error) {
       console.error(`❌ Reboot failed for ${device.hwId}:`, error)
       
-      if (error.message.includes('timeout') || error.message.includes('Status update timeout')) {
+      if (error.message.includes('timeout')) {
         toast.add({
           severity: 'warn',
           summary: 'Reboot Taking Longer',
-          detail: `${device.shortName} reboot initiated but taking longer to complete. Device may still reboot successfully.`,
+          detail: `${device.shortName} reboot initiated but taking longer to complete.`,
           life: 5000
         })
       } else {
@@ -373,154 +435,140 @@ export const useDeviceActionsStore = defineStore('deviceActions', () => {
     }
   }
 
-const powerDevice = async (device, action) => {
-  try {
+  const powerDevice = async (device, action) => {
+    try {
       if (!['on', 'off'].includes(action)) {
-          throw new Error(`Invalid action: ${action}. Must be 'on' or 'off'`);
+        throw new Error(`Invalid action: ${action}. Must be 'on' or 'off'`)
       }
       
-      // Проверка наличия rebootPort
       if (!device || !device.rebootPort) {
-          console.error('❌ Invalid device for power operation:', device);
-          throw new Error(`Device not found or reboot port not configured`);
+        throw new Error(`Device not found or reboot port not configured`)
       }
 
       console.log('🔌 Power device:', { 
-          deviceId: device.id, 
-          hwId: device.hwId, 
-          action,
-          rebootPort: device.rebootPort 
-      });
+        deviceId: device.id, 
+        hwId: device.hwId, 
+        action,
+        rebootPort: device.rebootPort 
+      })
 
-      // Выполняем действие
       const response = await executeDeviceAction(
-          device, 
-          `power_${action}`,
-          'device:power',
-          { 
-              deviceId: device.id,
-              action: action
-          },
-          30000
-      );
+        device, 
+        `power_${action}`,
+        'device:power',
+        { 
+          deviceId: device.id,
+          action: action
+        },
+        30000
+      )
       
-      // Проверяем ответ - сервер возвращает { status: 'ok' } а не { success: true }
       if (response?.status === 'ok') {
-          const actionText = action === 'on' ? 'powered on' : 'powered off';
-          toast.add({
-              severity: 'success',
-              summary: 'Power Operation Complete',
-              detail: `${device.shortName} ${device.hwId} was successfully ${actionText}`,
-              life: 4000
-          });
-          
-          // Обновляем статус питания в store
-          // Статус обновится автоматически через socket.on('device:powerStatus')
-          
-          return response;
+        const actionText = action === 'on' ? 'powered on' : 'powered off'
+        toast.add({
+          severity: 'success',
+          summary: 'Power Operation Complete',
+          detail: `${device.shortName} ${device.hwId} was successfully ${actionText}`,
+          life: 4000
+        })
+        return response
       } else {
-          throw new Error(response?.error || `Power ${action} failed`);
+        throw new Error(response?.error || `Power ${action} failed`)
       }
       
-  } catch (error) {
-      console.error(`❌ Power ${action} failed for ${device?.hwId}:`, error);
+    } catch (error) {
+      console.error(`❌ Power ${action} failed for ${device?.hwId}:`, error)
       
-      // Улучшенная обработка ошибок
       if (error.message.includes('timeout')) {
-          toast.add({
-              severity: 'warn',
-              summary: 'Power Operation Taking Longer',
-              detail: `${device.shortName} power ${action} initiated but taking longer to complete.`,
-              life: 5000
-          });
-      } else if (error.message.includes('port not configured')) {
-          toast.add({
-              severity: 'error',
-              summary: 'Configuration Error',
-              detail: `Reboot port not configured for ${device.shortName}`,
-              life: 5000
-          });
+        toast.add({
+          severity: 'warn',
+          summary: 'Power Operation Taking Longer',
+          detail: `${device.shortName} power ${action} initiated but taking longer to complete.`,
+          life: 5000
+        })
       } else {
-          toast.add({
-              severity: 'error',
-              summary: `Power ${action} Failed`,
-              detail: `Failed to power ${action} ${device.shortName}: ${error.message}`,
-              life: 5000
-          });
+        toast.add({
+          severity: 'error',
+          summary: `Power ${action} Failed`,
+          detail: `Failed to power ${action} ${device.shortName}: ${error.message}`,
+          life: 5000
+        })
       }
-      throw error;
+      throw error
+    }
   }
-};
+
   const silentRebootDevice = async (device) => {
     try {
-      console.log(`[SILENT_REBOOT] Sending reboot command to ${device.hwId}`);
+      console.log(`[SILENT_REBOOT] Sending reboot command to ${device.hwId}`)
       
-      // Отправляем команду без отслеживания прогресса
       const result = await new Promise((resolve, reject) => {
         const timeoutId = setTimeout(() => {
-          reject(new Error('Reboot command timeout'));
-        }, 30000);
+          reject(new Error('Reboot command timeout'))
+        }, 30000)
 
         const socketCallback = (error, response) => {
-          clearTimeout(timeoutId);
+          clearTimeout(timeoutId)
           
           if (error) {
-            reject(error);
+            reject(error)
           } else {
-            resolve(response);
+            resolve(response)
           }
-        };
+        }
 
-        socket.timeout(30000).emit('device:reboot', device.id, socketCallback);
-      });
+        socket.timeout(30000).emit('device:reboot', device.id, socketCallback)
+      })
 
       if (result?.status === 'ok') {
-        console.log(`[SILENT_REBOOT] Command sent successfully to ${device.hwId}`);
-        return result;
+        console.log(`[SILENT_REBOOT] Command sent successfully to ${device.hwId}`)
+        return result
       } else {
-        throw new Error(result?.error || 'Reboot failed');
+        throw new Error(result?.error || 'Reboot failed')
       }
     } catch (error) {
-      console.error(`[SILENT_REBOOT] Failed for ${device.hwId}:`, error);
-      throw error;
+      console.error(`[SILENT_REBOOT] Failed for ${device.hwId}:`, error)
+      throw error
     }
-  };
+  }
+
   const silentPowerDevice = async (device, action) => {
     try {
-      console.log(`[SILENT_POWER] Sending power ${action} command to ${device.hwId}`);
+      console.log(`[SILENT_POWER] Sending power ${action} command to ${device.hwId}`)
       
       const result = await new Promise((resolve, reject) => {
         const timeoutId = setTimeout(() => {
-          reject(new Error(`Power ${action} command timeout`));
-        }, 30000);
+          reject(new Error(`Power ${action} command timeout`))
+        }, 30000)
   
         const socketCallback = (error, response) => {
-          clearTimeout(timeoutId);
+          clearTimeout(timeoutId)
           
           if (error) {
-            reject(error);
+            reject(error)
           } else {
-            resolve(response);
+            resolve(response)
           }
-        };
+        }
   
         socket.timeout(30000).emit('device:power', {
           deviceId: device.id,
           action: action
-        }, socketCallback);
-      });
+        }, socketCallback)
+      })
   
       if (result?.status === 'ok') {
-        console.log(`[SILENT_POWER] Power ${action} command sent successfully to ${device.hwId}`);
-        return result;
+        console.log(`[SILENT_POWER] Power ${action} command sent successfully to ${device.hwId}`)
+        return result
       } else {
-        throw new Error(result?.error || `Power ${action} failed`);
+        throw new Error(result?.error || `Power ${action} failed`)
       }
     } catch (error) {
-      console.error(`[SILENT_POWER] Failed for ${device.hwId}:`, error);
-      throw error;
+      console.error(`[SILENT_POWER] Failed for ${device.hwId}:`, error)
+      throw error
     }
-  };
+  }
+
   const resetDslLine = async (device) => {
     try {
       const response = await executeDeviceAction(device, 'resettingDsl', 'device:resetDslLine', null, 60000)
@@ -529,7 +577,7 @@ const powerDevice = async (device, action) => {
         toast.add({
           severity: 'success',
           summary: 'DSL Reset Complete',
-          detail: `${device.shortName} ${device.hwId} successful reset DSL line!`,
+          detail: `${device.shortName} ${device.hwId} DSL line has been reset`,
           life: 3000
         })
       } else {
@@ -625,6 +673,8 @@ const powerDevice = async (device, action) => {
     // States
     activeOperations,
     powerStatuses,
+    tftpInterfaceIps,
+    powerStatusVersion,
     
     // Getters
     isAnyOperationActive,
@@ -636,6 +686,9 @@ const powerDevice = async (device, action) => {
     isPoweredOn,
     isPoweredOff,
     hasPowerStatus,
+    getPowerStatusVersion,
+    getTftpInterfaceIp,
+    getCachedTftpInterfaceIp,
     
     // Actions
     processOperationChanges,
@@ -644,11 +697,9 @@ const powerDevice = async (device, action) => {
     resetDslLine,
     initializationDevice,
     powerDevice,
-    cleanupPowerListeners,
     silentRebootDevice,
     silentPowerDevice,
-    powerStatusVersion,
-    getPowerStatusVersion,
+    cleanupPowerListeners,
     initializePowerListeners
   }
 })

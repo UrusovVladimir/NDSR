@@ -24,7 +24,11 @@ import {
 } from "./actions/changeModeType.js"; 
 import { DisconnectManager } from "./utils/disconnectManager.js";
 import { powerSetup } from "./actions/powerOnOff.js";
+import { SSHManager } from "./actions/sshManager.js";
+import { DockerManager } from './utils/dockerManager.js';
 
+let dockerManager = null;
+let sshConnection = null;
 let devicePowerStatus = new Map();
 let currentModes = new Map();
 let isCronEnabled = false; 
@@ -89,7 +93,41 @@ const syncPowerStatusesToClient = (socket) => {
   });
   console.log(`✅ Synced ${sentCount} power statuses to client`);
 };
-
+const initializeDockerManager = async () => {
+    if (!dockerManager) {
+        try {
+            // Проверяем наличие необходимых переменных окружения
+            if (!process.env.SSH_HOST || !process.env.SSH_USERNAME) {
+                console.error('❌ SSH configuration missing in .env file');
+                throw new Error('SSH configuration missing');
+            }
+            
+            // Создаем и подключаем SSHManager если еще нет
+            if (!sshConnection) {
+                sshConnection = new SSHManager(
+                    process.env.SSH_HOST,
+                    parseInt(process.env.SSH_PORT) || 22,
+                    process.env.SSH_USERNAME,
+                    process.env.SSH_PRIVATE_KEY_PATH,
+                    true
+                );
+                
+                console.log(`🔧 Подключение к SSH серверу ${process.env.SSH_HOST}...`);
+                await sshConnection.connect();
+                console.log(`✅ SSHManager подключен к ${process.env.SSH_HOST}`);
+            }
+            
+            // Создаем DockerManager с существующим SSH соединением
+            dockerManager = new DockerManager(sshConnection);
+            console.log('✅ DockerManager initialized successfully');
+            
+        } catch (error) {
+            console.error('❌ Failed to initialize DockerManager:', error.message);
+            throw error;
+        }
+    }
+    return dockerManager;
+};
 function getDeviceUrl(deviceId, scenario = 'status') {
     const device = getDeviceById(deviceId);
     if (!device) {
@@ -1215,7 +1253,7 @@ function setupEvents(socket, io) {
     handleBatchRelease(socket, data, callback);
   });
 
-   socket.on('device:mwsConnected', async (data, callback) => {
+  socket.on('device:mwsConnected', async (data, callback) => {
   let deviceId; // ✅ Объявляем переменную ДО try
   
   try {
@@ -1488,6 +1526,48 @@ function setupEvents(socket, io) {
         callback({ status: 'error', error: error.message });
         }
         }
+        });
+
+
+  socket.on('tftp:getInterfaceIp', async (data, callback) => {
+      try {
+          const { tftpInterfaceName, deviceId } = data;
+          
+          console.log(`📡 Запрос IP интерфейса TFTP для устройства ${deviceId}, интерфейс: ${tftpInterfaceName}`);
+          
+          // Получаем устройство
+          const device = getDeviceById(deviceId);
+          if (!device) {
+              throw new Error(`Device ${deviceId} not found`);
+          }
+          
+          // Имя контейнера - это hwId устройства (например, "KN-2710")
+          const containerName = device.hwId;
+          
+          console.log(`🔧 Container name: ${containerName}, Interface: ${tftpInterfaceName}`);
+          
+          // Инициализируем DockerManager
+          const manager = await initializeDockerManager();
+          
+          // Получаем IP интерфейса
+          const interfaceIp = await manager.getInterfaceIp(containerName, tftpInterfaceName);
+          
+          callback({
+              success: true,
+              interfaceIp: interfaceIp,
+              interfaceName: tftpInterfaceName,
+              containerName: containerName,
+              deviceId: deviceId
+          });
+          
+      } catch (error) {
+          console.error(`❌ Ошибка получения IP интерфейса:`, error);
+          callback({
+              success: false,
+              error: error.message,
+              deviceId: data?.deviceId
+          });
+      }
         });
   socket.on('device:forceStatusCheck', (deviceId, callback) => {
     console.log(`🔍 Force status check requested for ${deviceId}`);
@@ -2495,6 +2575,23 @@ socket.on('device:changeMode', async (data, callback) => {
     });
   });
 }
+const initDockerManagerOnStart = async () => {
+    try {
+        console.log('🔧 [STARTUP] Initializing DockerManager...');
+        await initializeDockerManager();
+        console.log('✅ [STARTUP] DockerManager ready for TFTP operations');
+        console.log('📡 [STARTUP] SSH connection established to:', process.env.SSH_HOST);
+    } catch (error) {
+        console.warn('⚠️ [STARTUP] DockerManager initialization failed:', error.message);
+        console.log('📌 [STARTUP] TFTP interface IP queries will be attempted on first request');
+        console.log('💡 [STARTUP] Check SSH configuration in .env file');
+    }
+};
+
+// Запускаем инициализацию через 2 секунды после старта сервера
+setTimeout(() => {
+    initDockerManagerOnStart();
+}, 2000);
 
 setInterval(() => autoReleaseOldBookings(globalIO), 60 * 1000);
 setInterval(() => console.log('Current bookings:', Array.from(deviceBookings.entries())), 30000);

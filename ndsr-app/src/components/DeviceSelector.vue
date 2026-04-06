@@ -21,12 +21,19 @@
           <span class="info-label">Size:</span>
           <span>{{ fileSize }}</span>
         </div>
-        <!-- Показываем IP выбранного устройства -->
+        <!-- Показываем IP TFTP сервера -->
         <div class="info-row">
-          <i class="pi pi-globe"></i>
-          <span class="info-label">TFTP server IP of device:</span>
-          <span v-if="selectedDevice">{{ selectedDevice.ip?.split('/')[0] || selectedDevice.managementIp || 'N/A' }}</span>
-          <span v-else class="text-color-secondary">Not selected</span>
+          <i class="pi pi-server"></i>
+          <span class="info-label">TFTP Server IP:</span>
+          <span v-if="isLoadingInterfaceIp">
+            <i class="pi pi-spin pi-spinner"></i> Getting IP...
+          </span>
+          <span v-else-if="tftpInterfaceIp">
+            {{ tftpInterfaceIp }}
+          </span>
+          <span v-else class="text-color-secondary">
+            {{ selectedDevice?.tftpInterfaceName || 'Not available' }}
+          </span>
         </div>
       </div>
 
@@ -72,6 +79,10 @@
                 </span>
                 <span class="device-type">{{ device.type === 'AP' ? 'Access Point' : 'Router' }}</span>
               </div>
+              <div v-if="device.tftpInterfaceName" class="device-tftp-interface">
+                <i class="pi pi-network"></i>
+                <span>TFTP Interface: {{ device.tftpInterfaceName }}</span>
+              </div>
             </div>
             <div class="device-select-radio">
               <RadioButton 
@@ -89,24 +100,12 @@
         <div class="message-content">
           <div>
             <strong>TFTP Server Information</strong>
-            <div>IP: {{ tftpServerIP }}</div>
-            <small>Use this ip address to connect DUT to tftp server</small>
+            <div>IP: <strong>{{ tftpInterfaceIp || 'Getting...' }}</strong></div>
+            <div>File: <code>{{ selectedFile }}</code></div>
+            <small>Use this IP address to connect DUT to TFTP server</small>
           </div>
         </div>
       </Message>
-
-      <!-- Прогресс применения -->
-      <!-- <div v-if="applying" class="apply-progress">
-        <div class="progress-info">
-          <i class="pi pi-spin pi-spinner"></i>
-          <span>Sending command to device...</span>
-          <span>{{ applyProgress }}%</span>
-        </div>
-        <ProgressBar :value="applyProgress" :showValue="false" />
-        <div class="progress-details" v-if="applyDetails">
-          <small>{{ applyDetails }}</small>
-        </div>
-      </div> -->
 
       <Message 
         v-if="error" 
@@ -134,7 +133,7 @@
           icon="pi pi-upload"
           @click="applyToDevice"
           :loading="applying"
-          :disabled="!selectedDeviceId || applying"
+          :disabled="!selectedDeviceId || applying || isLoadingInterfaceIp"
           class="p-button-success"
         />
       </div>
@@ -143,22 +142,22 @@
 </template>
 
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, computed, watch } from 'vue'
 import { useToast } from 'primevue/usetoast'
 import Dialog from 'primevue/dialog'
 import Button from 'primevue/button'
 import RadioButton from 'primevue/radiobutton'
-import ProgressBar from 'primevue/progressbar'
 import Message from 'primevue/message'
 import { useDeviceStore } from '@/stores/useDeviceStore'
 import { useConsoleStore } from '@/stores/useConsoleStore'
-import { useDeviceActionsStore} from '@/stores/useDeviceActionsStore'
+import { useDeviceActionsStore } from '@/stores/useDeviceActionsStore'
 
 const toast = useToast()
 const deviceStore = useDeviceStore()
 const consoleStore = useConsoleStore()
 const deviceActionsStore = useDeviceActionsStore()
-// ✅ Добавляем emit
+
+// Emit для закрытия FileManager
 const emit = defineEmits(['close-files'])
 
 // Props
@@ -171,25 +170,10 @@ const props = defineProps({
 const visible = ref(false)
 const loading = ref(false)
 const applying = ref(false)
-const applyProgress = ref(0)
-const applyDetails = ref('')
 const selectedDeviceId = ref(null)
 const error = ref(null)
-
-// Computed для IP TFTP сервера
-const tftpServerIP = computed(() => {
-  if (selectedDevice.value) {
-    const ip = selectedDevice.value.ip?.split('/')[0] || selectedDevice.value.managementIp
-    return ip || 'Not selected'
-  }
-  return 'Not selected'
-})
-
-// Computed для получения выбранного устройства
-const selectedDevice = computed(() => {
-  if (!selectedDeviceId.value) return null
-  return availableDevices.value.find(d => d.id === selectedDeviceId.value)
-})
+const tftpInterfaceIp = ref(null)
+const isLoadingInterfaceIp = ref(false)
 
 // Computed для доступных устройств
 const availableDevices = computed(() => {
@@ -202,7 +186,60 @@ const availableDevices = computed(() => {
   )
 })
 
+// Computed для получения выбранного устройства
+const selectedDevice = computed(() => {
+  if (!selectedDeviceId.value) return null
+  return availableDevices.value.find(d => d.id === selectedDeviceId.value)
+})
+
 const selectedFile = computed(() => props.fileName)
+
+// Получение IP интерфейса TFTP сервера
+const fetchTftpInterfaceIp = async (device) => {
+  if (!device || !device.tftpInterfaceName) {
+    console.log('⚠️ Нет tftpInterfaceName для устройства', device?.id)
+    tftpInterfaceIp.value = null
+    return
+  }
+
+  isLoadingInterfaceIp.value = true
+  
+  try {
+    // Проверяем кэш
+    const cachedIp = deviceActionsStore.getCachedTftpInterfaceIp(device.id)
+    if (cachedIp) {
+      console.log(`📡 Используем кэшированный IP для ${device.tftpInterfaceName}: ${cachedIp}`)
+      tftpInterfaceIp.value = cachedIp
+      isLoadingInterfaceIp.value = false
+      return
+    }
+
+    // Получаем свежий IP
+    console.log(`📡 Запрашиваем IP для интерфейса ${device.tftpInterfaceName}`)
+    const ip = await deviceActionsStore.getTftpInterfaceIp(device.id, device.tftpInterfaceName)
+    tftpInterfaceIp.value = ip
+    console.log(`✅ Получен IP для ${device.tftpInterfaceName}: ${ip}`)
+    
+  } catch (err) {
+    console.error('❌ Ошибка получения IP интерфейса:', err)
+    tftpInterfaceIp.value = null
+    toast.add({
+      severity: 'warn',
+      summary: 'Warning',
+      detail: `Cannot get TFTP interface IP: ${err.message}`,
+      life: 5000
+    })
+  } finally {
+    isLoadingInterfaceIp.value = false
+  }
+}
+
+// Следим за выбранным устройством
+watch(selectedDevice, (newDevice, oldDevice) => {
+  if (newDevice && newDevice.id !== oldDevice?.id) {
+    fetchTftpInterfaceIp(newDevice)
+  }
+})
 
 // Методы
 const show = () => {
@@ -210,8 +247,8 @@ const show = () => {
   visible.value = true
   selectedDeviceId.value = null
   error.value = null
-  applyProgress.value = 0
-  applyDetails.value = ''
+  tftpInterfaceIp.value = null
+  isLoadingInterfaceIp.value = false
   
   if (availableDevices.value.length === 0) {
     toast.add({
@@ -228,8 +265,8 @@ const closeModal = () => {
     visible.value = false
     selectedDeviceId.value = null
     error.value = null
-    applyProgress.value = 0
-    applyDetails.value = ''
+    tftpInterfaceIp.value = null
+    isLoadingInterfaceIp.value = false
   }
 }
 
@@ -238,6 +275,7 @@ const selectDevice = (deviceId) => {
     selectedDeviceId.value = deviceId
   }
 }
+
 const applyToDevice = async () => {
   if (!selectedDeviceId.value) {
     error.value = 'Please select a device'
@@ -299,6 +337,7 @@ const applyToDevice = async () => {
 
   } catch (err) {
     console.error('❌ Failed:', err)
+    error.value = err.message
     toast.add({
       severity: 'error',
       summary: 'Failed',
@@ -308,8 +347,10 @@ const applyToDevice = async () => {
     applying.value = false
   }
 }
+
 defineExpose({ show })
 </script>
+
 <style scoped>
 .device-selector-content {
   display: flex;
@@ -429,6 +470,19 @@ defineExpose({ show })
   font-size: 0.7rem;
 }
 
+.device-tftp-interface {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  font-size: 0.7rem;
+  color: var(--text-color-secondary);
+  margin-top: 0.25rem;
+}
+
+.device-tftp-interface i {
+  font-size: 0.65rem;
+}
+
 .device-ip,
 .device-type {
   display: inline-flex;
@@ -476,36 +530,6 @@ defineExpose({ show })
   font-size: 2rem;
   margin-bottom: 0.5rem;
   display: block;
-}
-
-.apply-progress {
-  padding: 1rem;
-  background: var(--surface-ground);
-  border-radius: 8px;
-}
-
-.progress-info {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  margin-bottom: 0.75rem;
-  font-size: 0.9rem;
-  color: var(--text-color-secondary);
-}
-
-.progress-info i {
-  color: var(--primary-color);
-}
-
-.progress-info span:first-child {
-  flex: 1;
-}
-
-.progress-details {
-  margin-top: 0.5rem;
-  font-size: 0.8rem;
-  color: var(--text-color-secondary);
-  text-align: center;
 }
 
 .mt-2 {
