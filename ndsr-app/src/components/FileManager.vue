@@ -299,7 +299,7 @@ const handleCloseFiles = () => {
 }
 
 // URL для API
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://192.168.5.150:3000'
+const API_BASE_URL = import.meta.env.VITE_API_URL
 
 const getFileSize = (fileName) => {
   if (!fileName) return ''
