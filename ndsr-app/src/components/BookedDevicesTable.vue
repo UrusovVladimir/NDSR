@@ -25,6 +25,7 @@
                     :disabled="releasingAllDevices"
                 />
                 <Button 
+                    v-if="deviceStore.bookedDevicesCount > 1"
                     icon="pi pi-refresh" 
                     label="FW Check All"
                     class="p-button-outlined p-button-sm"
@@ -1654,7 +1655,27 @@ watch(
 watch(() => deviceStore.bookedDevices, () => {
     if (isMounted.value) safeUpdateTable()
 }, { deep: true })
-
+// В releaseBooking и других методах, но проще всего добавить watch на bookedDevices
+watch(() => deviceStore.bookedDevices.length, (newLength, oldLength) => {
+    if (newLength > oldLength && newLength > 0 && isMounted.value) {
+        // Запрашиваем статусы для новых устройств
+        deviceStore.bookedDevices.forEach(async (device) => {
+            if (device.rebootPort && !deviceActionsStore.hasPowerStatus(device.id)) {
+                try {
+                    await deviceActionsStore.requestPowerStatus(device.id);
+                    // console.log(`✅ Power status requested for ${device.hwId}`);
+                } catch (error) {
+                    // console.error(`Failed to get power status for ${device.hwId}:`, error);
+                }
+            }
+        });
+        
+        setTimeout(() => {
+            checkAllFirmwares();
+            safeUpdateTable();
+        }, 3000);
+    }
+});
 // onMounted(() => {
 //     startTimer()
 //     isMounted.value = true
@@ -1713,7 +1734,7 @@ watch(
         }
         
         if (becameOnline.length > 0) {
-            console.log(`🔄 Devices became online: ${becameOnline.join(', ')}, checking firmware...`)
+            // console.log(`🔄 Devices became online: ${becameOnline.join(', ')}, checking firmware...`)
             setTimeout(() => {
                 checkAllFirmwares()
             }, 5000)

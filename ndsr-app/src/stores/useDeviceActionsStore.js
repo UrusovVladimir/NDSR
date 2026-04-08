@@ -76,7 +76,7 @@ export const useDeviceActionsStore = defineStore('deviceActions', () => {
   // ✅ Геттеры для TFTP интерфейсов
   const getTftpInterfaceIp = async (deviceId, tftpInterfaceName) => {
     return new Promise((resolve, reject) => {
-      console.log(`📡 Запрос IP интерфейса TFTP для устройства ${deviceId}, интерфейс: ${tftpInterfaceName}`)
+      // console.log(`📡 Запрос IP интерфейса TFTP для устройства ${deviceId}, интерфейс: ${tftpInterfaceName}`)
       
       socket.emit('tftp:getInterfaceIp', {
         deviceId: deviceId,
@@ -90,7 +90,7 @@ export const useDeviceActionsStore = defineStore('deviceActions', () => {
             timestamp: Date.now()
           })
           
-          console.log(`✅ Получен IP для интерфейса ${tftpInterfaceName}: ${response.interfaceIp}`)
+          // console.log(`✅ Получен IP для интерфейса ${tftpInterfaceName}: ${response.interfaceIp}`)
           resolve(response.interfaceIp)
         } else {
           console.error(`❌ Ошибка получения IP: ${response?.error}`)
@@ -103,7 +103,19 @@ export const useDeviceActionsStore = defineStore('deviceActions', () => {
       }, 10000)
     })
   }
-
+  const requestPowerStatus = (deviceId) => {
+    return new Promise((resolve, reject) => {
+        socket.emit('device:getPowerStatus', deviceId, (response) => {
+            if (response?.success) {
+                resolve(response.status);
+            } else {
+                reject(new Error(response?.error || 'Failed to get power status'));
+            }
+        });
+        
+        setTimeout(() => reject(new Error('Request timeout')), 10000);
+    });
+};
   const getCachedTftpInterfaceIp = (deviceId) => {
     const cached = tftpInterfaceIps.value.get(deviceId)
     if (cached && Date.now() - cached.timestamp < 5 * 60 * 1000) {
@@ -445,12 +457,12 @@ export const useDeviceActionsStore = defineStore('deviceActions', () => {
         throw new Error(`Device not found or reboot port not configured`)
       }
 
-      console.log('🔌 Power device:', { 
-        deviceId: device.id, 
-        hwId: device.hwId, 
-        action,
-        rebootPort: device.rebootPort 
-      })
+      // console.log('🔌 Power device:', { 
+      //   deviceId: device.id, 
+      //   hwId: device.hwId, 
+      //   action,
+      //   rebootPort: device.rebootPort 
+      // })
 
       const response = await executeDeviceAction(
         device, 
@@ -500,7 +512,7 @@ export const useDeviceActionsStore = defineStore('deviceActions', () => {
 
   const silentRebootDevice = async (device) => {
     try {
-      console.log(`[SILENT_REBOOT] Sending reboot command to ${device.hwId}`)
+      // console.log(`[SILENT_REBOOT] Sending reboot command to ${device.hwId}`)
       
       const result = await new Promise((resolve, reject) => {
         const timeoutId = setTimeout(() => {
@@ -521,7 +533,7 @@ export const useDeviceActionsStore = defineStore('deviceActions', () => {
       })
 
       if (result?.status === 'ok') {
-        console.log(`[SILENT_REBOOT] Command sent successfully to ${device.hwId}`)
+        // console.log(`[SILENT_REBOOT] Command sent successfully to ${device.hwId}`)
         return result
       } else {
         throw new Error(result?.error || 'Reboot failed')
@@ -534,7 +546,7 @@ export const useDeviceActionsStore = defineStore('deviceActions', () => {
 
   const silentPowerDevice = async (device, action) => {
     try {
-      console.log(`[SILENT_POWER] Sending power ${action} command to ${device.hwId}`)
+      // console.log(`[SILENT_POWER] Sending power ${action} command to ${device.hwId}`)
       
       const result = await new Promise((resolve, reject) => {
         const timeoutId = setTimeout(() => {
@@ -558,7 +570,7 @@ export const useDeviceActionsStore = defineStore('deviceActions', () => {
       })
   
       if (result?.status === 'ok') {
-        console.log(`[SILENT_POWER] Power ${action} command sent successfully to ${device.hwId}`)
+        // console.log(`[SILENT_POWER] Power ${action} command sent successfully to ${device.hwId}`)
         return result
       } else {
         throw new Error(result?.error || `Power ${action} failed`)
@@ -700,6 +712,7 @@ export const useDeviceActionsStore = defineStore('deviceActions', () => {
     silentRebootDevice,
     silentPowerDevice,
     cleanupPowerListeners,
-    initializePowerListeners
+    initializePowerListeners,
+    requestPowerStatus
   }
 })

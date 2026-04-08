@@ -162,14 +162,9 @@ const handleDeviceBooked = async (event) => {
         try {
             await modeStore.updateModeFromDetection(deviceId, password);
         } catch (error) {
-            console.error(`⚠️ Mode detection failed for ${deviceId}:`, error.message);
+            // console.error(`⚠️ Mode detection failed for ${deviceId}:`, error.message);
         }
     }, 3000);
-};
-
-// Обработчик обновления MWS статусов
-const handleMwsStatusUpdate = (data) => {
-  // Логика обрабатывается в store
 };
 
 const initializeApp = async () => {

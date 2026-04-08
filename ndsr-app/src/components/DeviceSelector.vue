@@ -21,19 +21,30 @@
           <span class="info-label">Size:</span>
           <span>{{ fileSize }}</span>
         </div>
-        <!-- Показываем IP TFTP сервера -->
-        <div class="info-row">
+        <!-- Показываем IP TFTP сервера с кнопкой обновления -->
+        <div class="info-row tftp-ip-row">
           <i class="pi pi-server"></i>
           <span class="info-label">TFTP Server IP:</span>
-          <span v-if="isLoadingInterfaceIp">
-            <i class="pi pi-spin pi-spinner"></i> Getting IP...
-          </span>
-          <span v-else-if="tftpInterfaceIp">
-            {{ tftpInterfaceIp }}
-          </span>
-          <span v-else class="text-color-secondary">
-            {{ selectedDevice?.tftpInterfaceName || 'Not available' }}
-          </span>
+          <div class="tftp-ip-value">
+            <span v-if="isLoadingInterfaceIp">
+              <i class="pi pi-spin pi-spinner"></i> Getting IP...
+            </span>
+            <span v-else-if="tftpInterfaceIp">
+              {{ tftpInterfaceIp }}
+            </span>
+            <span v-else class="text-color-secondary">
+              {{ selectedDevice?.tftpInterfaceName || 'Not available' }}
+            </span>
+          </div>
+          <Button
+            v-if="selectedDevice?.tftpInterfaceName"
+            icon="pi pi-refresh"
+            class="p-button-text p-button-sm refresh-ip-btn"
+            @click="refreshTftpInterfaceIp"
+            :loading="isLoadingInterfaceIp"
+            v-tooltip="'Refresh TFTP server IP'"
+            :disabled="isLoadingInterfaceIp"
+          />
         </div>
       </div>
 
@@ -129,7 +140,7 @@
           class="p-button-text"
         />
         <Button
-          label="Apply to Device"
+          label="Start Updating"
           icon="pi pi-upload"
           @click="applyToDevice"
           :loading="applying"
@@ -195,9 +206,9 @@ const selectedDevice = computed(() => {
 const selectedFile = computed(() => props.fileName)
 
 // Получение IP интерфейса TFTP сервера
-const fetchTftpInterfaceIp = async (device) => {
+const fetchTftpInterfaceIp = async (device, forceRefresh = false) => {
   if (!device || !device.tftpInterfaceName) {
-    console.log('⚠️ Нет tftpInterfaceName для устройства', device?.id)
+    // console.log('⚠️ Нет tftpInterfaceName для устройства', device?.id)
     tftpInterfaceIp.value = null
     return
   }
@@ -205,20 +216,31 @@ const fetchTftpInterfaceIp = async (device) => {
   isLoadingInterfaceIp.value = true
   
   try {
-    // Проверяем кэш
-    const cachedIp = deviceActionsStore.getCachedTftpInterfaceIp(device.id)
-    if (cachedIp) {
-      console.log(`📡 Используем кэшированный IP для ${device.tftpInterfaceName}: ${cachedIp}`)
-      tftpInterfaceIp.value = cachedIp
-      isLoadingInterfaceIp.value = false
-      return
+    // Проверяем кэш (только если не принудительное обновление)
+    if (!forceRefresh) {
+      const cachedIp = deviceActionsStore.getCachedTftpInterfaceIp(device.id)
+      if (cachedIp) {
+        // console.log(`📡 Используем кэшированный IP для ${device.tftpInterfaceName}: ${cachedIp}`)
+        tftpInterfaceIp.value = cachedIp
+        isLoadingInterfaceIp.value = false
+        return
+      }
     }
 
-    // Получаем свежий IP
-    console.log(`📡 Запрашиваем IP для интерфейса ${device.tftpInterfaceName}`)
+    // Получаем свежий IP (принудительно обновляем кэш)
+    // console.log(`📡 Запрашиваем IP для интерфейса ${device.tftpInterfaceName}${forceRefresh ? ' (принудительное обновление)' : ''}`)
     const ip = await deviceActionsStore.getTftpInterfaceIp(device.id, device.tftpInterfaceName)
     tftpInterfaceIp.value = ip
-    console.log(`✅ Получен IP для ${device.tftpInterfaceName}: ${ip}`)
+    // console.log(`✅ Получен IP для ${device.tftpInterfaceName}: ${ip}`)
+    
+    if (forceRefresh) {
+      toast.add({
+        severity: 'success',
+        summary: 'IP Refreshed',
+        detail: `TFTP server IP updated to ${ip}`,
+        life: 3000
+      })
+    }
     
   } catch (err) {
     console.error('❌ Ошибка получения IP интерфейса:', err)
@@ -234,16 +256,31 @@ const fetchTftpInterfaceIp = async (device) => {
   }
 }
 
+// Ручное обновление IP
+const refreshTftpInterfaceIp = async () => {
+  if (!selectedDevice.value) {
+    toast.add({
+      severity: 'warn',
+      summary: 'No Device Selected',
+      detail: 'Please select a device first',
+      life: 3000
+    })
+    return
+  }
+  
+  await fetchTftpInterfaceIp(selectedDevice.value, true)
+}
+
 // Следим за выбранным устройством
 watch(selectedDevice, (newDevice, oldDevice) => {
   if (newDevice && newDevice.id !== oldDevice?.id) {
-    fetchTftpInterfaceIp(newDevice)
+    fetchTftpInterfaceIp(newDevice, false)
   }
 })
 
 // Методы
 const show = () => {
-  console.log('🎯 DeviceSelector show() called')
+  // console.log('🎯 DeviceSelector show() called')
   visible.value = true
   selectedDeviceId.value = null
   error.value = null
@@ -293,7 +330,7 @@ const applyToDevice = async () => {
   try {
     // Проверяем статус питания
     const powerStatus = deviceActionsStore.getPowerStatus(device.id)
-    console.log(`[DeviceSelector] Power status for ${device.hwId}: ${powerStatus}`)
+    // console.log(`[DeviceSelector] Power status for ${device.hwId}: ${powerStatus}`)
     
     // Управление питанием (без прогресса)
     if (powerStatus === 'on') {
@@ -385,6 +422,28 @@ defineExpose({ show })
   font-weight: 600;
   color: var(--text-color-secondary);
   min-width: 100px;
+}
+
+/* Стили для строки с TFTP IP и кнопкой обновления */
+.tftp-ip-row {
+  flex-wrap: wrap;
+}
+
+.tftp-ip-value {
+  flex: 1;
+  min-width: 120px;
+}
+
+.refresh-ip-btn {
+  color: var(--primary-color) !important;
+  width: 2rem !important;
+  height: 2rem !important;
+  transition: all 0.2s ease;
+}
+
+.refresh-ip-btn:hover {
+  transform: rotate(180deg);
+  background: var(--surface-hover) !important;
 }
 
 .section-title {
@@ -554,6 +613,20 @@ defineExpose({ show })
   
   .info-label {
     min-width: 80px;
+  }
+  
+  .tftp-ip-row {
+    flex-wrap: wrap;
+  }
+  
+  .tftp-ip-value {
+    min-width: 100%;
+    margin-left: 1.75rem;
+    margin-bottom: 0.5rem;
+  }
+  
+  .refresh-ip-btn {
+    margin-left: auto;
   }
 }
 </style>

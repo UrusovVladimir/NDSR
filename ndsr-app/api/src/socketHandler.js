@@ -76,22 +76,23 @@ let dailyPasswords = {
 const universalPromptRegex = /.*/i;
 
 const syncPowerStatusesToClient = (socket) => {
-  console.log('🔌 Syncing power statuses to client');
-  
-  let sentCount = 0;
-  devicePowerStatus.forEach((status, deviceId) => {
-    // Отправляем только если устройство забронировано
-    if (deviceBookings.has(deviceId)) {
-      socket.emit('device:powerStatus', {
-        deviceId: deviceId,
-        status: status,
-        timestamp: Date.now()
-      });
-      sentCount++;
-      console.log(`📡 Sent power status for ${deviceId}: ${status}`);
-    }
-  });
-  console.log(`✅ Synced ${sentCount} power statuses to client`);
+    console.log('🔌 Syncing power statuses to client');
+    
+    let sentCount = 0;
+    devicePowerStatus.forEach((status, deviceId) => {
+        // Отправляем только если устройство забронировано И статус не 'unknown'
+        if (deviceBookings.has(deviceId) && status && status !== 'unknown') {
+            socket.emit('device:powerStatus', {
+                deviceId: deviceId,
+                status: status,
+                timestamp: Date.now(),
+                isInitial: true
+            });
+            sentCount++;
+            console.log(`📡 Sent power status for ${deviceId}: ${status}`);
+        }
+    });
+    console.log(`✅ Synced ${sentCount} power statuses to client`);
 };
 const initializeDockerManager = async () => {
     if (!dockerManager) {
@@ -484,7 +485,30 @@ async function sendInitData(socket) {
     });
   
     socket.emit('device:list', devicesWithBookings);
-
+    // Добавляем инициацию статуса порта питания при бронировании 
+    devicesWithBookings.forEach(device => {
+        if (device.rebootPort && device.booking?.isBooked) {
+            const powerStatus = devicePowerStatus.get(device.id);
+            if (!powerStatus || powerStatus === 'unknown') {
+                // Асинхронно получаем статус
+                (async () => {
+                    try {
+                        const status = await getPortPowerStatus(device.id);
+                        devicePowerStatus.set(device.id, status);
+                        socket.emit('device:powerStatus', {
+                            deviceId: device.id,
+                            status: status,
+                            timestamp: Date.now(),
+                            isInitial: true
+                        });
+                        console.log(`📡 Updated power status for ${device.id}: ${status}`);
+                    } catch (error) {
+                        console.error(`Failed to get power status for ${device.id}:`, error);
+                    }
+                })();
+            }
+        }
+    });
     // ✅ ОТПРАВЛЯЕМ MWS СТАТУС ДЛЯ КАЖДОГО УСТРОЙСТВА
     devicesWithBookings.forEach(device => {
       const modeInfo = currentModes.get(device.id);
@@ -978,7 +1002,32 @@ function setupEvents(socket, io) {
       callback?.({ success: false, error: error.message })
     })
   })
-  
+  // В setupEvents, после других обработчиков, добавьте:
+  socket.on('device:getPowerStatus', async (deviceId, callback) => {
+      try {
+          console.log(`🔍 Getting power status for device ${deviceId}`);
+          
+          const status = await getPortPowerStatus(deviceId);
+          devicePowerStatus.set(deviceId, status);
+          
+          // Отправляем статус всем клиентам
+          io.emit('device:powerStatus', {
+              deviceId: deviceId,
+              status: status,
+              timestamp: Date.now(),
+              changed: true
+          });
+          
+          if (callback) {
+              callback({ success: true, status: status });
+          }
+      } catch (error) {
+          console.error(`❌ Failed to get power status for ${deviceId}:`, error);
+          if (callback) {
+              callback({ success: false, error: error.message });
+          }
+      }
+  });
   socket.on('cron:toggle', (newStatus, callback) => {
     console.log("Статус крона:",newStatus)
     if (typeof newStatus !== 'boolean') {
