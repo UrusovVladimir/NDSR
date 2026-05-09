@@ -162,12 +162,7 @@ const getRefreshTooltip = computed(() => {
 })
 
 const getDevicePassword = () => {
-  if (props.device.booking?.isBooked && 
-      props.device.booking?.bookedBy === props.currentUserId &&
-      props.device.booking?.accessPassword) {
-    return props.device.booking.accessPassword
-  }
-  return props.todayPassword
+    return props.todayPassword
 }
 
 const checkMobileLayout = () => {

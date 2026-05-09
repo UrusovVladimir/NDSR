@@ -6,11 +6,9 @@ export const useFirmwareStore = defineStore('firmware', () => {
   const isLoadingFirmware = ref(false)
   const firmwareCache = ref(new Map())
   
-  // ✅ Защита от повторных обработок
   const lastAutoCheckTime = ref(new Map())
   const pendingAutoChecks = ref(new Set())
 
-  // ✅ Socket слушатели ТОЛЬКО в store
   const setupSocketListeners = () => {
     socket.on('device:checkFirmware', handleAutoFirmwareCheck)
     socket.on('device:bookingUpdated', handleBookingUpdate)
@@ -18,8 +16,6 @@ export const useFirmwareStore = defineStore('firmware', () => {
     socket.on('device:reboot', handleDeviceAction)
     socket.on('device:resetDslLine', handleDeviceAction)
     socket.on('device:batchFirmwareUpdated', (data) => {
-      // console.log('🔄 Received batch firmware update:', data)
-      
       if (data.successful && Array.isArray(data.successful)) {
         data.successful.forEach(({ deviceId, version }) => {
           firmwareCache.value.set(deviceId, {
@@ -29,15 +25,14 @@ export const useFirmwareStore = defineStore('firmware', () => {
             errorType: null
           })
         })
-        // console.log(`✅ Updated ${data.successful.length} firmware versions in store`)
       
-        // Триггерим событие для компонентов
         window.dispatchEvent(new CustomEvent('firmware:batchUpdated', {
           detail: data
         }))
       }
     })
   }
+
   const cleanupSocketListeners = () => {
     socket.off('device:checkFirmware', handleAutoFirmwareCheck)
     socket.off('device:bookingUpdated', handleBookingUpdate)
@@ -46,110 +41,89 @@ export const useFirmwareStore = defineStore('firmware', () => {
     socket.off('device:resetDslLine', handleDeviceAction)
   }
 
-  // ✅ Обработчик автоматической проверки прошивки
   const handleAutoFirmwareCheck = (data) => {
     if (data.reason === 'status_change') {
       const now = Date.now()
       const lastCheck = lastAutoCheckTime.value.get(data.deviceId) || 0
       
-      // ❌ Защита от слишком частых проверок (30 секунд)
-      if (now - lastCheck < 30000) {
-        // console.log(`⏳ Store: Skipping frequent auto check for device ${data.deviceId}`)
-        return
-      }
+      if (now - lastCheck < 30000) return
       
       lastAutoCheckTime.value.set(data.deviceId, now)
       pendingAutoChecks.value.add(data.deviceId)
       
-      // console.log(`🔄 Store: Auto firmware check for device ${data.deviceId}`)
-      
-      // Триггерим событие для компонентов
       window.dispatchEvent(new CustomEvent('firmware:autoCheck', {
         detail: { deviceId: data.deviceId }
       }))
     }
   }
 
-  // ✅ Обработчик обновлений бронирований
   const handleBookingUpdate = (data) => {
     if (!data.booking.isBooked) {
-      // Очищаем кэш при освобождении устройства
       clearFirmwareCache(data.deviceId)
-      // console.log(`🧹 Store: Cleared cache for released device ${data.deviceId}`)
     }
     
-    // Триггерим событие для компонентов
     window.dispatchEvent(new CustomEvent('firmware:bookingUpdated', {
       detail: data
     }))
   }
 
-const checkMultipleFirmwares = async (deviceIds, passwords = {}, isManual = false) => {
-  return new Promise((resolve, reject) => {
-    socket.emit('device:checkMultipleFirmwares', { 
-      deviceIds: deviceIds.map(id => String(id)),
-      passwords: passwords
-    }, (response) => {
-      if (response?.success) {
-        response.details.successful.forEach(({ deviceId, version }) => {
-          firmwareCache.value.set(deviceId, {
-            version: version,
-            timestamp: Date.now(),
-            error: null,
-            errorType: null
-          })
-        })
-        
-        // ✅ Передаем флаг isManual в событие
-        window.dispatchEvent(new CustomEvent('firmware:batchUpdated', {
-          detail: {
-            ...response.details,
-            isManual: isManual
-          }
-        }))
-        
-        resolve(response)
-      } else {
-        console.error('❌ Batch firmware check failed:', response?.message)
-        reject(new Error(response?.message || 'Batch firmware check failed'))
-      }
+  // ✅ ИСПРАВЛЕНО: убрана зависимость от бронирования
+  const checkAllFirmwares = async (devices, todayPassword) => {
+    if (!devices || devices.length === 0) return
+    
+    const onlineDevices = devices.filter(d => d.statusCode === 200)
+    if (onlineDevices.length === 0) return
+    
+    const passwords = {}
+    onlineDevices.forEach(device => {
+      passwords[device.id] = todayPassword
     })
-  })
-}
-const checkAllBookedFirmwares = async (devices, currentUserId, todayPassword) => {
-  if (!devices || devices.length === 0) return
-  
-  // Фильтруем только онлайн устройства
-  const onlineDevices = devices.filter(d => d.statusCode === 200)
-  if (onlineDevices.length === 0) return
-  
-  // Собираем пароли для каждого устройства
-  const passwords = {}
-  onlineDevices.forEach(device => {
-    let password = todayPassword
-    if (device.booking?.isBooked && 
-        device.booking?.bookedBy === currentUserId && 
-        device.booking?.accessPassword) {
-      password = device.booking.accessPassword
+    
+    const deviceIds = onlineDevices.map(d => d.id)
+    
+    try {
+      await checkMultipleFirmwares(deviceIds, passwords)
+      console.log(`✅ Batch firmware check completed for ${deviceIds.length} devices`)
+    } catch (error) {
+      console.error('❌ Batch firmware check failed:', error)
     }
-    passwords[device.id] = password
-  })
-  
-  const deviceIds = onlineDevices.map(d => d.id)
-  
-  try {
-    await checkMultipleFirmwares(deviceIds, passwords)
-    console.log(`✅ Batch firmware check completed for ${deviceIds.length} devices`)
-  } catch (error) {
-    console.error('❌ Batch firmware check failed:', error)
   }
-}
-  // ✅ Обработчик действий с устройством
+
+  const checkMultipleFirmwares = async (deviceIds, passwords = {}, isManual = false) => {
+    return new Promise((resolve, reject) => {
+      socket.emit('device:checkMultipleFirmwares', { 
+        deviceIds: deviceIds.map(id => String(id)),
+        passwords: passwords
+      }, (response) => {
+        if (response?.success) {
+          response.details.successful.forEach(({ deviceId, version }) => {
+            firmwareCache.value.set(deviceId, {
+              version: version,
+              timestamp: Date.now(),
+              error: null,
+              errorType: null
+            })
+          })
+          
+          window.dispatchEvent(new CustomEvent('firmware:batchUpdated', {
+            detail: {
+              ...response.details,
+              isManual: isManual
+            }
+          }))
+          
+          resolve(response)
+        } else {
+          console.error('❌ Batch firmware check failed:', response?.message)
+          reject(new Error(response?.message || 'Batch firmware check failed'))
+        }
+      })
+    })
+  }
+
   const handleDeviceAction = (data) => {
     clearFirmwareCache(data.deviceId)
-    // console.log(`🔧 Store: Cleared cache after device action ${data.deviceId}`)
     
-    // Триггерим событие для компонентов
     window.dispatchEvent(new CustomEvent('firmware:deviceAction', {
       detail: data
     }))
@@ -241,9 +215,6 @@ const checkAllBookedFirmwares = async (devices, currentUserId, todayPassword) =>
         )
       })
     } catch (error) {
-      if (forceRefresh) {
-        // console.error(`Error getting firmware for ${device.hwId}:`, error.message)  
-      }
       throw error
     } finally {
       isLoadingFirmware.value = false
@@ -268,14 +239,9 @@ const checkAllBookedFirmwares = async (devices, currentUserId, todayPassword) =>
     })
   }
 
-  const refreshFirmwareForDevice = async (device, currentUserId, todayPassword) => {
-    let password = todayPassword
-    
-    if (device.booking?.isBooked && 
-        device.booking?.bookedBy === currentUserId && 
-        device.booking?.accessPassword) {
-      password = device.booking.accessPassword
-    }
+  // ✅ ИСПРАВЛЕНО: убрана зависимость от бронирования
+  const refreshFirmwareForDevice = async (device, todayPassword) => {
+    const password = todayPassword
 
     if (!password) {
       console.warn(`No password available for device ${device.hwId}`)
@@ -285,22 +251,20 @@ const checkAllBookedFirmwares = async (devices, currentUserId, todayPassword) =>
     return await getFirmwareVersion(device, password, true)
   }
 
-  // Инициализация store
   setupSocketListeners()
   
-  // Очистка при уничтожении store
   onUnmounted(() => {
     cleanupSocketListeners()
   })
 
-return {
+  return {
     isLoadingFirmware,
     getFirmwareVersion,
     clearFirmwareCache,
     refreshFirmwareForDevice,
-    checkAllBookedFirmwares,
+    checkAllFirmwares,
     checkMultipleFirmwares,
     firmwareCache,
     pendingAutoChecks
-}
+  }
 })

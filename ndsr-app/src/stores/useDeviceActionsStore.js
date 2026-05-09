@@ -22,13 +22,14 @@ export const useDeviceActionsStore = defineStore('deviceActions', () => {
   // ✅ Computed Getters
   const isAnyOperationActive = computed(() => activeOperations.value.size > 0)
   
+  // ✅ ИСПРАВЛЕНО: используем deviceStore.devices вместо deviceStore.bookedDevices
   const operationChanges = computed(() => {
     const changes = {
       started: [],
       finished: []
     }
     
-    deviceStore.bookedDevices.forEach(device => {
+    deviceStore.devices.forEach(device => {
       const currentOp = getDeviceOperation(device.id)
       const previousOp = previousOperations.value.get(device.id)
       
@@ -76,21 +77,16 @@ export const useDeviceActionsStore = defineStore('deviceActions', () => {
   // ✅ Геттеры для TFTP интерфейсов
   const getTftpInterfaceIp = async (deviceId, tftpInterfaceName) => {
     return new Promise((resolve, reject) => {
-      // console.log(`📡 Запрос IP интерфейса TFTP для устройства ${deviceId}, интерфейс: ${tftpInterfaceName}`)
-      
       socket.emit('tftp:getInterfaceIp', {
         deviceId: deviceId,
         tftpInterfaceName: tftpInterfaceName
       }, (response) => {
         if (response?.success) {
-          // Сохраняем в кэш
           tftpInterfaceIps.value.set(deviceId, {
             ip: response.interfaceIp,
             interfaceName: response.interfaceName,
             timestamp: Date.now()
           })
-          
-          // console.log(`✅ Получен IP для интерфейса ${tftpInterfaceName}: ${response.interfaceIp}`)
           resolve(response.interfaceIp)
         } else {
           console.error(`❌ Ошибка получения IP: ${response?.error}`)
@@ -103,6 +99,7 @@ export const useDeviceActionsStore = defineStore('deviceActions', () => {
       }, 10000)
     })
   }
+
   const requestPowerStatus = (deviceId) => {
     return new Promise((resolve, reject) => {
         socket.emit('device:getPowerStatus', deviceId, (response) => {
@@ -115,7 +112,8 @@ export const useDeviceActionsStore = defineStore('deviceActions', () => {
         
         setTimeout(() => reject(new Error('Request timeout')), 10000);
     });
-};
+  };
+
   const getCachedTftpInterfaceIp = (deviceId) => {
     const cached = tftpInterfaceIps.value.get(deviceId)
     if (cached && Date.now() - cached.timestamp < 5 * 60 * 1000) {
@@ -130,26 +128,21 @@ export const useDeviceActionsStore = defineStore('deviceActions', () => {
       const oldStatus = powerStatuses.value.get(data.deviceId)
       const statusChanged = oldStatus !== data.status
       
-      // Обновляем статус
       powerStatuses.value.set(data.deviceId, data.status)
       
-      // Увеличиваем счетчик ТОЛЬКО при реальном изменении
       if (statusChanged || data.isInitial) {
         powerStatusVersion.value++
       }
       
-      // Обновляем в deviceStore
       const device = deviceStore.devices?.find(d => d.id === data.deviceId)
       if (device) device.powerStatus = data.status
     })
   }
 
-  // Вызываем инициализацию
   initializePowerListeners()
 
   const getPowerStatusVersion = () => powerStatusVersion.value
 
-  // ✅ Очистка слушателей
   const cleanupPowerListeners = () => {
     socket.off('device:powerStatus')
   }
@@ -165,22 +158,14 @@ export const useDeviceActionsStore = defineStore('deviceActions', () => {
     }, 1000)
   }
 
+  // ✅ ИСПРАВЛЕНО: убрана зависимость от device.booking?.accessPassword
   const finishOperationWithModeRefresh = async (deviceId) => {
     updateOperationProgress(deviceId, 100)
     
-    setTimeout(async () => {
-      try {
-        const device = deviceStore.devices.find(d => d.id === deviceId)
-        if (device && device.booking?.accessPassword) {
-          await modeStore.forceModeCheck(deviceId, device.booking.accessPassword)
-        }
-      } catch (error) {
-        // Игнорируем ошибки
-      } finally {
-        const newOperations = new Map(activeOperations.value)
-        newOperations.delete(deviceId)
-        activeOperations.value = newOperations
-      }
+    setTimeout(() => {
+      const newOperations = new Map(activeOperations.value)
+      newOperations.delete(deviceId)
+      activeOperations.value = newOperations
     }, 2000)
   }
 
@@ -239,9 +224,10 @@ export const useDeviceActionsStore = defineStore('deviceActions', () => {
     updatePreviousOperations()
   }
 
+  // ✅ ИСПРАВЛЕНО: используем deviceStore.devices вместо deviceStore.bookedDevices
   const updatePreviousOperations = () => {
     const newPreviousOps = new Map()
-    deviceStore.bookedDevices.forEach(device => {
+    deviceStore.devices.forEach(device => {
       const currentOp = getDeviceOperation(device.id)
       if (currentOp) {
         newPreviousOps.set(device.id, currentOp)
@@ -457,13 +443,6 @@ export const useDeviceActionsStore = defineStore('deviceActions', () => {
         throw new Error(`Device not found or reboot port not configured`)
       }
 
-      // console.log('🔌 Power device:', { 
-      //   deviceId: device.id, 
-      //   hwId: device.hwId, 
-      //   action,
-      //   rebootPort: device.rebootPort 
-      // })
-
       const response = await executeDeviceAction(
         device, 
         `power_${action}`,
@@ -512,8 +491,6 @@ export const useDeviceActionsStore = defineStore('deviceActions', () => {
 
   const silentRebootDevice = async (device) => {
     try {
-      // console.log(`[SILENT_REBOOT] Sending reboot command to ${device.hwId}`)
-      
       const result = await new Promise((resolve, reject) => {
         const timeoutId = setTimeout(() => {
           reject(new Error('Reboot command timeout'))
@@ -533,7 +510,6 @@ export const useDeviceActionsStore = defineStore('deviceActions', () => {
       })
 
       if (result?.status === 'ok') {
-        // console.log(`[SILENT_REBOOT] Command sent successfully to ${device.hwId}`)
         return result
       } else {
         throw new Error(result?.error || 'Reboot failed')
@@ -546,8 +522,6 @@ export const useDeviceActionsStore = defineStore('deviceActions', () => {
 
   const silentPowerDevice = async (device, action) => {
     try {
-      // console.log(`[SILENT_POWER] Sending power ${action} command to ${device.hwId}`)
-      
       const result = await new Promise((resolve, reject) => {
         const timeoutId = setTimeout(() => {
           reject(new Error(`Power ${action} command timeout`))
@@ -570,7 +544,6 @@ export const useDeviceActionsStore = defineStore('deviceActions', () => {
       })
   
       if (result?.status === 'ok') {
-        // console.log(`[SILENT_POWER] Power ${action} command sent successfully to ${device.hwId}`)
         return result
       } else {
         throw new Error(result?.error || `Power ${action} failed`)

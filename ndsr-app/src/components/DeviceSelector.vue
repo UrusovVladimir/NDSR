@@ -63,7 +63,7 @@
           <i class="pi pi-inbox"></i>
           <p>No available devices</p>
           <small class="text-color-secondary">
-            Book a device first to apply firmware
+            No online devices available
           </small>
         </div>
 
@@ -188,11 +188,9 @@ const isLoadingInterfaceIp = ref(false)
 
 // Computed для доступных устройств
 const availableDevices = computed(() => {
-  if (!deviceStore.devices || !deviceStore.currentUserId) return []
+  if (!deviceStore.devices) return []
   
   return deviceStore.devices.filter(device => 
-    device.booking?.isBooked && 
-    device.booking?.bookedBy === deviceStore.currentUserId &&
     device.statusCode === 200
   )
 })
@@ -286,15 +284,6 @@ const show = () => {
   error.value = null
   tftpInterfaceIp.value = null
   isLoadingInterfaceIp.value = false
-  
-  if (availableDevices.value.length === 0) {
-    toast.add({
-      severity: 'warn',
-      summary: 'No Devices',
-      detail: 'Please book a device first to apply firmware',
-      life: 5000
-    })
-  }
 }
 
 const closeModal = () => {

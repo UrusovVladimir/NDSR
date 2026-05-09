@@ -9,14 +9,67 @@
       :filtered-devices="[]"
     />
     <Sidebar v-model:visible="isSidebarOpen" position="left" :style="{ width: '400px' }">
-      <SidebarContent 
-        :online-count="deviceStore.onlineCount"
-        :offline-count="deviceStore.offlineCount" 
-        :total-devices="deviceStore.totalDevices"
-        @open-faq="openFaqModal"
-      />
+    <SidebarContent 
+      :online-count="deviceStore.onlineCount"
+      :offline-count="deviceStore.offlineCount" 
+      :total-devices="deviceStore.totalDevices"
+      @open-faq="openFaqModal"
+      @show-remove-confirm="showRemoveDialog"
+      @show-add-device="openAddDeviceDialog"
+    />
     </Sidebar>
 
+    <Dialog v-model:visible="showRemoveConfirm" modal header="Confirm Device Removal" :style="{ width: '450px' }">
+      <div style="display: flex; align-items: flex-start; padding: 0.5rem 0;">
+        <i class="pi pi-exclamation-triangle mr-3" style="font-size: 2rem; color: #e74c3c;" />
+        <div>
+          <h4 class="mb-2">Remove {{ devicesToRemove.length }} device{{ devicesToRemove.length > 1 ? 's' : '' }}?</h4>
+          <p class="text-color-secondary mb-0">This will permanently remove:</p>
+          <ul style="max-height: 150px; overflow-y: auto; margin-top: 0.5rem;">
+            <li v-for="device in devicesToRemove" :key="device.id">
+              <strong>{{ device.hwId }}</strong> - {{ device.shortName }}
+            </li>
+          </ul>
+        </div>
+      </div>
+      <template #footer>
+        <Button label="Back to menu" icon="pi pi-times" class="p-button-text" @click="cancelRemove" />
+        <Button label="Remove" icon="pi pi-trash" class="p-button-danger" @click="executeRemove" :loading="isRemoving" />
+      </template>
+    </Dialog>
+    <Dialog v-model:visible="showAddDeviceForm" modal header="Add New Device" :style="{ width: '700px' }">
+  <div class="add-device-form">
+    <div class="form-grid">
+      <div class="form-field"><label>ID *</label><InputText v-model="newDevice.id" class="w-full" /></div>
+      <div class="form-field"><label>HW ID *</label><InputText v-model="newDevice.hwId" class="w-full" /></div>
+      <div class="form-field"><label>Short Name</label><InputText v-model="newDevice.shortName" class="w-full" /></div>
+      <div class="form-field"><label>Type</label><InputText v-model="newDevice.type" class="w-full" /></div>
+      <div class="form-field"><label>Country</label><InputText v-model="newDevice.country" class="w-full" /></div>
+      <div class="form-field"><label>IP</label><InputText v-model="newDevice.ip" class="w-full" /></div>
+      <div class="form-field"><label>Check URL</label><InputText v-model="newDevice.checkUrl" class="w-full" /></div>
+      <div class="form-field"><label>URL</label><InputText v-model="newDevice.URL" class="w-full" /></div>
+      <div class="form-field"><label>Console Port</label><InputText v-model="newDevice.consolePort" class="w-full" /></div>
+      <div class="form-field"><label>Reset Port</label><InputText v-model="newDevice.resetPort" class="w-full" /></div>
+      <div class="form-field"><label>Reboot Port</label><InputText v-model="newDevice.rebootPort" class="w-full" /></div>
+      <div class="form-field"><label>SSH Container</label><InputText v-model="newDevice.sshContainer" class="w-full" /></div>
+      <div class="form-field"><label>VNC URL</label><InputText v-model="newDevice.vncUrl" class="w-full" /></div>
+      <div class="form-field"><label>Jerome ID</label><InputText v-model="newDevice.jeromeID" class="w-full" /></div>
+      <div class="form-field"><label>VLAN Local</label><InputText v-model="newDevice.vlanLocal" class="w-full" /></div>
+      <div class="form-field"><label>Switch ID</label><InputText v-model="newDevice.switchID" class="w-full" /></div>
+      <div class="form-field"><label>Switch Port WAN</label><InputText v-model="newDevice.switchPortWan" class="w-full" /></div>
+      <div class="form-field"><label>Switch Port LAN</label><InputText v-model="newDevice.switchPortLan" class="w-full" /></div>
+      <div class="form-field"><label>Console ID</label><InputText v-model="newDevice.consoleID" class="w-full" /></div>
+      <div class="form-field"><label>MAC Address</label><InputText v-model="newDevice.macAddress" class="w-full" /></div>
+      <div class="form-field"><label>Servicetag</label><InputText v-model="newDevice.servicetag" class="w-full" /></div>
+      <div class="form-field"><label>Serial Number</label><InputText v-model="newDevice.serialNumber" class="w-full" /></div>
+      <div class="form-field"><label>TFTP Interface</label><InputText v-model="newDevice.tftpInterfaceName" class="w-full" /></div>
+    </div>
+  </div>
+  <template #footer>
+    <Button label="Cancel" icon="pi pi-times" class="p-button-text" @click="cancelAddDevice" />
+    <Button label="Add Device" icon="pi pi-plus" class="p-button-success" @click="addNewDevice" :loading="isAddingDevice" />
+  </template>
+    </Dialog>
     <div class="main-content">
       <AppHeader
         :is-sidebar-open="isSidebarOpen"
@@ -60,13 +113,91 @@ import SidebarContent from '@/components/SidebarContent.vue'
 import ChatWidget from '@/components/chat/ChatWidget.vue'
 import GlobalProgressDialog from '@/components/GlobalProgressDialog.vue' 
 import PrimeDeviceModal from './components/PrimeDeviceModal.vue'
-
+import InputText from 'primevue/inputtext'
 // ✅ Убедитесь, что все импорты корректны
 // Удаляем импорт FileManager из App.vue, так как он используется только в AppHeader
 
 // Socket
 import { socket } from '@/socket'
+// В script добавить:
+import Dialog from 'primevue/dialog'
+import Button from 'primevue/button'
 
+const showRemoveConfirm = ref(false)
+const devicesToRemove = ref([])
+const isRemoving = ref(false)
+const showAddDeviceForm = ref(false)
+const isAddingDevice = ref(false)
+const newDevice = ref({
+  id: '', hwId: '', type: '', country: '', ip: '',
+  shortName: '', checkUrl: '', URL: '', consolePort: '',
+  resetPort: '', rebootPort: '', sshContainer: '', vncUrl: '',
+  jeromeID: '', vlanLocal: '', switchID: '', switchIDWan: '',
+  switchPortWan: '', switchPortLan: '', consoleID: '',
+  macAddress: '', servicetag: '', serialNumber: '', tftpInterfaceName: ''
+})
+const openAddDeviceDialog = () => {
+  newDevice.value = {
+    id: '',
+    type: '', country: '', ip: '',
+    shortName: '', checkUrl: '', URL: '', consolePort: '',
+    resetPort: '', rebootPort: '', sshContainer: '', vncUrl: '',
+    jeromeID: '', vlanLocal: '', switchID: '', switchIDWan: '',
+    switchPortWan: '', switchPortLan: '', consoleID: '',
+    macAddress: '', servicetag: '', serialNumber: '', tftpInterfaceName: '', hwId: ''
+  }
+  isSidebarOpen.value = false
+  showAddDeviceForm.value = true
+}
+
+const cancelAddDevice = () => {
+  showAddDeviceForm.value = false
+  isSidebarOpen.value = true
+}
+
+const addNewDevice = async () => {
+  if (!newDevice.value.id || !newDevice.value.hwId) {
+    toast.add({ severity: 'warn', summary: 'Required', detail: 'ID and HW ID are required', life: 3000 })
+    return
+  }
+  isAddingDevice.value = true
+  try {
+    await deviceStore.addDevice({ ...newDevice.value })
+    toast.add({ severity: 'success', summary: 'Added', detail: `${newDevice.value.hwId} added`, life: 3000 })
+    showAddDeviceForm.value = false
+    await deviceStore.reloadConfigs()
+  } catch (error) {
+    toast.add({ severity: 'error', summary: 'Error', detail: error.message, life: 5000 })
+  } finally {
+    isAddingDevice.value = false
+  }
+}
+
+const showRemoveDialog = (devices) => {
+  devicesToRemove.value = devices
+  isSidebarOpen.value = false  // Закрываем сайдбар
+  showRemoveConfirm.value = true
+}
+const cancelRemove = () => {
+  showRemoveConfirm.value = false
+  isSidebarOpen.value = true  
+}
+const executeRemove = async () => {
+  if (devicesToRemove.value.length === 0) return
+  isRemoving.value = true
+  try {
+    for (const device of devicesToRemove.value) {
+      await deviceStore.removeDevice(device.id)
+    }
+    toast.add({ severity: 'success', summary: 'Devices Removed', detail: `Removed ${devicesToRemove.value.length} devices`, life: 3000 })
+    showRemoveConfirm.value = false
+    await deviceStore.reloadConfigs()
+  } catch (error) {
+    toast.add({ severity: 'error', summary: 'Error', detail: error.message, life: 5000 })
+  } finally {
+    isRemoving.value = false
+  }
+}
 const unsubscribeCallbacks = ref([])
 const toast = useToast()
 
@@ -374,4 +505,11 @@ onUnmounted(() => {
     max-width: 300px;
   }
 }
+.add-device-form { max-height: 60vh; overflow-y: auto; }
+.form-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 0.75rem; }
+.form-field { display: flex; flex-direction: column; gap: 0.25rem; }
+.form-field label { font-size: 0.75rem; font-weight: 600; color: var(--text-color-secondary); }
+
+@media (max-width: 900px) { .form-grid { grid-template-columns: 1fr 1fr; } }
+@media (max-width: 600px) { .form-grid { grid-template-columns: 1fr; } }
 </style>

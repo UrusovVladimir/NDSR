@@ -50,15 +50,6 @@ export const useConsoleStore = defineStore('console', () => {
       }
 
       const deviceStore = useDeviceStore()
-      if (!device.booking?.isBooked || device.booking?.bookedBy !== deviceStore.currentUserId) {
-        toast.add({ 
-          severity: 'error', 
-          summary: 'Access Denied', 
-          detail: 'You can only open console for your booked devices', 
-          life: 4000 
-        })
-        return
-      }
 
       // ✅ БЕЗОПАСНАЯ ПРОВЕРКА ОТКРЫТОЙ КОНСОЛИ
       if (isConsoleOpen(device.id)) {

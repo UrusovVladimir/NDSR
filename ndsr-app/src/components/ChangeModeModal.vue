@@ -11,13 +11,7 @@
     :position="isMobile ? 'top' : 'center'"
   >
     <div class="change-mode-modal" v-if="currentDevice">
-      <!-- Статус пароля -->
-      <div v-if="!hasValidPassword" class="mb-3">
-        <Message severity="warn">
-          <i class="pi pi-exclamation-triangle mr-2"></i>
-          No password available for this device. Please book the device first.
-        </Message>
-      </div>
+
 
       <!-- Ошибка аутентификации -->
       <div v-if="authError" class="mb-3">
@@ -259,7 +253,7 @@
         <h6 class="section-title mb-2">Select Router to Disconnect From:</h6>
         <Dropdown 
           v-model="selectedRouterId" 
-          :options="availableBookedRoutersFormatted"
+          :options="availableRoutersFormatted"
           optionLabel="displayName"
           optionValue="id"
           placeholder="Select a router..."
@@ -277,7 +271,7 @@
         <h6 class="section-title mb-2">Select Router to Connect:</h6>
         <Dropdown 
           v-model="selectedRouterId" 
-          :options="availableBookedRoutersFormatted"
+          :options="availableRoutersFormatted"
           optionLabel="displayName"
           optionValue="id"
           placeholder="Select a router..."
@@ -304,13 +298,6 @@
         </div>
       </div>
 
-      <!-- Сообщение о необходимости бронирования -->
-      <div v-if="!hasValidPassword" class="mt-3">
-        <Message severity="info">
-          <i class="pi pi-info-circle mr-2"></i>
-          To change device mode, you need to book the device first.
-        </Message>
-      </div>
 
       <!-- Сообщение при ошибке аутентификации -->
       <div v-if="authError" class="mt-3">
@@ -354,7 +341,7 @@
           <div><strong>Password:</strong> {{ devicePassword ? `'${devicePassword}'` : 'None' }} ({{ passwordSource }})</div>
           <div><strong>Auth Error:</strong> {{ authError }}</div>
           <div><strong>Current Mode:</strong> {{ currentDeviceBaseMode || 'Unknown' }}</div>
-          <div><strong>Available Routers:</strong> {{ availableBookedRoutersFormatted.length }}</div>
+          <div><strong>Available Routers:</strong> {{ availableRoutersFormatted.length }}</div>
         </div>
       </div>
     </div>
@@ -391,7 +378,7 @@
       />
       <Button 
         v-else
-        label="Book Device First" 
+        label="No Password Available" 
         icon="pi pi-lock" 
         disabled
         class="p-button-outlined modal-btn-disabled"
@@ -487,15 +474,13 @@ const mwsStatus = computed(() => {
 })
 
 // ========== ФИЛЬТРАЦИЯ РОУТЕРОВ ==========
-const availableBookedRoutersFormatted = computed(() => {
+const availableRoutersFormatted = computed(() => {
   return deviceStore.devices
     .filter(device => {
       const isRouter = device.type === 'router'
-      const isBooked = device.booking?.isBooked && device.booking?.bookedBy === deviceStore.currentUserId
       const isOnline = device.statusCode === 200
       const isNotCurrentDevice = device.id !== currentDevice.value?.id
-      
-      return isRouter && isBooked && isOnline && isNotCurrentDevice
+      return isRouter && isOnline && isNotCurrentDevice
     })
     .map(router => ({
       id: router.id,

@@ -4,9 +4,12 @@ import {
   getDeviceStatusCode,
   wanTypes,
   users,
-  getParamRouter
-  
+  getParamRouter,
+  removeDevice,
+  reloadConfigs,
+  addDevice
 } from "./devices.js";
+
 import MWSConnectionManager from "./actions/mwsConnectionManager.js";
 import { changeWanType } from "./actions/changeWanType.js";
 import { resetConfig } from "./actions/resetConfig.js";
@@ -42,16 +45,14 @@ let chatHistory = []
 let onlineUsers = new Set()
 let deviceStatusCache = new Map()
 const consoleUrlCache = new Map();
+let deviceSites = new Map()
 
-// ✅ ГЛОБАЛЬНАЯ СИСТЕМА УПРАВЛЕНИЯ НАГРУЗКОЙ
 let activeStatusRequests = 0;
 const MAX_CONCURRENT_REQUESTS = 15;
 const requestQueue = [];
 let lastGlobalStatusUpdate = 0;
 const STATUS_CACHE_DURATION = 8000;
-let isBackgroundUpdateRunning = false;
 
-// ✅ КЭШ СТАТУСОВ ДЛЯ БЫСТРОЙ ЗАГРУЗКИ
 let lastStatusCheckTime = new Map();
 let lastFirmwareTriggerTime = new Map();
 let statusCacheInitialized = false;
@@ -63,25 +64,18 @@ function initializeStatusCache() {
 }
 
 let dailyPasswords = {
-  today:{
-    value: '',
-    date: ''
-  },
-  yesterday: {
-    value: '',
-    date: ''
-  }
+  today:{ value: '', date: '' },
+  yesterday: { value: '', date: '' }
 };
 
 const universalPromptRegex = /.*/i;
 
+// ✅ ИСПРАВЛЕНО: убрана проверка бронирования
 const syncPowerStatusesToClient = (socket) => {
     console.log('🔌 Syncing power statuses to client');
-    
     let sentCount = 0;
     devicePowerStatus.forEach((status, deviceId) => {
-        // Отправляем только если устройство забронировано И статус не 'unknown'
-        if (deviceBookings.has(deviceId) && status && status !== 'unknown') {
+        if (status && status !== 'unknown') {
             socket.emit('device:powerStatus', {
                 deviceId: deviceId,
                 status: status,
@@ -89,21 +83,18 @@ const syncPowerStatusesToClient = (socket) => {
                 isInitial: true
             });
             sentCount++;
-            console.log(`📡 Sent power status for ${deviceId}: ${status}`);
         }
     });
     console.log(`✅ Synced ${sentCount} power statuses to client`);
 };
+
 const initializeDockerManager = async () => {
     if (!dockerManager) {
         try {
-            // Проверяем наличие необходимых переменных окружения
             if (!process.env.SSH_HOST || !process.env.SSH_USERNAME) {
                 console.error('❌ SSH configuration missing in .env file');
                 throw new Error('SSH configuration missing');
             }
-            
-            // Создаем и подключаем SSHManager если еще нет
             if (!sshConnection) {
                 sshConnection = new SSHManager(
                     process.env.SSH_HOST,
@@ -112,16 +103,12 @@ const initializeDockerManager = async () => {
                     process.env.SSH_PRIVATE_KEY_PATH,
                     true
                 );
-                
                 console.log(`🔧 Подключение к SSH серверу ${process.env.SSH_HOST}...`);
                 await sshConnection.connect();
                 console.log(`✅ SSHManager подключен к ${process.env.SSH_HOST}`);
             }
-            
-            // Создаем DockerManager с существующим SSH соединением
             dockerManager = new DockerManager(sshConnection);
             console.log('✅ DockerManager initialized successfully');
-            
         } catch (error) {
             console.error('❌ Failed to initialize DockerManager:', error.message);
             throw error;
@@ -129,449 +116,206 @@ const initializeDockerManager = async () => {
     }
     return dockerManager;
 };
+
 function getDeviceUrl(deviceId, scenario = 'status') {
     const device = getDeviceById(deviceId);
-    if (!device) {
-        console.log(`❌ Устройство ${deviceId} не найдено`);
-        return null;
-    }
-    
-    // ✅ ИСПРАВЛЕНИЕ: ВСЕГДА возвращаем checkUrl для любого сценария
-    console.log(`🔧 Для сценария ${scenario} используем checkUrl: ${device.checkUrl}`);
+    if (!device) { console.log(`❌ Устройство ${deviceId} не найдено`); return null; }
     return device.checkUrl;
 }
+
 async function checkAndUpdateDeviceStatusImmediately(io, deviceId) {
   try {
     const device = getDeviceById(deviceId);
-    if (!device) {
-      console.log(`❌ Устройство ${deviceId} не найдено`);
-      return 0;
-    }
-    
+    if (!device) return 0;
     const url = getDeviceUrl(deviceId, 'status');
-    if (!url) {
-      return 0;
-    }
-    
+    if (!url) return 0;
     const status = await getDeviceStatusCode(device, url);
-    console.log(`📊 Немедленная проверка статуса устройства ${deviceId}: ${status} (URL: ${url})`);
-    
-    // ✅ ОБНОВЛЯЕМ КЭШ
     deviceStatusCache.set(deviceId, status);
     lastGlobalStatusUpdate = Date.now();
-    
-    // ✅ ОТПРАВЛЯЕМ ВСЕМ КЛИЕНТАМ
-    io.emit('device:status', {
-      deviceId: deviceId,
-      status: status
-    });
-    
+    io.emit('device:status', { deviceId, status });
     return status;
   } catch (error) {
-    console.error(`❌ Ошибка немедленной проверки статуса ${deviceId}:`, error.message);
-    
     deviceStatusCache.set(deviceId, 0);
     lastGlobalStatusUpdate = Date.now();
-    
-    io.emit('device:status', {
-      deviceId: deviceId,
-      status: 0
-    });
-    
+    io.emit('device:status', { deviceId, status: 0 });
     return 0;
   }
 }
 
 async function getDeviceStatusWithMode(deviceId) {
   try {
-      const device = getDeviceById(deviceId);
-      if (!device) {
-          console.log(`❌ Устройство ${deviceId} не найдено`);
-          return 0;
-      }
-      
-      // ✅ ВСЕГДА используем checkUrl для проверки статуса
-      const checkUrl = device.checkUrl;
-      
-      if (!checkUrl) {
-          console.log(`❌ У устройства ${deviceId} нет checkUrl`);
-          return 0;
-      }
-      
-      console.log(`🔍 Проверка статуса устройства ${deviceId} по checkUrl: ${checkUrl}`);
-      
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 10000);
-      
-      try {
-          const response = await fetch(checkUrl, {
-              method: 'HEAD',
-              signal: controller.signal,
-              timeout: 8000
-          });
-          
-          clearTimeout(timeoutId);
-          const status = response.status;
-          console.log(`📊 Статус устройства ${deviceId}: ${status}`);
-          return status;
-          
-      } catch (fetchError) {
-          clearTimeout(timeoutId);
-          
-          if (fetchError.name === 'AbortError') {
-              console.log(`⏰ Таймаут проверки статуса устройства ${deviceId}`);
-          } else {
-              console.error(`❌ Ошибка fetch для устройства ${deviceId}:`, fetchError.message);
-          }
-          return 0;
-      }
-      
-  } catch (error) {
-      console.error(`❌ Критическая ошибка проверки статуса устройства ${deviceId}:`, error.message);
+    const device = getDeviceById(deviceId);
+    if (!device) return 0;
+    const checkUrl = device.checkUrl;
+    if (!checkUrl) return 0;
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 10000);
+    try {
+      const response = await fetch(checkUrl, { method: 'HEAD', signal: controller.signal });
+      clearTimeout(timeoutId);
+      return response.status;
+    } catch (fetchError) {
+      clearTimeout(timeoutId);
       return 0;
+    }
+  } catch (error) {
+    return 0;
   }
 }
 
 const syncMwsStatusesToClient = (socket) => {
-  console.log('🔄 Syncing MWS statuses to client');
-  
   let sentCount = 0;
   currentModes.forEach((modeInfo, deviceId) => {
     if (modeInfo && modeInfo.mode === 'extender_connect' && modeInfo.routerId) {
       socket.emit('device:mwsStatusUpdated', {
-        deviceId: deviceId,
-        routerId: modeInfo.routerId,
-        status: 'connected',
-        timestamp: modeInfo.timestamp || Date.now()
+        deviceId, routerId: modeInfo.routerId, status: 'connected', timestamp: modeInfo.timestamp || Date.now()
       });
       sentCount++;
-      console.log(`📡 Sent MWS status for ${deviceId}: connected to ${modeInfo.routerId}`);
     }
   });
-  console.log(`✅ Synced ${sentCount} MWS statuses to client`);
 };
 
 function sendMwsProgress(io, deviceId, progress, step = null) {
-  console.log(`📤 MWS Progress: ${deviceId}, ${progress}%, step: ${step}`)
-  
-  // Отправляем всем клиентам (уже работает)
-  io.emit('device:mwsOperationProgress', {
-    deviceId: deviceId,
-    progress: progress,
-    operationType: 'mws_connection',
-    step: step,
-    timestamp: Date.now()
-  });
-  
-  // Также отправляем общее событие прогресса для универсальной модалки
-  io.emit('device:operationProgress', {
-    deviceId: deviceId,
-    progress: progress,
-    operationType: 'mwsConnection',
-    step: step,
-    details: step ? `MWS: ${step}` : null,
-    timestamp: Date.now()
-  });
+  io.emit('device:mwsOperationProgress', { deviceId, progress, operationType: 'mws_connection', step, timestamp: Date.now() });
+  io.emit('device:operationProgress', { deviceId, progress, operationType: 'mwsConnection', step, details: step ? `MWS: ${step}` : null, timestamp: Date.now() });
 }
 
 function sendModeChangeProgress(io, deviceId, progress, step = null) {
-  console.log(`📤 SERVER SENDING Mode Change Progress: ${deviceId}, ${progress}%, step: ${step}`) 
-  
-  io.emit('device:modeChangeProgress', {
-    deviceId: deviceId,
-    progress: progress,
-    operationType: 'mode_change', 
-    step: step,
-    timestamp: Date.now()
-  });
+  io.emit('device:modeChangeProgress', { deviceId, progress, operationType: 'mode_change', step, timestamp: Date.now() });
 }
 
 function sendOperationProgress(io, deviceId, progress, operationType) {
-  console.log(`📤 Operation Progress: ${deviceId}, ${operationType}, ${progress}%`)
-  io.emit('device:operationProgress', {
-    deviceId: deviceId,
-    progress: progress,
-    operationType: operationType,
-    timestamp: Date.now()
-  });
+  io.emit('device:operationProgress', { deviceId, progress, operationType, timestamp: Date.now() });
 }
 
-function getCronStatus() {
-  return isCronEnabled;
-}
+function getCronStatus() { return isCronEnabled; }
 
 function autoReleaseOldBookings(io) {
   const now = Math.floor(Date.now() / 1000);
-
   for (const [deviceId, booking] of deviceBookings.entries()) {
     if (booking.expiresAt <= now) {
       deviceBookings.delete(deviceId);
-      
-      io.emit('device:bookingUpdated', {
-        deviceId: deviceId,
-        booking: {
-          isBooked: false,
-          bookedBy: null,
-          accessPassword: null,
-          expiresAt: null,
-          remainingTime: 0
-        }
-      });
+      io.emit('device:bookingUpdated', { deviceId, booking: { isBooked: false, bookedBy: null, accessPassword: null, expiresAt: null, remainingTime: 0 } });
     }
   }
 }
 
 function updateDailyPasswords() {
   const today = new Date().toDateString();
-  
   if (dailyPasswords.today.date !== today) {
-    dailyPasswords.yesterday = {
-      value: dailyPasswords.today.value,
-      date: dailyPasswords.today.date
-    };
-    
-    dailyPasswords.today = {
-      value: generatePassword(),
-      date: today
-    };
-    
+    dailyPasswords.yesterday = { value: dailyPasswords.today.value, date: dailyPasswords.today.date };
+    dailyPasswords.today = { value: generatePassword(), date: today };
     globalIO?.emit('DAILY_PASSWORDS', dailyPasswords);
   }
 }
 
 function initPasswordSystem(io) {
   globalIO = io;
-  initializeStatusCache()
+  initializeStatusCache();
   updateDailyPasswords();
   setInterval(updateDailyPasswords, 5 * 60 * 1000);
 }
 
-// ✅ ГЛОБАЛЬНЫЙ ОГРАНИЧИТЕЛЬ ЗАПРОСОВ
 async function executeWithLimit(fn) {
   return new Promise((resolve, reject) => {
     const execute = async () => {
-      if (activeStatusRequests >= MAX_CONCURRENT_REQUESTS) {
-        requestQueue.push(execute);
-        return;
-      }
-
+      if (activeStatusRequests >= MAX_CONCURRENT_REQUESTS) { requestQueue.push(execute); return; }
       activeStatusRequests++;
-      try {
-        const result = await fn();
-        resolve(result);
-      } catch (error) {
-        reject(error);
-      } finally {
+      try { const result = await fn(); resolve(result); }
+      catch (error) { reject(error); }
+      finally {
         activeStatusRequests--;
-        if (requestQueue.length > 0) {
-          const next = requestQueue.shift();
-          setTimeout(next, 10);
-        }
+        if (requestQueue.length > 0) { const next = requestQueue.shift(); setTimeout(next, 10); }
       }
     };
-    
     execute();
   });
 }
 
-// ✅ ОПТИМИЗИРОВАННАЯ ПАРАЛЛЕЛЬНАЯ ПРОВЕРКА СТАТУСОВ С ОГРАНИЧЕНИЕМ
 async function getAllDevicesStatus() {
-  const statusPromises = devices.map(device => 
-    executeWithLimit(async () => {
-      try {
-        const status = await getDeviceStatusWithMode(device.id);
-        return {
-          deviceId: device.id,
-          status: status
-        };
-      } catch (error) {
-        return {
-          deviceId: device.id,
-          status: 0
-        };
-      }
-    })
-  );
-
-  const batchSize = 8;
-  const results = [];
-  
+  const statusPromises = devices.map(device => executeWithLimit(async () => {
+    try { const status = await getDeviceStatusWithMode(device.id); return { deviceId: device.id, status }; }
+    catch (error) { return { deviceId: device.id, status: 0 }; }
+  }));
+  const batchSize = 8; const results = [];
   for (let i = 0; i < statusPromises.length; i += batchSize) {
     const batch = statusPromises.slice(i, i + batchSize);
     const batchResults = await Promise.allSettled(batch);
     results.push(...batchResults);
-    
-    if (i + batchSize < statusPromises.length) {
-      await new Promise(resolve => setTimeout(resolve, 20));
-    }
+    if (i + batchSize < statusPromises.length) await new Promise(resolve => setTimeout(resolve, 20));
   }
-
-  const statuses = results.map(result => 
-    result.status === 'fulfilled' ? result.value : {
-      deviceId: 'unknown',
-      status: 0
-    }
-  );
-
-  // ✅ Обновляем кэш
-  statuses.forEach(({ deviceId, status }) => {
-    deviceStatusCache.set(deviceId, status);
-  });
-
+  const statuses = results.map(result => result.status === 'fulfilled' ? result.value : { deviceId: 'unknown', status: 0 });
+  statuses.forEach(({ deviceId, status }) => { deviceStatusCache.set(deviceId, status); });
   statusCacheInitialized = true;
   lastGlobalStatusUpdate = Date.now();
   return statuses;
 }
 
-// ✅ КЭШИРОВАННОЕ ПОЛУЧЕНИЕ СТАТУСОВ ДЛЯ ВСЕХ КЛИЕНТОВ
 async function getCachedDevicesStatus() {
   const now = Date.now();
-  
   if (statusCacheInitialized && (now - lastGlobalStatusUpdate < STATUS_CACHE_DURATION)) {
-    console.log('⚡ Using cached statuses for client');
-    return Array.from(deviceStatusCache.entries()).map(([deviceId, status]) => ({
-      deviceId,
-      status
-    }));
+    return Array.from(deviceStatusCache.entries()).map(([deviceId, status]) => ({ deviceId, status }));
   }
-  
-  console.log('🔄 Updating global status cache');
-  const freshStatuses = await getAllDevicesStatus();
-  return freshStatuses;
+  return await getAllDevicesStatus();
 }
 
+// ✅ ИСПРАВЛЕНО: убран дубликат отправки power status, убрана проверка бронирования
 async function sendInitData(socket) {
   const startTime = Date.now();
   console.log('🚀 Starting sendInitData...');
-  
   try {
-    // ✅ Сначала отправляем статические данные мгновенно
     socket.emit('device:users', users);
     socket.emit('cron:status', isCronEnabled);
     socket.emit('device:wanTypes', wanTypes);
     socket.emit('DAILY_PASSWORDS', dailyPasswords);
     socket.emit('device:bookings-list', Object.fromEntries(deviceBookings));
   
-    // ✅ Подготавливаем устройства с бронированиями
     const devicesWithBookings = devices.map(device => {
       const booking = deviceBookings.get(device.id);
-      const powerStatus = devicePowerStatus.get(device.id) || 'on'; // По умолчанию 'on'
-      
+      const powerStatus = devicePowerStatus.get(device.id) || 'on';
+      const site = deviceSites.get(device.id) || null;
       if (booking) {
         const remainingTime = Math.max(0, booking.expiresAt - Math.floor(Date.now() / 1000));
-        return {
-          ...device,
-          booking: {
-            isBooked: true,
-            bookedBy: booking.bookedBy,
-            accessPassword: booking.accessPassword,
-            expiresAt: booking.expiresAt,
-            remainingTime: remainingTime
-          },
-          powerStatus: powerStatus // Добавляем статус питания
-        };
+        return { ...device, site, booking: { isBooked: true, bookedBy: booking.bookedBy, accessPassword: booking.accessPassword, expiresAt: booking.expiresAt, remainingTime }, powerStatus };
       }
-      return {
-        ...device,
-        booking: {
-          isBooked: false,
-          bookedBy: null,
-          accessPassword: null,
-          expiresAt: null,
-          remainingTime: 0
-        },
-        powerStatus: powerStatus // Добавляем статус питания
-      };
+      return { ...device, site, booking: { isBooked: false, bookedBy: null, accessPassword: null, expiresAt: null, remainingTime: 0 }, powerStatus };
     });
   
     socket.emit('device:list', devicesWithBookings);
-    // Добавляем инициацию статуса порта питания при бронировании 
+    
+    // ✅ ОДИН РАЗ отправляем статусы питания для ВСЕХ устройств с rebootPort
     devicesWithBookings.forEach(device => {
-        if (device.rebootPort && device.booking?.isBooked) {
-            const powerStatus = devicePowerStatus.get(device.id);
-            if (!powerStatus || powerStatus === 'unknown') {
-                // Асинхронно получаем статус
-                (async () => {
-                    try {
-                        const status = await getPortPowerStatus(device.id);
-                        devicePowerStatus.set(device.id, status);
-                        socket.emit('device:powerStatus', {
-                            deviceId: device.id,
-                            status: status,
-                            timestamp: Date.now(),
-                            isInitial: true
-                        });
-                        console.log(`📡 Updated power status for ${device.id}: ${status}`);
-                    } catch (error) {
-                        console.error(`Failed to get power status for ${device.id}:`, error);
-                    }
-                })();
-            }
-        }
+      if (device.rebootPort) {
+        const powerStatus = devicePowerStatus.get(device.id);
+        socket.emit('device:powerStatus', { deviceId: device.id, status: powerStatus || 'unknown', timestamp: Date.now(), isInitial: true });
+      }
     });
-    // ✅ ОТПРАВЛЯЕМ MWS СТАТУС ДЛЯ КАЖДОГО УСТРОЙСТВА
+
+    // MWS статусы
     devicesWithBookings.forEach(device => {
       const modeInfo = currentModes.get(device.id);
       if (modeInfo && modeInfo.mode === 'extender_connect' && modeInfo.routerId) {
-        socket.emit('device:mwsStatusUpdated', {
-          deviceId: device.id,
-          routerId: modeInfo.routerId,
-          status: 'connected',
-          timestamp: modeInfo.timestamp
-        });
+        socket.emit('device:mwsStatusUpdated', { deviceId: device.id, routerId: modeInfo.routerId, status: 'connected', timestamp: modeInfo.timestamp });
       }
     });
 
-    // ✅ ОТПРАВЛЯЕМ СТАТУС ПИТАНИЯ ДЛЯ КАЖДОГО ЗАБРОНИРОВАННОГО УСТРОЙСТВА
-    devicesWithBookings.forEach(device => {
-      if (device.rebootPort && device.booking?.isBooked) {
-        const powerStatus = devicePowerStatus.get(device.id);
-        // Отправляем статус, даже если его нет - отправим 'unknown'
-        socket.emit('device:powerStatus', {
-          deviceId: device.id,
-          status: powerStatus || 'unknown',
-          timestamp: Date.now(),
-          isInitial: true
-        });
-      }
-    });
-
-    // ✅ ОТПРАВЛЯЕМ ОБЩУЮ ИНФОРМАЦИЮ О MWS
-    const routerInfo = Object.keys(currentMwsRouter).length
-      ? currentMwsRouter
-      : { status: "None" };
+    const routerInfo = Object.keys(currentMwsRouter).length ? currentMwsRouter : { status: "None" };
     socket.emit('device:currentMwsRouter', routerInfo, connectDisconnectAp);
   
     currentFirmwareVersion.forEach((fw, deviceId) => {
-      socket.emit('device:currentFW', deviceId, {
-        FW: fw || 'Unknown version'
-      });
+      socket.emit('device:currentFW', deviceId, { FW: fw || 'Unknown version' });
     });
   
-    // ✅ ОТПРАВЛЯЕМ РЕЖИМЫ
     syncAllModesToClient(socket);
     
-    // ✅ ВАЖНО: ОТПРАВЛЯЕМ НАЧАЛЬНЫЕ СТАТУСЫ ИЗ КЭША
-    const initialStatuses = Array.from(deviceStatusCache.entries()).map(([deviceId, status]) => ({
-      deviceId,
-      status
-    }));
-    
-    console.log(`📡 Отправляем начальные статусы клиенту (${initialStatuses.length} устройств)`);
+    const initialStatuses = Array.from(deviceStatusCache.entries()).map(([deviceId, status]) => ({ deviceId, status }));
     socket.emit('device:statuses:initial', initialStatuses);
   
-    const endTime = Date.now();
-    console.log(`✅ sendInitData completed in ${endTime - startTime}ms`);
-    
-    // ✅ Синхронизируем MWS статусы
+    console.log(`✅ sendInitData completed in ${Date.now() - startTime}ms`);
     syncMwsStatusesToClient(socket);
-    
-    // ✅ Синхронизируем статусы питания
     syncPowerStatusesToClient(socket);
-    
   } catch (error) {
-    const endTime = Date.now();
-    console.error(`❌ sendInitData failed after ${endTime - startTime}ms:`, error);
+    console.error(`❌ sendInitData failed after ${Date.now() - startTime}ms:`, error);
   }
 }
 
@@ -688,18 +432,14 @@ async function initializeStatusSystem() {
 }
 async function initializePowerStatus() {
   console.log('🔌 Initializing power status for devices...');
-  
-  // Запускаем асинхронно, не блокируя старт сервера
   (async () => {
     for (const device of devices) {
       if (device.rebootPort) {
         try {
           const status = await getPortPowerStatus(device.id);
           devicePowerStatus.set(device.id, status);
-          console.log(`📡 Power status for ${device.id}: ${status}`);
         } catch (error) {
-          console.error(`❌ Failed to get power status for ${device.id}:`, error.message);
-          devicePowerStatus.set(device.id, 'on'); // По умолчанию
+          devicePowerStatus.set(device.id, 'on');
         }
       }
     }
@@ -708,9 +448,9 @@ async function initializePowerStatus() {
 }
   
 function clearFirmwareCache(deviceId) {
-  if (currentFirmwareVersion.has(deviceId)) {
-    currentFirmwareVersion.delete(deviceId);
-  }
+  if (currentFirmwareVersion.has(deviceId)
+  )
+  currentFirmwareVersion.delete(deviceId);
 }
 
 initializeStatusSystem();
@@ -977,23 +717,39 @@ const handleBatchFirmwareCheck = async (socket, data, callback) => {
   }
 };
 
-function setupEvents(socket, io) {
-  socket.clientIp = socket.handshake.headers['x-real-ip'] || 
-                  socket.handshake.headers['x-forwarded-for']?.split(',')[0] || 
-                  socket.handshake.address?.replace(/^::ffff:/, '') || 
-                  'unknown';
-                  
-  console.log('🔗 Client connected:', {
-    ip: socket.clientIp,
-    headers: {
-      'x-real-ip': socket.handshake.headers['x-real-ip'],
-      'x-forwarded-for': socket.handshake.headers['x-forwarded-for'],
-      forwarded: socket.handshake.headers['forwarded']
-    }
-  });
+  function setupEvents(socket, io) {
+    socket.clientIp = socket.handshake.headers['x-real-ip'] || socket.handshake.headers['x-forwarded-for']?.split(',')[0] || socket.handshake.address?.replace(/^::ffff:/, '') || 'unknown';
+    socket.emit('CLIENT_IP', socket.clientIp);
+
+    console.log('🔗 Client connected:', {
+      ip: socket.clientIp,
+      headers: {
+        'x-real-ip': socket.handshake.headers['x-real-ip'],
+        'x-forwarded-for': socket.handshake.headers['x-forwarded-for'],
+        forwarded: socket.handshake.headers['forwarded']
+      }
+    });
   
   socket.emit('CLIENT_IP', socket.clientIp);
-
+  socket.on('device:remove', (deviceId, callback) => {
+    const result = removeDevice(deviceId);
+    if (result.success) {
+        io.emit('device:list', devices);
+    }
+    callback(result);
+  });
+  socket.on('device:add', (device, callback) => {
+    const result = addDevice(device);
+    if (result.success) {
+        io.emit('device:list', devices);
+    }
+    callback(result);
+  });
+  socket.on('device:reloadConfigs', (callback) => {
+    const result = reloadConfigs();
+    io.emit('device:list', devices);
+    callback(result);
+  });
   socket.on('device:getInitData', (callback) => {
     console.log('📡 Client requested init data')
     sendInitData(socket).then(() => {
@@ -1393,7 +1149,22 @@ function setupEvents(socket, io) {
           routerId: routerId,
           timestamp: Date.now()
         });
-        
+          const routerDevice = getDeviceById(routerId)
+            if (routerDevice && routerDevice.type === 'router') {
+              // Назначаем site роутеру (инкрементально)
+              const existingSites = Array.from(deviceSites.values()).filter(Boolean)
+              const nextSite = existingSites.length > 0 ? Math.max(...existingSites) + 1 : 1
+              deviceSites.set(routerId, nextSite)
+              
+              console.log(`📍 Assigned SITE ${nextSite} to router ${routerDevice.hwId}`)
+              
+              // Отправляем обновление всем клиентам
+              io.emit('device:siteUpdated', {
+                deviceId: routerId,
+                site: nextSite,
+                timestamp: Date.now()
+              })
+            }
         console.log(`🔧 Режим устройства ${deviceId} обновлен: extender_connect к роутеру ${routerId}`);
         
         io.emit('device:modeUpdated', {
@@ -1420,7 +1191,19 @@ function setupEvents(socket, io) {
           
           console.log(`🔧 Rebooting device ${deviceId} after disconnect`);
           sendMwsProgress(io, deviceId, 75, 'device_reboot');
-          
+            const hasOtherExtenders = Array.from(currentModes.entries()).some(
+                  ([id, info]) => id !== deviceId && info.mode === 'extender_connect' && info.routerId === routerId
+                )
+                
+                // Если больше нет подключенных экстендеров - убираем site
+                if (!hasOtherExtenders) {
+                  deviceSites.delete(routerId)
+                  io.emit('device:siteUpdated', {
+                    deviceId: routerId,
+                    site: null,
+                    timestamp: Date.now()
+                  })
+                }
           try {
             // ✅ ДЛЯ ПЕРЕЗАГРУЗКИ ИСПОЛЬЗУЕМ СЦЕНАРИЙ 'mode_change' (прямой URL)
             const rebootUrl = getDeviceUrl(deviceId, 'mode_change');
@@ -1838,57 +1621,21 @@ function setupEvents(socket, io) {
   
   socket.on('device:reboot', setupDeviceOperation('device:reboot', 'rebooting', rebootDevice, 120000));
   socket.on('device:power', async (data, callback) => {
-    console.log("ПОЛУЧИЛИ ПАРАМЕТРЫ", data);
     const { deviceId, action } = data;
-    
     try {
-      console.log(`[POWER] Request received: ${action} for device ${deviceId}`);
-      
-      // Проверяем, что устройство забронировано
-      const booking = deviceBookings.get(deviceId);
-      if (!booking) {
-        throw new Error('Device is not booked');
-      }
-      
       const previousStatus = devicePowerStatus.get(deviceId);
       await powerSetup(deviceId, action);
-      
-      // ✅ ПОЛУЧАЕМ АКТУАЛЬНЫЙ СТАТУС ПОСЛЕ ОПЕРАЦИИ
       let newStatus = action;
       try {
         const actualStatus = await getPortPowerStatus(deviceId);
-        if (actualStatus) {
-          newStatus = actualStatus;
-        }
-      } catch (error) {
-        console.error(`[POWER] Failed to verify power status:`, error.message);
-      }
-      
+        if (actualStatus) newStatus = actualStatus;
+      } catch (error) { /* ignore */ }
       devicePowerStatus.set(deviceId, newStatus);
-      io.emit('device:powerStatus', {
-        deviceId: deviceId,
-        status: newStatus,
-        timestamp: Date.now(),
-        changed: previousStatus !== newStatus
-      });
-      console.log(`[POWER] Status updated for ${deviceId}: ${previousStatus || 'unknown'} -> ${newStatus}`);
-      
-      callback({ 
-        status: 'ok', 
-        message: `Device powered ${action} successfully`,
-        powerStatus: newStatus
-      });
-      
-      setTimeout(() => {
-        checkAndUpdateDeviceStatusImmediately(io, deviceId);
-      }, 5000);
-      
+      io.emit('device:powerStatus', { deviceId, status: newStatus, timestamp: Date.now(), changed: previousStatus !== newStatus });
+      callback({ status: 'ok', message: `Device powered ${action} successfully`, powerStatus: newStatus });
+      setTimeout(() => checkAndUpdateDeviceStatusImmediately(io, deviceId), 5000);
     } catch (error) {
-      console.error(`[POWER] Error:`, error);
-      callback({ 
-        status: 'error', 
-        error: error.message 
-      });
+      callback({ status: 'error', error: error.message });
     }
   });
 
@@ -2299,16 +2046,49 @@ socket.on('device:changeMode', async (data, callback) => {
       });
     }
     
-    if (mode === 'extender_connect' && routerId) {
-      currentModes.set(deviceId, {
-        mode: 'extender_connect',
-        routerId: routerId,
-        timestamp: Date.now()
-      });
-    } else if (mode === 'extender_disconnect') {
-      currentModes.delete(deviceId);
-    }
-    
+    // В device:changeMode - ИСПРАВИТЬ extender_disconnect:
+      if (mode === 'extender_connect' && routerId) {
+        currentModes.set(deviceId, {
+          mode: 'extender_connect',
+          routerId: routerId,
+          timestamp: Date.now()
+        });
+        
+        const routerDevice = getDeviceById(routerId);
+        if (routerDevice && routerDevice.type === 'router') {
+          const existingSites = Array.from(deviceSites.values()).filter(Boolean);
+          const nextSite = existingSites.length > 0 ? Math.max(...existingSites) + 1 : 1;
+          deviceSites.set(routerId, nextSite);
+          
+          io.emit('device:siteUpdated', {
+            deviceId: routerId,
+            site: nextSite,
+            timestamp: Date.now()
+          });
+        }
+        
+      } else if (mode === 'extender_disconnect') {
+        // ✅ Получаем routerId ДО удаления
+        const oldModeInfo = currentModes.get(deviceId);
+        const oldRouterId = oldModeInfo?.routerId;
+        
+        currentModes.delete(deviceId);
+        
+        if (oldRouterId) {
+          const hasOtherExtenders = Array.from(currentModes.entries()).some(
+            ([id, info]) => id !== deviceId && info.mode === 'extender_connect' && info.routerId === oldRouterId
+          );
+          
+          if (!hasOtherExtenders) {
+            deviceSites.delete(oldRouterId);
+            io.emit('device:siteUpdated', {
+              deviceId: oldRouterId,
+              site: null,
+              timestamp: Date.now()
+            });
+          }
+        }
+      }
     deviceStatusCache.delete(deviceId);
     
     sendModeChangeProgress(io, deviceId, 10, 'initializing');
@@ -2529,7 +2309,7 @@ socket.on('device:changeMode', async (data, callback) => {
   
       console.log(`🔧 Прямое отключение экстендера ${deviceId} от роутера ${routerId}`);
       
-      // ✅ ОЧИЩАЕМ КЭШ СТАТУСА
+      //  ОЧИЩАЕМ КЭШ СТАТУСА
       deviceStatusCache.delete(deviceId);
       console.log(`🧹 Очищен кэш статуса для устройства ${deviceId} при отключении экстендера`);
   
@@ -2540,19 +2320,19 @@ socket.on('device:changeMode', async (data, callback) => {
         throw new Error(`Устройство ${deviceId} или роутер ${routerId} не найдены`);
       }
       
-      // ✅ ДЛЯ ОТКЛЮЧЕНИЯ ВСЕГДА ИСПОЛЬЗУЕМ URL ЧЕРЕЗ РОУТЕР
+      //  ДЛЯ ОТКЛЮЧЕНИЯ ВСЕГДА ИСПОЛЬЗУЕМ URL ЧЕРЕЗ РОУТЕР
       const routerIp = router.ip.split('/')[0];
       const disconnectUrl = `http://${routerIp}:${deviceId}`;
       console.log(`🔧 Для отключения экстендера используем URL через роутер: ${disconnectUrl}`);
       
-      // ✅ УДАЛЯЕМ РЕЖИМ СРАЗУ
+      //  УДАЛЯЕМ РЕЖИМ СРАЗУ
       currentModes.delete(deviceId);
       console.log(`🧹 Удален режим устройства ${deviceId} из currentModes`);
   
-      // ✅ ПЕРЕДАЕМ ПРАВИЛЬНЫЙ URL В DisconnectManager
+      //  ПЕРЕДАЕМ ПРАВИЛЬНЫЙ URL В DisconnectManager
       await DisconnectManager.fullDisconnect(deviceId, routerId, password, disconnectUrl);
   
-      // ✅ ОБНОВЛЯЕМ РЕЖИМ НА router
+      //  ОБНОВЛЯЕМ РЕЖИМ НА router
       const newMode = 'router';
       
       currentModes.set(deviceId, {
@@ -2623,6 +2403,81 @@ socket.on('device:changeMode', async (data, callback) => {
         modeInfo: modeInfo || null
     });
   });
+socket.on('device:reloadConfigs', async (callback) => {
+    const result = reloadConfigs();
+    
+    // Очищаем кэши для устройств, которых больше нет в конфиге
+    const currentDeviceIds = new Set(devices.map(d => String(d.id)));
+    
+    for (const deviceId of deviceStatusCache.keys()) {
+        if (!currentDeviceIds.has(String(deviceId))) {
+            deviceStatusCache.delete(deviceId);
+        }
+    }
+    for (const deviceId of devicePowerStatus.keys()) {
+        if (!currentDeviceIds.has(String(deviceId))) {
+            devicePowerStatus.delete(deviceId);
+        }
+    }
+    for (const deviceId of currentModes.keys()) {
+        if (!currentDeviceIds.has(String(deviceId))) {
+            currentModes.delete(deviceId);
+        }
+    }
+    for (const deviceId of deviceSites.keys()) {
+        if (!currentDeviceIds.has(String(deviceId))) {
+            deviceSites.delete(deviceId);
+        }
+    }
+    
+    //  Отправляем обновлённый список устройств
+    io.emit('device:list', devices);
+    callback(result);
+    
+    //  Асинхронно переинициализируем статусы и питание
+    setTimeout(async () => {
+        try {
+            console.log('🔄 Reinitializing statuses after config reload...');
+            
+            // Переинициализируем кэш статусов для новых устройств
+            initializeStatusCache();
+            
+            // Запускаем проверку статусов для всех устройств
+            const statuses = await getAllDevicesStatus();
+            
+            // Отправляем начальные статусы всем клиентам
+            io.emit('device:statuses:initial', statuses);
+            
+            // Переинициализируем статусы питания для новых устройств
+            for (const device of devices) {
+                if (device.rebootPort && !devicePowerStatus.has(device.id)) {
+                    try {
+                        const status = await getPortPowerStatus(device.id);
+                        devicePowerStatus.set(device.id, status);
+                        io.emit('device:powerStatus', {
+                            deviceId: device.id,
+                            status: status,
+                            timestamp: Date.now(),
+                            isInitial: true
+                        });
+                    } catch (error) {
+                        devicePowerStatus.set(device.id, 'on');
+                        io.emit('device:powerStatus', {
+                            deviceId: device.id,
+                            status: 'on',
+                            timestamp: Date.now(),
+                            isInitial: true
+                        });
+                    }
+                }
+            }
+            
+            console.log('✅ Statuses reinitialized after config reload');
+        } catch (error) {
+            console.error('❌ Failed to reinitialize statuses:', error);
+        }
+    }, 1000); 
+});
 }
 const initDockerManagerOnStart = async () => {
     try {

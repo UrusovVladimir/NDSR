@@ -1,9 +1,6 @@
 <template>
   <div class="wan-type-display">
-    <span v-if="!isOwnedByCurrentUser" class="text-color-secondary">
-      Not available
-    </span>
-    <div v-else class="flex align-items-center gap-2">
+    <div class="flex align-items-center gap-2">
       <Tag 
         :value="currentWanType" 
         severity="info"
@@ -14,7 +11,7 @@
         class="p-button-sm p-button-outlined p-button-info p-button-rounded wan-btn"
         v-tooltip.bottom="'Change WAN Type'"
         @click="openModal" 
-        :disabled="!canChangeWan || !props.device.booking?.isBooked"
+        :disabled="!canChangeWan"
       />
     </div>
   </div>
@@ -36,14 +33,9 @@ const emit = defineEmits(['open-modal'])
 
 const currentWanType = ref('Not configured')
 
-const isOwnedByCurrentUser = computed(() => {
-  return !props.device.booking?.isBooked || 
-         props.device.booking?.bookedBy === props.currentUserId
-})
-
+// ✅ УБРАНА ПРОВЕРКА БРОНИРОВАНИЯ
 const canChangeWan = computed(() => {
-  return isOwnedByCurrentUser.value && 
-         props.device.type === 'router' && 
+  return props.device.type === 'router' && 
          props.device.statusCode === 200
 })
 
@@ -69,7 +61,7 @@ const handleWanTypeUpdate = ({ deviceId, type }) => {
 }
 
 onMounted(() => {
-  // Load current WAN type
+  // Загружаем текущий WAN тип
   socket.emit('device:getCurrentWan', props.device.id, updateWanType)
   socket.on('device:wanTypeUpdated', handleWanTypeUpdate)
 })
@@ -95,7 +87,7 @@ onUnmounted(() => {
 </style>
 
 <style>
-/* Глобальные стили для кнопки WAN - такие же как у extend-btn */
+/* Глобальные стили для кнопки WAN */
 .wan-btn.p-button {
   border-radius: 50% !important;
   width: 2.5rem !important;
@@ -119,38 +111,46 @@ onUnmounted(() => {
 }
 
 .wan-btn.p-button:disabled {
-  opacity: 0.6 !important;
-  cursor: not-allowed;
+  opacity: 0.3 !important;
+  cursor: not-allowed !important;
+  transform: none !important;
+  box-shadow: none !important;
 }
 
-/* Адаптивность для кнопки WAN */
+/* Адаптивность */
 @media (max-width: 768px) {
   .wan-btn.p-button {
-      width: 2.25rem !important;
-      height: 2.25rem !important;
-      border-width: 1.5px !important;
+    width: 2.25rem !important;
+    height: 2.25rem !important;
+    border-width: 1.5px !important;
   }
   
   .wan-tag {
-      font-size: 0.7rem;
-      max-width: 100px;
+    font-size: 0.7rem;
+    max-width: 100px;
   }
 }
 
 @media (max-width: 480px) {
   .wan-btn.p-button {
-      width: 2rem !important;
-      height: 2rem !important;
-      border-width: 1px !important;
+    width: 2rem !important;
+    height: 2rem !important;
+    border-width: 1px !important;
   }
   
   .wan-tag {
-      font-size: 0.65rem;
-      max-width: 80px;
+    font-size: 0.65rem;
+    max-width: 80px;
   }
   
   .flex.align-items-center.gap-2 {
-      gap: 0.5rem !important;
+    gap: 0.5rem !important;
   }
+}
+:deep(.wan-column .wan-type-display) {
+  display: flex !important;
+  justify-content: center !important;
+  align-items: center !important;
+  width: 100% !important;
 }
 </style>

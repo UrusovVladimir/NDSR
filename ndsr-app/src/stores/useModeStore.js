@@ -719,56 +719,7 @@ const listenForModeUpdates = (callback) => {
     }
   };
   
-  const syncDeviceModes = async () => {
-    // console.log('🔄 Starting aggressive device modes synchronization...')
-    
-    try {
-      const bookedDevices = deviceStore.bookedDevices
-      
-      if (!bookedDevices || bookedDevices.length === 0) {
-        // console.log('📭 No booked devices to sync modes')
-        return
-      }
-      
-      // console.log(`🔍 Aggressive syncing modes for ${bookedDevices.length} booked devices`)
-      
-      for (const device of bookedDevices) {
-        try {
-          if (device.statusCode !== 200) {
-            // console.log(`⏭️ Skipping offline device: ${device.hwId}`)
-            continue
-          }
-          
-          const existingMode = currentMode.value[device.id]
-          const existingRouterId = existingMode?.routerId
-          
-          // console.log(`🔄 Force detecting mode for: ${device.hwId}`, {
-            // existingMode: existingMode?.mode,
-            // existingRouterId
-          // })
-          
-          if (device.booking?.accessPassword) {
-            const newMode = await getCurrentMode(device.id, device.booking.accessPassword)
-            // console.log(`✅ Mode detected for ${device.hwId}: ${newMode}`, {
-            //   preservedRouterId: existingRouterId
-            // })
-          } else {
-            // console.log(`🔐 No password for: ${device.hwId}`)
-          }
-          
-          await new Promise(resolve => setTimeout(resolve, 2000))
-          
-        } catch (error) {
-          // console.log(`❌ Failed to sync mode for ${device.hwId}:`, error.message)
-        }
-      }
-      
-      // console.log('✅ Aggressive device modes synchronization completed')
-      
-    } catch (error) {
-      // console.error('❌ Device modes synchronization failed:', error)
-    }
-  }
+
 
   const removeDeviceMode = (deviceId) => {
     if (!deviceId) return
@@ -924,7 +875,6 @@ const checkDeviceStatusImmediately = async (deviceId, maxAttempts = 10, interval
     initializeModes,
     updateDeviceMode,
     validateModeData,
-    syncDeviceModes,
     removeDeviceMode,
     forceModeCheck,
     restoreModeConnections,

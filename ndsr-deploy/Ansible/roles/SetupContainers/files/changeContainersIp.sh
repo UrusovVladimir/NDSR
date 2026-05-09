@@ -32,7 +32,7 @@ NO_GATEWAY_COUNT=0
 GATEWAY_DOWN_COUNT=0
 
 detect_interface() {
-    local preferred_interface=$(ip link show | grep -E "^[0-9]+:" | awk -F: '{print $2}' | tr -d ' ' | grep -oE "^(kn|nc|nap)([0-9]+|[0-9]+_[0-9]+)")
+    local preferred_interface=$(ip link show | grep -E "^[0-9]+:" | awk -F: '{print $2}' | tr -d ' ' | grep -oE "^(kn|nc|nap|kap)([0-9]+|[0-9]+_[0-9]+)")
     
     if [ -n "$preferred_interface" ]; then
         echo "$preferred_interface"
