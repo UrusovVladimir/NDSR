@@ -72,25 +72,25 @@
               <div class="common-device-avatar" :class="getDeviceAvatarClass(data)">
                 <i :class="deviceIcon(data.type)" class="common-device-icon"></i>
               </div>
+          
               <div class="common-device-info">
-                <div class="common-device-name">{{ data.shortName }}</div>
+                <div class="common-device-name">{{ data.shortName }}
+                  <i class="pi pi-info-circle details-inline" @click="showDeviceDetails(data)" v-tooltip="'View device details'"></i>
+                </div>
+                
                 <div class="common-device-hwid">
                   {{ data.hwId }}
-                  <i class="pi pi-info-circle details-inline" @click="showDeviceDetails(data)" v-tooltip="'View device details'"></i>
                   <span class="site-badge" v-if="data.site">SITE {{ data.site }}</span>
+                  <div class="common-device-hwid">Country: {{ data.country }}</div>
+
                 </div>
                 <div class="common-device-hwid">
                   Current Mode: <b>{{ getDisplayMode(data.id) }}</b>
-                  <i class="pi pi-refresh details-inline" @click="refreshDeviceMode(data.id)" v-tooltip="'Refresh mode info'"></i>
-                </div>
-                <div class="common-device-hwid">
-                  Device Password: <b>{{ todayPassword }}</b>
-                  <i class="pi pi-copy details-inline" @click="copyToClipboard(todayPassword)" v-tooltip="'Copy access password'"></i>
+                  <i class="pi pi-refresh details-inline m-1" @click="refreshDeviceMode(data.id)" v-tooltip="'Refresh mode info'"></i>
                 </div>
                 <div v-if="shouldShowConnectionInfo(data.id)" class="common-device-hwid">
                   Connected to: <b>{{ getConnectedRouterInfo(data.id) }}</b>
                 </div>
-                <div class="common-device-hwid">Country: {{ data.country }}</div>
                 <div v-if="data.rebootPort" class="common-device-hwid">
                   Power Port Status: 
                   <span :class="getPowerStatusClass(data.id)">

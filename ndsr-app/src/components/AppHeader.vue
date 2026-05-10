@@ -18,7 +18,7 @@
         <div class="password-content">
           <i class="pi pi-key password-icon"></i>
           <div class="password-info">
-            <span class="password-label">{{ passwordOfDays[currentDay].label }}</span>
+            <span class="password-label">Device Password</span>
             <span class="password-value">{{ passwordOfDays[currentDay].password || "Loading..." }} </span>
           </div>
           <i class="pi pi-copy copy-icon" v-tooltip="'Copy password'"></i>
