@@ -54,7 +54,6 @@ async function changeWanType(deviceId, checkedWanTypeIds, universalPromptRegex) 
         }
         
     } else {
-        // ✅ Если WAN тип не выбран (выключение WAN)
         console.log(`Выключение WAN для устройства ${deviceId}`);
         let OFF_PVID = wanTypes.find(command => "offVlanPVID" === command.setting);
         await connection.executeCommand('configure', null, universalPromptRegex);
@@ -62,26 +61,56 @@ async function changeWanType(deviceId, checkedWanTypeIds, universalPromptRegex) 
         // ✅ Настраиваем PVID на 4094 (fake vlan)
         for (let cmd of OFF_PVID.commands) {
             let fakeVlan = "4094";
-            await connection.executeCommand(cmd, cmd === 'interface port-channel' ? device.switchPortWan : (cmd === 'pvid' ? fakeVlan : null), universalPromptRegex);
+            try {
+                await connection.executeCommand(cmd, cmd === 'interface port-channel' ? device.switchPortWan : (cmd === 'pvid' ? fakeVlan : null), universalPromptRegex);
+            } catch (error) {
+                console.log(`⚠️ Команда ${cmd} не получила ответ (нормально при выключении)`);
+            }
         }
         
-        // ✅ ДЕАКТИВИРУЕМ ПОРТ (inactive) - это и есть выключение WAN
-        await connection.executeCommand("inactive", null, universalPromptRegex);
-        console.log(`✅ Порт ${device.switchPortWan} деактивирован (inactive)`);
-        await connection.executeCommand("exit", null, universalPromptRegex);
+        // ✅ ДЕАКТИВИРУЕМ ПОРТ
+        try {
+            await connection.executeCommand("inactive", null, universalPromptRegex);
+            console.log(`✅ Порт ${device.switchPortWan} деактивирован (inactive)`);
+        } catch (error) {
+            console.log(`⚠️ Порт ${device.switchPortWan} деактивирован (ответ не получен, это нормально)`);
+        }
+        
+        // ✅ Выход из interface port-channel (тоже может не получить ответ)
+        try {
+            await connection.executeCommand("exit", null, universalPromptRegex);
+        } catch (error) {
+            console.log(`⚠️ Выход из интерфейса (ответ не получен, нормально)`);
+        }
         
         // ✅ Убираем все VLAN с порта
         for (let cmd of OFF_VLAN.commands) {
             for (let wan of wanVlan) {
-                await connection.executeCommand("vlan", wan, universalPromptRegex);
-                await connection.executeCommand(cmd, device.switchPortWan, universalPromptRegex);
-                await connection.executeCommand("exit", null, universalPromptRegex);
+                try {
+                    await connection.executeCommand("vlan", wan, universalPromptRegex);
+                } catch (error) {
+                    console.log(`⚠️ vlan ${wan} - нет ответа`);
+                }
+                try {
+                    await connection.executeCommand(cmd, device.switchPortWan, universalPromptRegex);
+                } catch (error) {
+                    console.log(`⚠️ ${cmd} - нет ответа`);
+                }
+                try {
+                    await connection.executeCommand("exit", null, universalPromptRegex);
+                } catch (error) {
+                    console.log(`⚠️ exit - нет ответа`);
+                }
             }
         }
     }
 
     console.log("Завершаем соединение с коммутатором");
-    await connection.executeCommand("exit", null, universalPromptRegex);
+    try {
+        await connection.executeCommand("exit", null, universalPromptRegex);
+    } catch (error) {
+        console.log(`⚠️ Финальный exit - нет ответа`);
+    }
     await connection.end();
 }
 

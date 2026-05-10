@@ -221,7 +221,7 @@ async function pollNeighbors(routerUrl, login, routerPassword, targetMac, maxAtt
         routerUrl,
         login,
         routerPassword,
-        '/rci/show/ip/neighbor',
+        'rci/show/ip/neighbour',
         'GET'
       );
       
