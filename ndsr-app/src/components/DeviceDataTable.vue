@@ -479,6 +479,44 @@
               </div>
             </div>
           </div>
+          <div class="detail-section">
+     <div class="notes-header">
+             <h4>Notes</h4>
+       <Button icon="pi pi-plus" class="p-button-sm p-button-outlined p-button-rounded" @click="addNote" v-tooltip="'Add note'" />
+  </div>
+  
+  <div v-if="loadingNotes" class="loading-state">
+    <i class="pi pi-spin pi-spinner"></i>
+    <span>Loading notes...</span>
+  </div>
+  
+  <div v-else-if="deviceNotes.length === 0" class="empty-notes">
+    <i class="pi pi-pencil"></i>
+    <span>No notes. Click + to add one.</span>
+  </div>
+  
+  <div v-else class="notes-list">
+    <div v-for="note in deviceNotes" :key="note.id" class="note-item">
+      <div class="note-header">
+        <span class="note-author"><i class="pi pi-user"></i> {{ note.author }}</span>
+        <span class="note-time">{{ formatNoteTime(note.timestamp) }}</span>
+        <div class="note-actions">
+          <Button icon="pi pi-pencil" class="p-button-text p-button-sm p-button-rounded" @click="editNote(note)" v-tooltip="'Edit'" />
+          <Button icon="pi pi-trash" class="p-button-text p-button-sm p-button-rounded text-red-500" @click="confirmDeleteNote(note.id)" v-tooltip="'Delete'" />
+        </div>
+      </div>
+      <div v-if="editingNoteId === note.id" class="note-edit">
+        <Textarea v-model="editingNoteText" rows="2" class="w-full" />
+        <div class="note-edit-actions">
+          <Button label="Save" icon="pi pi-check" class="p-button-sm p-button-success" @click="saveNoteEdit()" />
+          <Button label="Cancel" icon="pi pi-times" class="p-button-sm p-button-text" @click="cancelNoteEdit()" />
+        </div>
+      </div>
+      <div v-else class="note-text">{{ note.text }}</div>
+      <div v-if="note.editedAt" class="note-edited">edited</div>
+    </div>
+  </div>
+</div>
         </div>
 
         <template #footer>
@@ -494,6 +532,15 @@
             @click="copyAllDetails(selectedDevice)" 
             class="p-button-secondary"
           />
+        </template>
+      </Dialog>
+      <Dialog v-model:visible="showAddNoteDialog" modal header="Add Note" :style="{ width: '400px' }">
+        <div>
+          <Textarea v-model="newNoteText" rows="3" class="w-full" placeholder="Enter note text..." />
+        </div>
+        <template #footer>
+          <Button label="Cancel" icon="pi pi-times" class="p-button-text" @click="showAddNoteDialog = false" />
+          <Button label="Add" icon="pi pi-check" class="p-button-success" @click="saveNewNote" :disabled="!newNoteText.trim()" />
         </template>
       </Dialog>
     </div>
@@ -514,6 +561,115 @@ import PrimeDeviceModal from './PrimeDeviceModal.vue'
 import ProgressModal from './ProgressModal.vue'
 import ChangeModeModal from './ChangeModeModal.vue'
 import FirmwareVersion from '@/components/FirmwareVersion.vue'
+import Textarea from 'primevue/textarea'
+
+
+// -----------ЗАМЕТКИ!!!------------
+const deviceNotes = ref([])
+const loadingNotes = ref(false)
+const showAddNoteDialog = ref(false)
+const newNoteText = ref('')
+const editingNoteId = ref(null)
+const editingNoteText = ref('')
+const editingNoteOriginal = ref(null)
+
+// Получение заметок при открытии деталей
+const loadNotes = (deviceId) => {
+  loadingNotes.value = true
+  socket.emit('notes:get', String(deviceId), (response) => {
+    deviceNotes.value = response?.notes || []
+    loadingNotes.value = false
+  })
+}
+
+// Обновить showDeviceDetails
+const showDeviceDetails = (d) => {
+  selectedDevice.value = d
+  showDetailsDialog.value = true
+  loadNotes(d.id)
+}
+
+// Добавление заметки
+const addNote = () => {
+  newNoteText.value = ''
+  showAddNoteDialog.value = true
+}
+
+const saveNewNote = () => {
+  if (!newNoteText.value.trim() || !selectedDevice.value) return
+  
+  socket.emit('notes:add', {
+    deviceId: String(selectedDevice.value.id),
+    note: {
+      text: newNoteText.value.trim(),
+      author: socket.id || 'User'
+    }
+  }, (response) => {
+    if (response?.success) {
+      deviceNotes.value.push(response.note)
+      showAddNoteDialog.value = false
+    }
+  })
+}
+
+// Редактирование заметки
+const editNote = (note) => {
+  editingNoteId.value = note.id
+  editingNoteText.value = note.text
+  editingNoteOriginal.value = note
+}
+
+const saveNoteEdit = () => {
+  if (!editingNoteText.value.trim() || !selectedDevice.value) return
+  
+  socket.emit('notes:update', {
+    deviceId: String(selectedDevice.value.id),
+    noteId: editingNoteId.value,
+    text: editingNoteText.value.trim()
+  }, (response) => {
+    if (response?.success) {
+      const idx = deviceNotes.value.findIndex(n => n.id === editingNoteId.value)
+      if (idx !== -1) {
+        deviceNotes.value[idx] = response.note
+      }
+      cancelNoteEdit()
+    }
+  })
+}
+
+const cancelNoteEdit = () => {
+  editingNoteId.value = null
+  editingNoteText.value = ''
+  editingNoteOriginal.value = null
+}
+
+// Удаление заметки
+const confirmDeleteNote = (noteId) => {
+  if (!selectedDevice.value) return
+  
+  socket.emit('notes:delete', {
+    deviceId: String(selectedDevice.value.id),
+    noteId: noteId
+  }, (response) => {
+    if (response?.success) {
+      deviceNotes.value = deviceNotes.value.filter(n => n.id !== noteId)
+    }
+  })
+}
+
+// Форматирование времени
+const formatNoteTime = (timestamp) => {
+  if (!timestamp) return ''
+  const date = new Date(timestamp)
+  const now = new Date()
+  const diff = now - date
+  
+  if (diff < 60000) return 'just now'
+  if (diff < 3600000) return `${Math.floor(diff / 60000)}m ago`
+  if (diff < 86400000) return `${Math.floor(diff / 3600000)}h ago`
+  return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+}
+// ---------------------------------
 
 const todayPassword = inject('todayPassword')
 const toast = useToast()
@@ -751,7 +907,6 @@ const refreshDeviceMode = async (deviceId) => {
   } catch (e) { toast.add({ severity: 'error', summary: 'Error', detail: e.message, life: 4000 }) }
 }
 
-const showDeviceDetails = (d) => { selectedDevice.value = d; showDetailsDialog.value = true }
 const showResetConfirm = (d) => { selectedDevice.value = d; showResetConfirmDialog.value = true }
 const confirmReset = () => { if (selectedDevice.value) deviceActionsStore.resetConfig(selectedDevice.value); showResetConfirmDialog.value = false }
 const showDslResetConfirm = (d) => { selectedDevice.value = d; showDslResetConfirmDialog.value = true }
@@ -1278,5 +1433,114 @@ onBeforeUnmount(() => {
   letter-spacing: 0.3px;
   white-space: nowrap;
   vertical-align: middle;
+}
+
+/* ========== NOTES STYLES ========== */
+.notes-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.75rem;
+}
+
+.notes-header h4 {
+  margin: 0;
+  color: #2c3e50;
+  font-size: 1.1rem;
+  font-weight: 600;
+  border-bottom: 2px solid #3498db;
+  padding-bottom: 0.5rem;
+  flex: 1;
+}
+
+.notes-header .p-button {
+  margin-left: 0.5rem;
+}
+
+.empty-notes {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 1rem;
+  color: var(--text-color-secondary);
+  font-size: 0.85rem;
+}
+
+.notes-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.note-item {
+  background: white;
+  border: 1px solid #e9ecef;
+  border-radius: 8px;
+  padding: 0.75rem;
+}
+
+.note-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+  font-size: 0.75rem;
+}
+
+.note-author {
+  color: var(--text-color);
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.note-time {
+  color: var(--text-color-secondary);
+  flex: 1;
+}
+
+.note-actions {
+  display: flex;
+  gap: 0.125rem;
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+
+.note-item:hover .note-actions {
+  opacity: 1;
+}
+
+.note-text {
+  font-size: 0.85rem;
+  color: var(--text-color);
+  line-height: 1.4;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.note-edited {
+  font-size: 0.65rem;
+  color: var(--text-color-secondary);
+  font-style: italic;
+  margin-top: 0.25rem;
+}
+
+.note-edit {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.note-edit-actions {
+  display: flex;
+  gap: 0.5rem;
+  justify-content: flex-end;
+}
+
+.text-red-500 {
+  color: #ef4444 !important;
 }
 </style>

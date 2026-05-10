@@ -10,6 +10,7 @@ import {
   addDevice
 } from "./devices.js";
 
+import { getDeviceNotes, addDeviceNote, updateDeviceNote, deleteDeviceNote } from './actions/notes.js';
 import MWSConnectionManager from "./actions/mwsConnectionManager.js";
 import { changeWanType } from "./actions/changeWanType.js";
 import { resetConfig } from "./actions/resetConfig.js";
@@ -750,6 +751,7 @@ const handleBatchFirmwareCheck = async (socket, data, callback) => {
     io.emit('device:list', devices);
     callback(result);
   });
+
   socket.on('device:getInitData', (callback) => {
     console.log('📡 Client requested init data')
     sendInitData(socket).then(() => {
@@ -758,7 +760,7 @@ const handleBatchFirmwareCheck = async (socket, data, callback) => {
       callback?.({ success: false, error: error.message })
     })
   })
-  // В setupEvents, после других обработчиков, добавьте:
+  
   socket.on('device:getPowerStatus', async (deviceId, callback) => {
       try {
           console.log(`🔍 Getting power status for device ${deviceId}`);
@@ -783,6 +785,39 @@ const handleBatchFirmwareCheck = async (socket, data, callback) => {
               callback({ success: false, error: error.message });
           }
       }
+  });
+
+  socket.on('notes:get', (deviceId, callback) => {
+    const notes = getDeviceNotes(deviceId);
+    callback({ success: true, notes });
+  });
+
+  socket.on('notes:add', (data, callback) => {
+      const { deviceId, note } = data;
+      
+      // Берём имя из users или IP
+      const user = users.find(u => u.ip === socket.clientIp);
+      const authorName = user?.name || `User_${socket.clientIp?.split('.')?.pop() || 'Unknown'}`;
+      
+      const newNote = addDeviceNote(deviceId, {
+          text: note.text,
+          author: authorName,
+          authorIp: socket.clientIp
+      });
+      
+      callback({ success: true, note: newNote });
+  });
+
+  socket.on('notes:update', (data, callback) => {
+      const { deviceId, noteId, text } = data;
+      const updated = updateDeviceNote(deviceId, noteId, text);
+      callback({ success: !!updated, note: updated });
+  });
+
+  socket.on('notes:delete', (data, callback) => {
+      const { deviceId, noteId } = data;
+      const deleted = deleteDeviceNote(deviceId, noteId);
+      callback({ success: deleted });
   });
   socket.on('cron:toggle', (newStatus, callback) => {
     console.log("Статус крона:",newStatus)
