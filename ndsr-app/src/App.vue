@@ -79,7 +79,7 @@
         :cron-enabled="cronStore.cronEnabled"
         :search-query="searchQuery"
         @toggle-sidebar="toggleSidebar"
-        @toggle-day="toggleDay"
+        @change-password="showChangePasswordDialog = true"
         @toggle-cron="toggleCron"
         @update-search="searchQuery = $event"
         @copy-password="copyToClipboard"
@@ -94,6 +94,28 @@
     </div>
 
     <ChatWidget ref="chatComponent" :users="users" />
+    <Dialog v-model:visible="showChangePasswordDialog" modal header="Change Device Password" :style="{ width: '450px' }">
+        <div style="display: flex; align-items: flex-start; padding: 0.5rem 0;">
+          <i class="pi pi-exclamation-triangle mr-3" style="font-size: 2rem; color: #f39c12;" />
+          <div>
+            <h4 class="mb-2">Generate new password?</h4>
+            <p class="text-color-secondary mb-0">
+              This will change the password for <strong>all devices</strong>.
+            </p>
+            <p class="text-color-secondary mt-2">
+              Current password: <strong>{{ passwordOfDays[0].password }}</strong>
+            </p>
+            <p class="text-color-secondary mt-2">
+              <i class="pi pi-info-circle mr-1"></i>
+              After generating a new password, you must manually apply it to each device for access.
+            </p>
+          </div>
+        </div>
+        <template #footer>
+          <Button label="Cancel" icon="pi pi-times" class="p-button-text" @click="showChangePasswordDialog = false" />
+          <Button label="Generate New Password" icon="pi pi-key" class="p-button-warning" @click="changePassword" :loading="isChangingPassword" />
+        </template>
+    </Dialog>
   </div>
 </template>
 
@@ -116,7 +138,20 @@ import PrimeDeviceModal from './components/PrimeDeviceModal.vue'
 import InputText from 'primevue/inputtext'
 // ✅ Убедитесь, что все импорты корректны
 // Удаляем импорт FileManager из App.vue, так как он используется только в AppHeader
-
+const showChangePasswordDialog = ref(false)
+const isChangingPassword = ref(false)
+const changePassword = () => {
+  isChangingPassword.value = true
+  socket.emit('password:generate', (response) => {
+    isChangingPassword.value = false
+    showChangePasswordDialog.value = false
+    if (response?.success) {
+      toast.add({ severity: 'success', summary: 'Password Changed', detail: 'New password generated', life: 3000 })
+    } else {
+      toast.add({ severity: 'error', summary: 'Error', detail: response?.error || 'Failed', life: 5000 })
+    }
+  })
+}
 // Socket
 import { socket } from '@/socket'
 // В script добавить:

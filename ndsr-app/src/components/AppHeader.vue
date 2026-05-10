@@ -45,8 +45,8 @@
         <Button 
           icon="pi pi-sync" 
           class="action-toggle"
-          @click="$emit('toggle-day')"
-          v-tooltip.bottom="'Toggle password day'"
+          @click="$emit('change-password')"
+          v-tooltip.bottom="'Generate new device password'"
         />
       </div>
     </div>
@@ -71,7 +71,7 @@ const props = defineProps({
 
 const emit = defineEmits([
   'toggle-sidebar', 
-  'toggle-day', 
+  'change-password', 
   'toggle-cron', 
   'update-search',
   'copy-password'

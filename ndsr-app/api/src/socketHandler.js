@@ -811,7 +811,13 @@ const handleBatchFirmwareCheck = async (socket, data, callback) => {
       socket.emit('cron:status', isCronEnabled);
     }
   });
-  
+  socket.on('password:generate', (callback) => {
+    const newPassword = generatePassword();
+    dailyPasswords.yesterday = { value: dailyPasswords.today.value, date: dailyPasswords.today.date };
+    dailyPasswords.today = { value: newPassword, date: new Date().toDateString() };
+    globalIO.emit('DAILY_PASSWORDS', dailyPasswords);
+    callback({ success: true, password: newPassword });
+  });
   socket.on('device:getMwsConnection', (deviceId, callback) => {
     try {
       console.log('🔗 Requested MWS connection for device:', deviceId);

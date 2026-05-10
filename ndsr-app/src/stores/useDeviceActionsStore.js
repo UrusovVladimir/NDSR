@@ -158,7 +158,7 @@ export const useDeviceActionsStore = defineStore('deviceActions', () => {
     }, 1000)
   }
 
-  // ✅ ИСПРАВЛЕНО: убрана зависимость от device.booking?.accessPassword
+  
   const finishOperationWithModeRefresh = async (deviceId) => {
     updateOperationProgress(deviceId, 100)
     
