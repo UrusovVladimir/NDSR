@@ -29,6 +29,7 @@ function addDeviceNote(deviceId, note) {
         id: Date.now().toString(),
         text: note.text,
         author: note.author || 'Unknown',
+        authorIp: note.authorIp || '',
         timestamp: Date.now(),
         editedAt: null
     };

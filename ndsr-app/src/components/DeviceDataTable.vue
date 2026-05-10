@@ -582,7 +582,6 @@ const loadNotes = (deviceId) => {
   })
 }
 
-// Обновить showDeviceDetails
 const showDeviceDetails = (d) => {
   selectedDevice.value = d
   showDetailsDialog.value = true
