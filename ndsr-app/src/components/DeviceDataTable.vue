@@ -97,6 +97,7 @@
                     <i :class="getPowerStatusIcon(data.id)" class="mr-1"></i>
                     {{ getPowerStatusText(data.id) }}
                   </span>
+                  <i class="pi pi-refresh details-inline" @click="refreshPowerStatus(data.id)" v-tooltip="'Refresh power status'"></i>
                 </div>
               </div>
             </div>
@@ -673,6 +674,19 @@ const cancelPowerAction = () => { showPowerActionConfirmDialog.value = false; po
 const getPowerActionLabel = (a) => ({ reboot: 'Reboot Device', on: 'Power On', off: 'Power Off' }[a] || a)
 const getPowerActionIcon = (a) => ({ reboot: 'pi pi-refresh', on: 'pi pi-power-off', off: 'pi pi-power-off' }[a] || 'pi pi-question')
 const getPowerActionSeverity = (a) => ({ reboot: 'warning', on: 'success', off: 'danger' }[a] || 'secondary')
+const refreshPowerStatus = async (deviceId) => {
+  try {
+    toast.add({ severity: 'info', summary: 'Refreshing...', detail: 'Checking power status, please wait...', life: 2000 })
+    await deviceActionsStore.requestPowerStatus(deviceId)
+    tableKey.value++
+    toast.add({ severity: 'success', summary: 'Updated', detail: 'Power status refreshed', life: 2000 })
+  } catch (error) {
+    console.error(`Failed to refresh power status for ${deviceId}:`, error)
+    toast.add({ severity: 'error', summary: 'Error', detail: error.message || 'Failed to refresh', life: 3000 })
+  }
+}
+
+
 
 const handleConsoleClick = (d) => consoleStore.isConsoleOpen(d.id) ? consoleStore.focusConsole(d.id) : handleOpenConsole(d)
 const handleInitialization = (d) => deviceActionsStore.initializationDevice(d, todayPassword.value)
