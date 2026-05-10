@@ -14,6 +14,15 @@ async function changeWanType(deviceId, checkedWanTypeIds, universalPromptRegex) 
     const switchAddress = getManagmentID(IPs);
     const switchBaseUrl = switchAddress[device.switchIDWan];
 
+
+
+    console.log(`📋 Device info:`, {
+    id: device.id,
+    hwId: device.hwId,
+    switchPortWan: device.switchPortWan,
+    switchIDWan: device.switchIDWan,
+    switchBaseUrl: switchBaseUrl
+    });
     const connection = new TelnetConnection(switchBaseUrl, process.env.SWITCH_LOGIN, process.env.SWITCH_PASSWORD);
 
     let res;

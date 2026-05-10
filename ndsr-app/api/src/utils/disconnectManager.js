@@ -42,9 +42,9 @@ export class DisconnectManager {
         console.log(`📋 Device info:`, {
             id: device.id,
             deviceURL: finalDeviceUrl, // ✅ Переданный URL
-            checkDeviceMode: device.checkDeviceMode, // Из конфига (10.10.19.2:4910)
-            checkUrl: device.checkUrl, // Из конфига (172.16.78.254:4910)
-            URL: device.URL, // Из конфига
+            checkDeviceMode: device.checkDeviceMode,
+            checkUrl: device.checkUrl, 
+            URL: device.URL,
             macAddress: device.macAddress,
             vlanLocal: device.vlanLocal,
             switchPortLan: device.switchPortLan

@@ -71,7 +71,6 @@ let dailyPasswords = {
 
 const universalPromptRegex = /.*/i;
 
-// ✅ ИСПРАВЛЕНО: убрана проверка бронирования
 const syncPowerStatusesToClient = (socket) => {
     console.log('🔌 Syncing power statuses to client');
     let sentCount = 0;
@@ -260,7 +259,6 @@ async function getCachedDevicesStatus() {
   return await getAllDevicesStatus();
 }
 
-// ✅ ИСПРАВЛЕНО: убран дубликат отправки power status, убрана проверка бронирования
 async function sendInitData(socket) {
   const startTime = Date.now();
   console.log('🚀 Starting sendInitData...');
@@ -284,7 +282,6 @@ async function sendInitData(socket) {
   
     socket.emit('device:list', devicesWithBookings);
     
-    // ✅ ОДИН РАЗ отправляем статусы питания для ВСЕХ устройств с rebootPort
     devicesWithBookings.forEach(device => {
       if (device.rebootPort) {
         const powerStatus = devicePowerStatus.get(device.id);
@@ -292,7 +289,6 @@ async function sendInitData(socket) {
       }
     });
 
-    // MWS статусы
     devicesWithBookings.forEach(device => {
       const modeInfo = currentModes.get(device.id);
       if (modeInfo && modeInfo.mode === 'extender_connect' && modeInfo.routerId) {
@@ -340,26 +336,17 @@ async function broadcastDevicesStatus(io) {
     checkPromises.push(executeWithLimit(async () => {
       try {
         const oldStatus = deviceStatusCache.get(device.id);
-        
         const newStatus = await getDeviceStatusWithMode(device.id);
         
         if (oldStatus !== newStatus) {
           deviceStatusCache.set(device.id, newStatus);
           lastGlobalStatusUpdate = now;
           
-          io.emit('device:status', {
-            deviceId: device.id,
-            status: newStatus
-          });
+          io.emit('device:status', { deviceId: device.id, status: newStatus });
 
-          // ✅ Автоматическая проверка прошивки
           if (newStatus === 200 && oldStatus !== 200) {
             const lastTrigger = lastFirmwareTriggerTime.get(device.id) || 0;
-            
-            if (now - lastTrigger < 60000) {
-              console.log(`⏳ Skipping firmware check - too soon for device ${device.id}`);
-              return;
-            }
+            if (now - lastTrigger < 60000) { return; }
             
             lastFirmwareTriggerTime.set(device.id, now);
             console.log(`🔄 Device ${device.id} came online, triggering firmware check`);
@@ -383,10 +370,7 @@ async function broadcastDevicesStatus(io) {
         if (oldStatus !== 0) {
           deviceStatusCache.set(device.id, 0);
           lastGlobalStatusUpdate = now;
-          io.emit('device:status', {
-            deviceId: device.id,
-            status: 0
-          });
+          io.emit('device:status', { deviceId: device.id, status: 0 });
           clearFirmwareCache(device.id);
         }
       }
@@ -400,7 +384,6 @@ async function broadcastDevicesStatus(io) {
 
 const syncAllModesToClient = (socket) => {
   console.log('🔄 Syncing all device modes to client');
-  
   let sentCount = 0;
   currentModes.forEach((modeInfo, deviceId) => {
       if (modeInfo && modeInfo.mode) {
@@ -412,7 +395,6 @@ const syncAllModesToClient = (socket) => {
               source: 'initial_sync'
           });
           sentCount++;
-          console.log(`📡 Sent mode for ${deviceId}: ${modeInfo.mode}`);
       }
   });
   console.log(`✅ Synced ${sentCount} device modes to client`);
@@ -420,28 +402,17 @@ const syncAllModesToClient = (socket) => {
 
 async function initializeStatusSystem() {
   console.log('🔄 Initializing status system...');
-  console.time('statusSystemInit');
-  
-  try {
-    await getAllDevicesStatus();
-    console.log('✅ Status system initialized');
-  } catch (error) {
-    console.error('❌ Failed to initialize status system:', error);
-  }
-  
-  console.timeEnd('statusSystemInit');
+  try { await getAllDevicesStatus(); console.log('✅ Status system initialized'); } 
+  catch (error) { console.error('❌ Failed to initialize status system:', error); }
 }
+
 async function initializePowerStatus() {
   console.log('🔌 Initializing power status for devices...');
   (async () => {
     for (const device of devices) {
       if (device.rebootPort) {
-        try {
-          const status = await getPortPowerStatus(device.id);
-          devicePowerStatus.set(device.id, status);
-        } catch (error) {
-          devicePowerStatus.set(device.id, 'on');
-        }
+        try { const status = await getPortPowerStatus(device.id); devicePowerStatus.set(device.id, status); } 
+        catch (error) { devicePowerStatus.set(device.id, 'on'); }
       }
     }
     console.log(`✅ Initialized power status for ${devicePowerStatus.size} devices`);
@@ -449,958 +420,216 @@ async function initializePowerStatus() {
 }
   
 function clearFirmwareCache(deviceId) {
-  if (currentFirmwareVersion.has(deviceId)
-  )
-  currentFirmwareVersion.delete(deviceId);
+  if (currentFirmwareVersion.has(deviceId)) currentFirmwareVersion.delete(deviceId);
 }
 
 initializeStatusSystem();
 initializePowerStatus();
 
-const handleBatchRelease = async (socket, data, callback) => {
-  try {
-      const { deviceIds } = data;
-      const userId = socket.clientIp;
+// ==================== SOCKET EVENTS ====================
 
-      console.log(`🔄 Batch release requested by user ${userId} for ${deviceIds.length} devices`);
-
-      const releasePromises = deviceIds.map(async (deviceId) => {
-          try {
-              const device = getDeviceById(deviceId);
-              
-              if (!device) {
-                  return { 
-                      deviceId, 
-                      success: false, 
-                      error: 'Device not found' 
-                  };
-              }
-
-              const currentBooking = deviceBookings.get(deviceId);
-              if (!currentBooking || currentBooking.bookedBy !== userId) {
-                  return { 
-                      deviceId, 
-                      success: false, 
-                      error: 'Not authorized or device not booked by user' 
-                  };
-              }
-
-              deviceBookings.delete(deviceId);
-
-              return { 
-                  deviceId, 
-                  success: true 
-              };
-
-          } catch (error) {
-              console.error(`Error releasing device ${deviceId}:`, error);
-              return { 
-                  deviceId, 
-                  success: false, 
-                  error: error.message 
-              };
-          }
-      });
-
-      const results = await Promise.allSettled(releasePromises);
-
-      const successfulReleases = [];
-      const failedReleases = [];
-
-      results.forEach((result, index) => {
-          if (result.status === 'fulfilled') {
-              const { value } = result;
-              if (value.success) {
-                  successfulReleases.push(value.deviceId);
-              } else {
-                  failedReleases.push({
-                      deviceId: value.deviceId,
-                      error: value.error
-                  });
-              }
-          } else {
-              failedReleases.push({
-                  deviceId: deviceIds[index],
-                  error: result.reason?.message || 'Unknown error'
-              });
-          }
-      });
-
-      console.log(`✅ Batch release completed: ${successfulReleases.length} successful, ${failedReleases.length} failed`);
-
-      if (successfulReleases.length > 0) {
-          socket.emit('device:batchBookingUpdated', {
-              action: 'release',
-              userId: userId,
-              successful: successfulReleases,
-              failed: failedReleases,
-              timestamp: new Date().toISOString()
-          });
-
-          socket.broadcast.emit('device:batchBookingUpdated', {
-              action: 'release',
-              userId: userId,
-              successful: successfulReleases,
-              failed: failedReleases,
-              timestamp: new Date().toISOString()
-          });
-      }
-
-      callback({
-          success: true,
-          released: successfulReleases.length,
-          failed: failedReleases.length,
-          details: {
-              successful: successfulReleases,
-              failed: failedReleases
-          }
-      });
-
-  } catch (error) {
-      console.error('❌ Batch release error:', error);
-      callback({ 
-          success: false, 
-          message: 'Batch release operation failed',
-          error: error.message 
-      });
-  }
-};
-
-const handleBatchFirmwareCheck = async (socket, data, callback) => {
-  try {
-    const { deviceIds, passwords = {} } = data;
-    const userId = socket.clientIp;
-
-    console.log(`🔄 Batch firmware check for ${deviceIds.length} devices by user ${userId}`);
-
-    const checkPromises = deviceIds.map(async (deviceId) => {
-      try {
-        const device = getDeviceById(deviceId);
-        
-        if (!device) {
-          return { 
-            deviceId, 
-            success: false, 
-            error: 'Device not found' 
-          };
-        }
-
-        const deviceStatus = await getDeviceStatusWithMode(deviceId);
-        if (deviceStatus !== 200) {
-          return { 
-            deviceId, 
-            success: false, 
-            error: 'Device is offline' 
-          };
-        }
-
-        let password = passwords[deviceId];
-        if (!password) {
-          const booking = deviceBookings.get(deviceId);
-          if (booking && booking.bookedBy === userId) {
-            password = booking.accessPassword;
-          } else {
-            password = dailyPasswords.today.value;
-          }
-        }
-
-        if (!password) {
-          return { 
-            deviceId, 
-            success: false, 
-            error: 'No password available' 
-          };
-        }
-
-        // ✅ ДЛЯ АВТОРИЗАЦИИ ИСПОЛЬЗУЕМ СЦЕНАРИЙ 'auth'
-        const authUrl = getDeviceUrl(deviceId, 'auth');
-        const versionData = await keeneticAuth(
-          authUrl,
-          'admin',
-          password
-        );
-
-        if (!versionData?.release) {
-          return { 
-            deviceId, 
-            success: false, 
-            error: 'Invalid firmware response' 
-          };
-        }
-
-        const firmwareVersion = versionData.release;
-        
-        currentFirmwareVersion.set(deviceId, {
-          version: firmwareVersion,
-          timestamp: Date.now()
-        });
-
-        return { 
-          deviceId, 
-          success: true,
-          version: firmwareVersion
-        };
-
-      } catch (error) {
-        console.error(`Error checking firmware for device ${deviceId}:`, error);
-        return { 
-          deviceId, 
-          success: false, 
-          error: error.message 
-        };
-      }
-    });
-
-    const results = await Promise.allSettled(checkPromises);
-
-    const successfulChecks = [];
-    const failedChecks = [];
-
-    results.forEach((result, index) => {
-      if (result.status === 'fulfilled') {
-        const { value } = result;
-        if (value.success) {
-          successfulChecks.push({
-            deviceId: value.deviceId,
-            version: value.version
-          });
-        } else {
-          failedChecks.push({
-            deviceId: value.deviceId,
-            error: value.error
-          });
-        }
-      } else {
-        failedChecks.push({
-          deviceId: deviceIds[index],
-          error: result.reason?.message || 'Unknown error'
-        });
-      }
-    });
-
-    console.log(`✅ Batch firmware check completed: ${successfulChecks.length} successful, ${failedChecks.length} failed`);
-
-    if (successfulChecks.length > 0) {
-      socket.emit('device:batchFirmwareUpdated', {
-        action: 'check',
-        userId: userId,
-        successful: successfulChecks,
-        failed: failedChecks,
-        timestamp: new Date().toISOString()
-      });
-
-      socket.broadcast.emit('device:batchFirmwareUpdated', {
-        action: 'check', 
-        userId: userId,
-        successful: successfulChecks,
-        failed: failedChecks,
-        timestamp: new Date().toISOString()
-      });
-    }
-
-    callback({
-      success: true,
-      checked: successfulChecks.length,
-      failed: failedChecks.length,
-      details: {
-        successful: successfulChecks,
-        failed: failedChecks
-      }
-    });
-
-  } catch (error) {
-    console.error('❌ Batch firmware check error:', error);
-    callback({ 
-      success: false, 
-      message: 'Batch firmware check failed',
-      error: error.message 
-    });
-  }
-};
-
-  function setupEvents(socket, io) {
+function setupEvents(socket, io) {
     socket.clientIp = socket.handshake.headers['x-real-ip'] || socket.handshake.headers['x-forwarded-for']?.split(',')[0] || socket.handshake.address?.replace(/^::ffff:/, '') || 'unknown';
     socket.emit('CLIENT_IP', socket.clientIp);
 
-    console.log('🔗 Client connected:', {
-      ip: socket.clientIp,
-      headers: {
-        'x-real-ip': socket.handshake.headers['x-real-ip'],
-        'x-forwarded-for': socket.handshake.headers['x-forwarded-for'],
-        forwarded: socket.handshake.headers['forwarded']
-      }
-    });
+    console.log('🔗 Client connected:', { ip: socket.clientIp });
   
-  socket.emit('CLIENT_IP', socket.clientIp);
-  socket.on('device:remove', (deviceId, callback) => {
-    const result = removeDevice(deviceId);
-    if (result.success) {
+    socket.emit('CLIENT_IP', socket.clientIp);
+
+    // Device management
+    socket.on('device:remove', (deviceId, callback) => {
+        const result = removeDevice(deviceId);
+        if (result.success) io.emit('device:list', devices);
+        callback(result);
+    });
+
+    socket.on('device:add', (device, callback) => {
+        const result = addDevice(device);
+        if (result.success) io.emit('device:list', devices);
+        callback(result);
+    });
+
+    socket.on('device:reloadConfigs', (callback) => {
+        const result = reloadConfigs();
         io.emit('device:list', devices);
-    }
-    callback(result);
-  });
-  socket.on('device:add', (device, callback) => {
-    const result = addDevice(device);
-    if (result.success) {
-        io.emit('device:list', devices);
-    }
-    callback(result);
-  });
-  socket.on('device:reloadConfigs', (callback) => {
-    const result = reloadConfigs();
-    io.emit('device:list', devices);
-    callback(result);
-  });
-
-  socket.on('device:getInitData', (callback) => {
-    console.log('📡 Client requested init data')
-    sendInitData(socket).then(() => {
-      callback?.({ success: true })
-    }).catch(error => {
-      callback?.({ success: false, error: error.message })
-    })
-  })
-  
-  socket.on('device:getPowerStatus', async (deviceId, callback) => {
-      try {
-          console.log(`🔍 Getting power status for device ${deviceId}`);
-          
-          const status = await getPortPowerStatus(deviceId);
-          devicePowerStatus.set(deviceId, status);
-          
-          // Отправляем статус всем клиентам
-          io.emit('device:powerStatus', {
-              deviceId: deviceId,
-              status: status,
-              timestamp: Date.now(),
-              changed: true
-          });
-          
-          if (callback) {
-              callback({ success: true, status: status });
-          }
-      } catch (error) {
-          console.error(`❌ Failed to get power status for ${deviceId}:`, error);
-          if (callback) {
-              callback({ success: false, error: error.message });
-          }
-      }
-  });
-
-  socket.on('notes:get', (deviceId, callback) => {
-    const notes = getDeviceNotes(deviceId);
-    callback({ success: true, notes });
-  });
-
-  socket.on('notes:add', (data, callback) => {
-      const { deviceId, note } = data;
-      
-      // Берём имя из users или IP
-      const user = users.find(u => u.ip === socket.clientIp);
-      const authorName = user?.name || `User_${socket.clientIp?.split('.')?.pop() || 'Unknown'}`;
-      
-      const newNote = addDeviceNote(deviceId, {
-          text: note.text,
-          author: authorName,
-          authorIp: socket.clientIp
-      });
-      
-      callback({ success: true, note: newNote });
-  });
-
-  socket.on('notes:update', (data, callback) => {
-      const { deviceId, noteId, text } = data;
-      const updated = updateDeviceNote(deviceId, noteId, text);
-      callback({ success: !!updated, note: updated });
-  });
-
-  socket.on('notes:delete', (data, callback) => {
-      const { deviceId, noteId } = data;
-      const deleted = deleteDeviceNote(deviceId, noteId);
-      callback({ success: deleted });
-  });
-  socket.on('cron:toggle', (newStatus, callback) => {
-    console.log("Статус крона:",newStatus)
-    if (typeof newStatus !== 'boolean') {
-      if (typeof callback === 'function') {
-        callback({ success: false, error: 'Invalid status type' });
-      } else {
-        socket.emit('cron:error', { message: 'Invalid status type' });
-      }
-      return;
-    }
-    
-    isCronEnabled = newStatus;
-    
-    if (typeof callback === 'function') {
-      callback({ success: true, status: isCronEnabled });
-    }
-    
-    io.emit('cron:status', isCronEnabled);
-  });
-
-  socket.on('cron:get-status', (callback) => {
-    if (typeof callback === 'function') {
-      callback(isCronEnabled);
-    } else {
-      socket.emit('cron:status', isCronEnabled);
-    }
-  });
-  socket.on('password:generate', (callback) => {
-    const newPassword = generatePassword();
-    dailyPasswords.yesterday = { value: dailyPasswords.today.value, date: dailyPasswords.today.date };
-    dailyPasswords.today = { value: newPassword, date: new Date().toDateString() };
-    globalIO.emit('DAILY_PASSWORDS', dailyPasswords);
-    callback({ success: true, password: newPassword });
-  });
-  socket.on('device:getMwsConnection', (deviceId, callback) => {
-    try {
-      console.log('🔗 Requested MWS connection for device:', deviceId);
-      
-      const modeInfo = currentModes.get(deviceId);
-      
-      if (modeInfo && modeInfo.mode === 'extender_connect' && modeInfo.routerId) {
-        const router = getDeviceById(modeInfo.routerId);
-        const connection = {
-          routerId: modeInfo.routerId,
-          routerName: router ? `${router.hwId} ${router.shortName}` : `Router ${modeInfo.routerId}`,
-          status: 'connected',
-          connectedSince: modeInfo.timestamp || Date.now(),
-          signalStrength: 85
-        };
-        
-        console.log('🔗 Found MWS connection:', connection);
-        callback({ 
-          success: true, 
-          connection: connection 
-        });
-      } else {
-        console.log('🔗 No MWS connection found for device:', deviceId);
-        callback({ 
-          success: true, 
-          connection: null 
-        });
-      }
-    } catch (error) {
-      console.error('❌ Error getting MWS connection:', error);
-      callback({ 
-        success: false, 
-        error: error.message 
-      });
-    }
-  });
-  
-  socket.on('device:book', async (data, callback) => {
-    try {
-      const { deviceId, duration } = data;
-      const bookedBy = socket.clientIp;
-      
-      if (!deviceId || !duration) {
-        throw new Error('Device ID and duration are required');
-      }
-    
-      const existingBooking = deviceBookings.get(deviceId);
-      if (existingBooking && existingBooking.bookedBy !== bookedBy) {
-        const errorMsg = 'Device is already booked by another user';
-        return callback?.({ success: false, message: errorMsg });
-      }
-    
-      const expiresAt = Math.floor(Date.now() / 1000) + duration;
-      const remainingTime = duration;
-      
-      // ✅ СНАЧАЛА БРОНИРУЕМ - МГНОВЕННО
-      deviceBookings.set(deviceId, {
-        bookedBy: bookedBy,
-        expiresAt,
-        accessPassword: dailyPasswords.today.value
-      });
-      
-      // ✅ Получаем статус из кэша (если есть)
-      const cachedPowerStatus = devicePowerStatus.get(deviceId);
-      
-      // ✅ ОТВЕЧАЕМ СРАЗУ с тем статусом, который есть в кэше
-      const response = { 
-        success: true, 
-        expiresAt, 
-        accessPassword: dailyPasswords.today.value,
-        powerStatus: cachedPowerStatus || 'unknown'
-      };
-      
-      callback?.(response);
-      
-      // ✅ ОТПРАВЛЯЕМ ОБНОВЛЕНИЕ БРОНИРОВАНИЯ ВСЕМ (с текущим статусом)
-      io.emit('device:bookingUpdated', {
-        deviceId: deviceId,
-        booking: {
-          isBooked: true,
-          bookedBy: bookedBy,
-          accessPassword: dailyPasswords.today.value,
-          expiresAt: expiresAt,
-          remainingTime: remainingTime
-        },
-        powerStatus: cachedPowerStatus || 'unknown'
-      });
-      
-      // ✅ АСИНХРОННО ПОЛУЧАЕМ СТАТУС В ФОНЕ, ЕСЛИ ЕГО НЕТ В КЭШЕ
-      if (!cachedPowerStatus) {
-        (async () => {
-          try {
-            console.log(`[BOOK] Fetching power status for ${deviceId} in background...`);
-            const powerStatus = await getPortPowerStatus(deviceId);
-            devicePowerStatus.set(deviceId, powerStatus);
-            console.log(`[BOOK] Power status for ${deviceId}: ${powerStatus}`);
-            
-            // ✅ Отправляем ТОЛЬКО обновление статуса (не бронирования)
-            socket.emit('device:powerStatus', {
-              deviceId: deviceId,
-              status: powerStatus,
-              timestamp: Date.now(),
-              changed: false
-            });
-            
-          } catch (error) {
-            console.error(`[BOOK] Failed to get power status for ${deviceId}:`, error.message);
-          }
-        })();
-      } else {
-        console.log(`[BOOK] Using cached power status for ${deviceId}: ${cachedPowerStatus}`);
-      }
-      
-    } catch (error) {
-      callback?.({ success: false, error: error.message });
-    }
-  });
-  
-  socket.on('device:extend', (data, callback) => {
-    try {
-      const { deviceId, additionalDuration } = data;
-      const bookedBy = socket.clientIp;
-  
-      if (!deviceId || !additionalDuration) {
-        throw new Error('Device ID and additional duration are required');
-      }
-  
-      const currentBooking = deviceBookings.get(deviceId);
-      if (!currentBooking) {
-        return callback?.({ success: false, message: 'No active booking found' });
-      }
-  
-      if (currentBooking.bookedBy !== bookedBy) {
-        return callback?.({ success: false, message: 'Not your booking' });
-      }
-  
-      const newExpiresAt = currentBooking.expiresAt + additionalDuration;
-      const newRemainingTime = newExpiresAt - Math.floor(Date.now() / 1000);
-      
-      deviceBookings.set(deviceId, {
-        ...currentBooking,
-        expiresAt: newExpiresAt
-      });
-  
-      const response = { 
-        success: true, 
-        expiresAt: newExpiresAt,
-        accessPassword: currentBooking.accessPassword 
-      };
-  
-      callback?.(response);
-  
-      io.emit('device:bookingUpdated', {
-        deviceId: deviceId,
-        booking: {
-          isBooked: true,
-          bookedBy: bookedBy,
-          accessPassword: currentBooking.accessPassword,
-          expiresAt: newExpiresAt,
-          remainingTime: newRemainingTime
-        }
-      });
-  
-    } catch (error) {
-      callback?.({ success: false, error: error.message });
-    }
-  });
-
-  socket.on('device:get-booking-status', (deviceId, callback) => {
-    const booking = deviceBookings.get(deviceId);
-    
-    const response = {
-      isBooked: !!booking,
-      bookedBy: booking?.bookedBy || null,
-      expiresAt: booking?.expiresAt || null,
-      accessPassword: booking?.accessPassword || null
-    };
-    
-    if (booking) {
-      response.remainingTime = Math.max(0, booking.expiresAt - Math.floor(Date.now() / 1000));
-    }
-    
-    callback(response);
-  });
-
-  socket.on('device:release', (data, callback) => {
-    try {
-      let actualDeviceId, actualCallback;
-      
-      if (typeof data === 'object') {
-        actualDeviceId = data.deviceId;
-        actualCallback = callback;
-      } else {
-        actualDeviceId = data;
-        actualCallback = callback;
-      }
-      
-      const bookedBy = socket.clientIp;
-      const currentBooking = deviceBookings.get(actualDeviceId);
-  
-      if (!currentBooking) {
-        const errorMsg = 'No active booking found for this device';
-        if (typeof actualCallback === 'function') {
-          actualCallback({ success: false, message: errorMsg });
-        }
-        return;
-      }
-  
-      if (currentBooking.bookedBy !== bookedBy) {
-        const errorMsg = 'Not your booking';
-        if (typeof actualCallback === 'function') {
-          actualCallback({ success: false, message: errorMsg });
-        }
-        return;
-      }
-  
-      deviceBookings.delete(actualDeviceId);
-  
-      if (typeof actualCallback === 'function') {
-        actualCallback({ success: true });
-      }
-  
-      io.emit('device:bookingUpdated', {
-        deviceId: actualDeviceId,
-        booking: {
-          isBooked: false,
-          bookedBy: null,
-          accessPassword: null,
-          expiresAt: null,
-          remainingTime: 0
-        }
-      });
-  
-      socket.emit('device:released', { deviceId: actualDeviceId });
-  
-    } catch (error) {
-      if (typeof callback === 'function') {
-        callback({ success: false, error: error.message });
-      }
-    }
-  });
-
-  socket.on('device:releaseMultiple', (data, callback) => {
-    handleBatchRelease(socket, data, callback);
-  });
-
-  socket.on('device:mwsConnected', async (data, callback) => {
-  let deviceId; // ✅ Объявляем переменную ДО try
-  
-  try {
-    deviceId = data.deviceId; // ✅ Присваиваем значение
-    const { routerId, action, routerPassword, useDevicePassword = true } = data;
-    
-    console.log('🔗 MWS Connection request received:', { 
-        deviceId, 
-        routerId, 
-        action,
-        hasRouterPassword: !!routerPassword,
-        useDevicePassword
+        callback(result);
     });
-    
-    if (!deviceId || !routerId) {
-        const errorMsg = 'Missing required parameters: deviceId or routerId';
-        console.error('❌', errorMsg);
-        if (typeof callback === 'function') {
-            callback({ status: 'error', error: errorMsg });
-        }
-        return;
-    }
-    
-    const device = getDeviceById(deviceId);
-    const router = getParamRouter(routerId);
-    
-    if (!device) {
-        const errorMsg = `Device with ID ${deviceId} not found`;
-        console.error('❌', errorMsg);
-        if (typeof callback === 'function') {
-            callback({ status: 'error', error: errorMsg });
-        }
-        return;
-    }
-    
-    if (!router) {
-        const errorMsg = `Router with ID ${routerId} not found`;
-        console.error('❌', errorMsg);
-        if (typeof callback === 'function') {
-            callback({ status: 'error', error: errorMsg });
-        }
-        return;
-    }
-    
-    console.log('✅ Found devices:', {
-        device: device.hwId,
-        router: router.hwId,
-        deviceType: device.type,
-        hwType: device.hWtype,
-        action: action
+
+    socket.on('device:getInitData', (callback) => {
+        console.log('📡 Client requested init data');
+        sendInitData(socket).then(() => callback?.({ success: true })).catch(error => callback?.({ success: false, error: error.message }));
     });
-    
-    // ✅ ПОЛУЧАЕМ ПАРОЛЬ РОУТЕРА
-    let finalRouterPassword = routerPassword;
-    
-    if (useDevicePassword && !routerPassword) {
-        const routerBooking = deviceBookings.get(routerId);
-        finalRouterPassword = routerBooking?.accessPassword || dailyPasswords.today.value;
-        console.log('🔑 Using device password for router:', finalRouterPassword ? '••••••••' : 'None');
-    }
-    
-    // ✅ ПОЛУЧАЕМ ПАРОЛЬ УСТРОЙСТВА
-    const deviceBooking = deviceBookings.get(deviceId);
-    const devicePassword = deviceBooking?.accessPassword || dailyPasswords.today.value;
-    
-    // ✅ ПОДГОТАВЛИВАЕМ ДАННЫЕ ДЛЯ connectToMws
-    const mwsData = {
-        deviceId,
-        routerId, 
-        action,
-        routerPassword: finalRouterPassword,
-        useDevicePassword
-    };
-    
-    console.log('🔧 Calling connectToMws with data:', mwsData);
-    
-    // ✅ НАЧАЛО ОПЕРАЦИИ
-    sendMwsProgress(io, deviceId, 10, 'initializing');
-    
-    // ✅ ВЫЗЫВАЕМ connectToMws ДЛЯ НАСТРОЙКИ СВИТЧА
-    sendMwsProgress(io, deviceId, 20, 'switch_config');
-    await connectToMws(mwsData, universalPromptRegex);
-    console.log('✅ connectToMws completed successfully');
-    sendMwsProgress(io, deviceId, 40, 'switch_config');
-      if (action === 'connect') {
-        currentModes.set(deviceId, {
-          mode: 'extender_connect',
-          routerId: routerId,
-          timestamp: Date.now()
-        });
-          const routerDevice = getDeviceById(routerId)
-            if (routerDevice && routerDevice.type === 'router') {
-              // Назначаем site роутеру (инкрементально)
-              const existingSites = Array.from(deviceSites.values()).filter(Boolean)
-              const nextSite = existingSites.length > 0 ? Math.max(...existingSites) + 1 : 1
-              deviceSites.set(routerId, nextSite)
-              
-              console.log(`📍 Assigned SITE ${nextSite} to router ${routerDevice.hwId}`)
-              
-              // Отправляем обновление всем клиентам
-              io.emit('device:siteUpdated', {
-                deviceId: routerId,
-                site: nextSite,
-                timestamp: Date.now()
-              })
+  
+    socket.on('device:getPowerStatus', async (deviceId, callback) => {
+        try {
+            const status = await getPortPowerStatus(deviceId);
+            devicePowerStatus.set(deviceId, status);
+            io.emit('device:powerStatus', { deviceId, status, timestamp: Date.now(), changed: true });
+            if (callback) callback({ success: true, status });
+        } catch (error) {
+            if (callback) callback({ success: false, error: error.message });
+        }
+    });
+
+    // Notes
+    socket.on('notes:get', (deviceId, callback) => callback({ success: true, notes: getDeviceNotes(deviceId) }));
+
+    socket.on('notes:add', (data, callback) => {
+        const { deviceId, note } = data;
+        const user = users.find(u => u.ip === socket.clientIp);
+        const authorName = user?.name || `User_${socket.clientIp?.split('.')?.pop() || 'Unknown'}`;
+        const newNote = addDeviceNote(deviceId, { text: note.text, author: authorName, authorIp: socket.clientIp });
+        callback({ success: true, note: newNote });
+    });
+
+    socket.on('notes:update', (data, callback) => {
+        const { deviceId, noteId, text } = data;
+        const updated = updateDeviceNote(deviceId, noteId, text);
+        callback({ success: !!updated, note: updated });
+    });
+
+    socket.on('notes:delete', (data, callback) => {
+        const { deviceId, noteId } = data;
+        callback({ success: deleteDeviceNote(deviceId, noteId) });
+    });
+
+    // Cron & Password
+    socket.on('cron:toggle', (newStatus, callback) => {
+        if (typeof newStatus !== 'boolean') { callback?.({ success: false, error: 'Invalid status type' }); return; }
+        isCronEnabled = newStatus;
+        callback?.({ success: true, status: isCronEnabled });
+        io.emit('cron:status', isCronEnabled);
+    });
+
+    socket.on('cron:get-status', (callback) => callback?.(isCronEnabled));
+
+    socket.on('password:generate', (callback) => {
+        const newPassword = generatePassword();
+        dailyPasswords.yesterday = { value: dailyPasswords.today.value, date: dailyPasswords.today.date };
+        dailyPasswords.today = { value: newPassword, date: new Date().toDateString() };
+        globalIO.emit('DAILY_PASSWORDS', dailyPasswords);
+        callback({ success: true, password: newPassword });
+    });
+
+    // MWS Connection
+    socket.on('device:getMwsConnection', (deviceId, callback) => {
+        const modeInfo = currentModes.get(deviceId);
+        if (modeInfo?.mode === 'extender_connect' && modeInfo.routerId) {
+            const router = getDeviceById(modeInfo.routerId);
+            callback({ success: true, connection: { routerId: modeInfo.routerId, routerName: router ? `${router.hwId} ${router.shortName}` : `Router ${modeInfo.routerId}`, status: 'connected', connectedSince: modeInfo.timestamp || Date.now(), signalStrength: 85 } });
+        } else {
+            callback({ success: true, connection: null });
+        }
+    });
+
+    // ✅ MWS CONNECTED - с полной логикой site
+    socket.on('device:mwsConnected', async (data, callback) => {
+        let deviceId;
+        try {
+            deviceId = data.deviceId;
+            const { routerId, action, routerPassword, useDevicePassword = true } = data;
+            
+            if (!deviceId || !routerId) { callback?.({ status: 'error', error: 'Missing deviceId or routerId' }); return; }
+            
+            const device = getDeviceById(deviceId);
+            const router = getParamRouter(routerId);
+            if (!device || !router) { callback?.({ status: 'error', error: 'Device or router not found' }); return; }
+
+            let finalRouterPassword = routerPassword;
+            if (useDevicePassword && !routerPassword) {
+                finalRouterPassword = deviceBookings.get(routerId)?.accessPassword || dailyPasswords.today.value;
             }
-        console.log(`🔧 Режим устройства ${deviceId} обновлен: extender_connect к роутеру ${routerId}`);
-        
-        io.emit('device:modeUpdated', {
-          deviceId: deviceId,
-          mode: 'extender_connect',
-          routerId: routerId,
-          timestamp: Date.now(),
-          source: 'mws_connect'
-        });
-        
-        // ✅ НЕМЕДЛЕННАЯ ПРОВЕРКА СТАТУСА
-        setTimeout(() => {
-          checkAndUpdateDeviceStatusImmediately(io, deviceId);
-        }, 2000);
-      }
-      
-      // ✅ ДАЛЕЕ ВЫПОЛНЯЕМ ДОПОЛНИТЕЛЬНЫЕ ОПЕРАЦИИ
-      try {
-        if (action === 'disconnect') {
-          console.log(`🔧 Removing port forwarding for device ${deviceId}`);
-          sendMwsProgress(io, deviceId, 50, 'port_forwarding');
-          await MWSConnectionManager.removeMWSConnection(deviceId, routerId);
-          sendMwsProgress(io, deviceId, 70, 'port_forwarding');
-          
-          console.log(`🔧 Rebooting device ${deviceId} after disconnect`);
-          sendMwsProgress(io, deviceId, 75, 'device_reboot');
-            const hasOtherExtenders = Array.from(currentModes.entries()).some(
-                  ([id, info]) => id !== deviceId && info.mode === 'extender_connect' && info.routerId === routerId
-                )
+            const devicePassword = deviceBookings.get(deviceId)?.accessPassword || dailyPasswords.today.value;
+
+            sendMwsProgress(io, deviceId, 10, 'initializing');
+            sendMwsProgress(io, deviceId, 20, 'switch_config');
+            await connectToMws({ deviceId, routerId, action, routerPassword: finalRouterPassword, useDevicePassword }, universalPromptRegex);
+            sendMwsProgress(io, deviceId, 40, 'switch_config');
+
+            if (action === 'connect') {
+                currentModes.set(deviceId, { mode: 'extender_connect', routerId, timestamp: Date.now() });
                 
-                // Если больше нет подключенных экстендеров - убираем site
+                // ✅ Назначаем/передаём site
+                const routerDevice = getDeviceById(routerId);
+                if (routerDevice?.type === 'router') {
+                    if (!deviceSites.has(routerId)) {
+                        const existingSites = Array.from(deviceSites.values()).filter(Boolean);
+                        const nextSite = existingSites.length > 0 ? Math.max(...existingSites) + 1 : 1;
+                        deviceSites.set(routerId, nextSite);
+                    }
+                    const site = deviceSites.get(routerId);
+                    if (site) {
+                        deviceSites.set(deviceId, site);
+                        io.emit('device:siteUpdated', { deviceId: routerId, site, timestamp: Date.now() });
+                        io.emit('device:siteUpdated', { deviceId, site, timestamp: Date.now() });
+                    }
+                }
+
+                io.emit('device:modeUpdated', { deviceId, mode: 'extender_connect', routerId, timestamp: Date.now(), source: 'mws_connect' });
+                setTimeout(() => checkAndUpdateDeviceStatusImmediately(io, deviceId), 2000);
+            }
+
+            // Port forwarding
+            if (action === 'disconnect') {
+                sendMwsProgress(io, deviceId, 50, 'port_forwarding');
+                await MWSConnectionManager.removeMWSConnection(deviceId, routerId);
+                sendMwsProgress(io, deviceId, 70, 'port_forwarding');
+                sendMwsProgress(io, deviceId, 75, 'device_reboot');
+
+                // ✅ Убираем site у отключенного extender'а
+                if (deviceSites.has(deviceId)) {
+                    deviceSites.delete(deviceId);
+                    io.emit('device:siteUpdated', { deviceId, site: null, timestamp: Date.now() });
+                }
+
+                // Проверяем, остались ли другие extender'ы
+                const hasOtherExtenders = Array.from(currentModes.entries()).some(
+                    ([id, info]) => id !== deviceId && info.mode === 'extender_connect' && info.routerId === routerId
+                );
                 if (!hasOtherExtenders) {
-                  deviceSites.delete(routerId)
-                  io.emit('device:siteUpdated', {
-                    deviceId: routerId,
-                    site: null,
-                    timestamp: Date.now()
-                  })
+                    deviceSites.delete(routerId);
+                    io.emit('device:siteUpdated', { deviceId: routerId, site: null, timestamp: Date.now() });
                 }
-          try {
-            // ✅ ДЛЯ ПЕРЕЗАГРУЗКИ ИСПОЛЬЗУЕМ СЦЕНАРИЙ 'mode_change' (прямой URL)
-            const rebootUrl = getDeviceUrl(deviceId, 'mode_change');
-            const deviceForReboot = {
-              ...device,
-              URL: rebootUrl
-            };
-            
-            await rebootDevice(deviceForReboot);
-            console.log(`✅ Reboot command sent to device ${deviceId} via ${rebootUrl}`);
-            
-            console.log(`⏳ Waiting for device ${deviceId} to reboot (60 seconds)...`);
-            await new Promise(resolve => setTimeout(resolve, 60000));
-            
-            let deviceOnline = false;
-            let attempts = 0;
-            const maxAttempts = 12;
-            
-            while (attempts < maxAttempts && !deviceOnline) {
-                attempts++;
-                await new Promise(resolve => setTimeout(resolve, 5000));
-                
-                try {
-                  const status = await getDeviceStatusWithMode(device.id);
-                  console.log(`📊 Device ${deviceId} status check ${attempts}/${maxAttempts}: ${status}`);
-                  
-                  if (status === 200) {
-                      deviceOnline = true;
-                      console.log(`✅ Device ${deviceId} is back online after reboot`);
-                      sendMwsProgress(io, deviceId, 90, 'device_reboot');
-                      break;
-                  }
-                } catch (error) {
-                    console.log(`⚠️ Status check ${attempts} failed:`, error.message);
-                }
-            }
-            
-            if (!deviceOnline) {
-                console.warn(`⚠️ Device ${deviceId} did not come back online within timeout`);
-                sendMwsProgress(io, deviceId, 90, 'device_reboot');
-            }
-          } catch (rebootError) {
-              console.warn(`⚠️ Reboot command failed: ${rebootError.message}`);
-              sendMwsProgress(io, deviceId, 90, 'device_reboot');
-          }
-          
-          // ✅ ОБНОВЛЯЕМ РЕЖИМ
-          if (device.type === 'AP' && device.hWtype === 'true') {
-              currentModes.set(deviceId, {
-                  mode: 'extender',
-                  routerId: null,
-                  timestamp: Date.now()
-              });
-          } else {
-              currentModes.set(deviceId, {
-                  mode: 'router',
-                  routerId: null,
-                  timestamp: Date.now()
-              });
-          }
-          
-          console.log(`🔗 Successfully disconnected device ${deviceId} from router`);
-          
-        } else {
-          // ✅ ПОДКЛЮЧЕНИЕ - НАСТРАИВАЕМ ПРОБРОСЫ
-          console.log(`🔧 Setting up port forwarding for device ${deviceId} -> router ${routerId}`);
-          sendMwsProgress(io, deviceId, 50, 'port_forwarding');
-          
-          if (device.type === 'AP' && device.hWtype === 'true') {
-            console.log(`🔧 AP device detected - специальная настройка...`);
-            sendMwsProgress(io, deviceId, 60, 'ap_config');
-            
-            await MWSConnectionManager.setupMWSConnection(
-                deviceId, 
-                routerId, 
-                devicePassword,
-                finalRouterPassword
-            );
-            sendMwsProgress(io, deviceId, 80, 'port_forwarding');
-          }
-          else {
-            await MWSConnectionManager.setupMWSConnection(
-                deviceId, 
-                routerId, 
-                devicePassword,
-                finalRouterPassword
-            );
-            sendMwsProgress(io, deviceId, 80, 'port_forwarding');
-          }
-          
-          currentModes.set(deviceId, {
-              mode: 'extender_connect',
-              routerId: routerId,
-              timestamp: Date.now()
-          });
-          
-          console.log(`🔗 Successfully connected device ${deviceId} to router ${routerId}`);
-        }
-      } catch (error) {
-          console.error('❌ Port forwarding operations error:', error);
-      }
-      
-      // ✅ ФИНАЛЬНЫЙ ПРОГРЕСС
-      sendMwsProgress(io, deviceId, 95, 'verification');
-      sendMwsProgress(io, deviceId, 100, 'completed');
-      
-      // ✅ ОТПРАВЛЯЕМ ОБНОВЛЕНИЯ КЛИЕНТАМ
-      try {
-          const updatedDevice = getDeviceById(deviceId);
-          if (updatedDevice) {
-              const immediateStatus = await getDeviceStatusWithMode(deviceId);
-              console.log(`📊 Device status after MWS ${action}: ${immediateStatus}`);
-              
-              io.emit('device:status', {
-                  deviceId: deviceId,
-                  status: immediateStatus
-              });
-          }
-      } catch (statusError) {
-          console.log(`⚠️ Quick status check failed: ${statusError.message}`);
-      }
-      
-      // ✅ УВЕДОМЛЯЕМ ОБ ИЗМЕНЕНИИ MWS СТАТУСА
-      io.emit('device:mwsStatusUpdated', {
-          deviceId: deviceId,
-          routerId: routerId,
-          status: action === 'disconnect' ? 'disconnected' : 'connected',
-          timestamp: Date.now()
-      });
-      
-      // ✅ ОТПРАВЛЯЕМ ОБНОВЛЕНИЕ РЕЖИМА
-      io.emit('device:modeUpdated', {
-          deviceId: deviceId,
-          mode: action === 'disconnect' 
-              ? (device.type === 'AP' && device.hWtype === 'true' ? 'extender' : 'router')
-              : 'extender_connect',
-          routerId: action === 'disconnect' ? null : routerId,
-          timestamp: Date.now(),
-          source: `mws_${action}`
-      });
-      
-    } catch (error) {
-         console.error('❌ MWS connection error:', error);
-        // ✅ Теперь deviceId доступен здесь!
-        if (deviceId) {
-         sendMwsProgress(io, deviceId, 0, 'error');
-        } else {
-         console.error('❌ deviceId is undefined in catch block');
-        }
-    
-         if (typeof callback === 'function') {
-        callback({ status: 'error', error: error.message });
-        }
-        }
-        });
 
+                // Reboot
+                const rebootUrl = getDeviceUrl(deviceId, 'mode_change');
+                await rebootDevice({ ...device, URL: rebootUrl });
+                await new Promise(resolve => setTimeout(resolve, 60000));
+                
+                // Update mode
+                currentModes.set(deviceId, {
+                    mode: (device.type === 'AP' && device.hWtype === 'true') ? 'extender' : 'router',
+                    routerId: null, timestamp: Date.now()
+                });
+            } else {
+                sendMwsProgress(io, deviceId, 50, 'port_forwarding');
+                if (device.type === 'AP' && device.hWtype === 'true') {
+                    sendMwsProgress(io, deviceId, 60, 'ap_config');
+                    await MWSConnectionManager.setupMWSConnection(deviceId, routerId, devicePassword, finalRouterPassword);
+                } else {
+                    await MWSConnectionManager.setupMWSConnection(deviceId, routerId, devicePassword, finalRouterPassword);
+                }
+                sendMwsProgress(io, deviceId, 80, 'port_forwarding');
+                currentModes.set(deviceId, { mode: 'extender_connect', routerId, timestamp: Date.now() });
+            }
+
+            sendMwsProgress(io, deviceId, 95, 'verification');
+            sendMwsProgress(io, deviceId, 100, 'completed');
+
+            const immediateStatus = await getDeviceStatusWithMode(deviceId);
+            io.emit('device:status', { deviceId, status: immediateStatus });
+            io.emit('device:mwsStatusUpdated', { deviceId, routerId, status: action === 'disconnect' ? 'disconnected' : 'connected', timestamp: Date.now() });
+            io.emit('device:modeUpdated', {
+                deviceId, mode: action === 'disconnect' ? ((device.type === 'AP' && device.hWtype === 'true') ? 'extender' : 'router') : 'extender_connect',
+                routerId: action === 'disconnect' ? null : routerId, timestamp: Date.now(), source: `mws_${action}`
+            });
+
+        } catch (error) {
+            console.error('❌ MWS connection error:', error);
+            if (deviceId) sendMwsProgress(io, deviceId, 0, 'error');
+            callback?.({ status: 'error', error: error.message });
+        }
+    });
 
   socket.on('tftp:getInterfaceIp', async (data, callback) => {
       try {
@@ -2086,50 +1315,53 @@ socket.on('device:changeMode', async (data, callback) => {
         async: true
       });
     }
-    
-    // В device:changeMode - ИСПРАВИТЬ extender_disconnect:
-      if (mode === 'extender_connect' && routerId) {
+    if (mode === 'extender_connect' && routerId) {
         currentModes.set(deviceId, {
           mode: 'extender_connect',
           routerId: routerId,
           timestamp: Date.now()
         });
-        
-        const routerDevice = getDeviceById(routerId);
-        if (routerDevice && routerDevice.type === 'router') {
-          const existingSites = Array.from(deviceSites.values()).filter(Boolean);
-          const nextSite = existingSites.length > 0 ? Math.max(...existingSites) + 1 : 1;
-          deviceSites.set(routerId, nextSite);
-          
-          io.emit('device:siteUpdated', {
-            deviceId: routerId,
-            site: nextSite,
-            timestamp: Date.now()
-          });
+    
+    const routerDevice = getDeviceById(routerId);
+    if (routerDevice && routerDevice.type === 'router') {
+        if (!deviceSites.has(routerId)) {
+            const existingSites = Array.from(deviceSites.values()).filter(Boolean);
+            const nextSite = existingSites.length > 0 ? Math.max(...existingSites) + 1 : 1;
+            deviceSites.set(routerId, nextSite);
         }
-        
-      } else if (mode === 'extender_disconnect') {
-        // ✅ Получаем routerId ДО удаления
+        // ✅ Передаём site extender'у
+        const site = deviceSites.get(routerId);
+        if (site) {
+            deviceSites.set(deviceId, site);
+            io.emit('device:siteUpdated', { deviceId: routerId, site, timestamp: Date.now() });
+            io.emit('device:siteUpdated', { deviceId, site, timestamp: Date.now() });
+        }
+    }
+}
+    
+    else if (mode === 'extender_disconnect') {
         const oldModeInfo = currentModes.get(deviceId);
         const oldRouterId = oldModeInfo?.routerId;
+        
+        // ✅ Убираем site у extender'а
+        if (deviceSites.has(deviceId)) {
+            deviceSites.delete(deviceId);
+            io.emit('device:siteUpdated', { deviceId, site: null, timestamp: Date.now() });
+        }
         
         currentModes.delete(deviceId);
         
         if (oldRouterId) {
-          const hasOtherExtenders = Array.from(currentModes.entries()).some(
-            ([id, info]) => id !== deviceId && info.mode === 'extender_connect' && info.routerId === oldRouterId
-          );
-          
-          if (!hasOtherExtenders) {
-            deviceSites.delete(oldRouterId);
-            io.emit('device:siteUpdated', {
-              deviceId: oldRouterId,
-              site: null,
-              timestamp: Date.now()
-            });
-          }
+            const hasOtherExtenders = Array.from(currentModes.entries()).some(
+                ([id, info]) => id !== deviceId && info.mode === 'extender_connect' && info.routerId === oldRouterId
+            );
+            if (!hasOtherExtenders) {
+                deviceSites.delete(oldRouterId);
+                io.emit('device:siteUpdated', { deviceId: oldRouterId, site: null, timestamp: Date.now() });
+            }
         }
-      }
+    }
+
     deviceStatusCache.delete(deviceId);
     
     sendModeChangeProgress(io, deviceId, 10, 'initializing');
