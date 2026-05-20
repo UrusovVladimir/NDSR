@@ -33,10 +33,6 @@
         </div>
       </div>
 
-      <!-- Информация о пароле
-      <div v-if="hasValidPassword && !authError" class="password-info mb-3">
-        <Chip :label="`Using ${passwordSource} password`" icon="pi pi-key" />
-      </div> -->
 
       <div v-if="hasValidPassword && !authError" class="action-selection-section mb-4">
         <h6 class="section-title mb-3">Select Action:</h6>
@@ -118,7 +114,7 @@
         </div>
 
         <!-- Disconnect + Router Mode -->
-        <div v-if="shouldShowAction('disconnectRouter')"
+      <div v-if="shouldShowAction('disconnectRouter')"
              class="action-option mb-3 p-3 border-1 surface-border border-round"
              :class="{ 'action-option-active': selectedAction === 'disconnectRouter' }"
              @click="selectedAction = 'disconnectRouter'">
@@ -141,7 +137,7 @@
               </small>
             </label>
           </div>
-        </div>
+       </div>
       </div>
 
       <!-- Router Password Section (для connect/disconnect) -->
@@ -246,10 +242,9 @@
           </div>
         </div>
       </div>
-
-      <!-- Router Selection for Disconnect -->
+      <!-- Disconnect Router Selection -->
       <div v-if="selectedAction === 'disconnectRouter' && hasValidPassword && !authError" 
-           class="router-selection-section mb-4">
+          class="router-selection-section mb-4">
         <h6 class="section-title mb-2">Select Router to Disconnect From:</h6>
         <Dropdown 
           v-model="selectedRouterId" 
@@ -258,16 +253,13 @@
           optionValue="id"
           placeholder="Select a router..."
           class="w-full router-dropdown"
-          :appendTo="dropdownAppendTo"
-          :panelStyle="dropdownPanelStyle"
-          @focus="lockBodyScroll"
-          @blur="unlockBodyScroll"
-          @before-show="onDropdownShow"
+          panelClass="modal-dropdown-panel"
         />
       </div>
 
-      <!-- Router Selection for Connect -->
-      <div v-if="selectedAction === 'extenderConnect' && hasValidPassword && !authError" class="router-selection-section mb-4">
+      <!-- Connect Router Selection -->
+      <div v-if="selectedAction === 'extenderConnect' && hasValidPassword && !authError" 
+          class="router-selection-section mb-4">
         <h6 class="section-title mb-2">Select Router to Connect:</h6>
         <Dropdown 
           v-model="selectedRouterId" 
@@ -276,13 +268,9 @@
           optionValue="id"
           placeholder="Select a router..."
           class="w-full router-dropdown"
-          :appendTo="dropdownAppendTo"
-          :panelStyle="dropdownPanelStyle"
-          @focus="lockBodyScroll"
-          @blur="unlockBodyScroll"
-          @before-show="onDropdownShow"
+          panelClass="modal-dropdown-panel"
         />
-        <div v-if="selectedAction === 'extenderConnect' && !selectedRouterId" class="text-orange-500 text-sm mt-2">
+        <div v-if="!selectedRouterId" class="text-orange-500 text-sm mt-2">
           <i class="pi pi-exclamation-circle mr-1"></i>
           Please select a router to connect to
         </div>
@@ -388,7 +376,7 @@
 </template>
 
 <script setup>
-import { ref, computed, watch, onUnmounted, onMounted, inject, nextTick } from 'vue'
+import { ref, computed, watch, onUnmounted, onMounted, inject } from 'vue'
 import { useToast } from 'primevue/usetoast'
 import { useModeStore } from '@/stores/useModeStore'
 import { useDeviceStore } from '@/stores/useDeviceStore'
@@ -404,9 +392,7 @@ import Password from 'primevue/password'
 const toast = useToast()
 const modeStore = useModeStore()
 const deviceStore = useDeviceStore()
-
 const emit = defineEmits(['modeChanged', 'operationStarted'])
-
 const props = defineProps({
   device: {
     type: Object,
@@ -415,6 +401,8 @@ const props = defineProps({
 })
 
 // ========== СОСТОЯНИЯ ==========
+
+
 const visible = ref(false)
 const selectedAction = ref('router')
 const selectedRouterId = ref('')
@@ -956,75 +944,6 @@ const contentStyle = computed(() => {
   }
 })
 
-// ========== DROPDOWN УПРАВЛЕНИЕ ==========
-const dropdownAppendTo = computed(() => {
-  return isMobile.value ? null : 'body'
-})
-
-const dropdownPanelStyle = computed(() => {
-  if (isMobile.value) {
-    return {
-      maxHeight: '200px',
-      position: 'fixed',
-      zIndex: 10000
-    }
-  }
-  return {
-    maxHeight: '200px'
-  }
-})
-
-const lockBodyScroll = () => {
-    const scrollY = window.scrollY
-    document.body.dataset.scrollY = scrollY.toString()
-}
-
-const unlockBodyScroll = () => {
-    const scrollY = document.body.dataset.scrollY
-    if (scrollY) {
-        window.scrollTo(0, parseInt(scrollY))
-        delete document.body.dataset.scrollY
-    }
-}
-
-const onDropdownShow = () => {
-  if (!isMobile.value) return
-  
-  nextTick(() => {
-    const dropdownPanels = document.querySelectorAll('.p-dropdown-panel')
-    dropdownPanels.forEach(panel => {
-      if (panel.style.display !== 'none') {
-        const input = panel.previousElementSibling
-        if (input) {
-          const inputRect = input.getBoundingClientRect()
-          const panelHeight = panel.offsetHeight
-          const viewportHeight = window.innerHeight
-          
-          const spaceBelow = viewportHeight - inputRect.bottom
-          const spaceAbove = inputRect.top
-          
-          let topPosition
-          
-          if (spaceBelow >= panelHeight || spaceBelow >= spaceAbove) {
-            topPosition = inputRect.bottom
-          } else {
-            topPosition = inputRect.top - panelHeight
-          }
-          
-          topPosition = Math.max(10, Math.min(topPosition, viewportHeight - panelHeight - 10))
-          
-          panel.style.position = 'fixed'
-          panel.style.top = `${topPosition}px`
-          panel.style.left = `${inputRect.left}px`
-          panel.style.width = `${inputRect.width}px`
-          panel.style.transform = 'none'
-          panel.style.maxHeight = '200px'
-          panel.style.zIndex = '10000'
-        }
-      }
-    })
-  })
-}
 
 // ========== WATCHERS ==========
 watch(selectedAction, (newAction) => {
@@ -1457,44 +1376,20 @@ defineExpose({ show })
   }
 }
 
-/* Dropdown */
-.router-dropdown .p-dropdown {
-  border-radius: 6px !important;
-  border: 1px solid #ced4da !important;
-  width: 100% !important;
+/* Простые и рабочие стили для dropdown */
+.router-dropdown {
+  position: relative;
 }
 
-.router-dropdown .p-dropdown:focus {
-  border-color: #28a745 !important;
-  box-shadow: 0 0 0 0.2rem rgba(40, 167, 69, 0.25) !important;
-}
-
-@media (max-width: 768px) {
-  .change-mode-dialog :deep(.p-dropdown-panel) {
-    position: fixed !important;
-    max-height: 200px !important;
-    width: calc(100vw - 2rem) !important;
-    left: 1rem !important;
-    right: 1rem !important;
-    z-index: 10001 !important;
-  }
-}
-
-.change-mode-dialog :deep(.p-dialog-mask) {
-  overflow-y: auto !important;
-  scrollbar-gutter: stable;
-}
-
-:global(body.p-overflow-hidden) {
-  padding-right: 0 !important;
-  overflow: hidden !important;
-}
-
-.change-mode-dialog :deep(.p-dropdown-panel) {
-  position: fixed !important;
+/* Панель dropdown будет позиционироваться автоматически */
+:deep(.modal-dropdown-panel) {
   z-index: 10001 !important;
-  margin-top: 4px;
+  max-height: 200px !important;
 }
 
+/* Убираем конфликтующие стили */
+.change-mode-dialog :deep(.p-dialog-content) {
+  overflow-y: auto !important;
+}
 
 </style>

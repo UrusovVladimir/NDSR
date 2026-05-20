@@ -416,9 +416,6 @@ onMounted(() => {
     });
   }
 
-  // Слушатель событий бронирования
-  window.addEventListener('device-booked', handleDeviceBooked);
-  
   // Инициализация слушателей в store
   if (deviceStore && deviceStore.initializeSocketListeners) {
     deviceStore.initializeSocketListeners();

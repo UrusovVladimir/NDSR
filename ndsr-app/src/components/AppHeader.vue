@@ -34,15 +34,15 @@
       />
 
       <div class="header-actions">
-        <Button 
+        <!-- <Button 
           :icon="cronEnabled ? 'pi pi-times' : 'pi pi-stopwatch'" 
           class="action-toggle"
           :class="{ 'cron-enabled': cronEnabled }"
           @click="$emit('toggle-cron')"
           v-tooltip.bottom="cronEnabled ? 'Disable auto-reset all devices' : 'Enable auto-reset all devices'"
-        />
+        /> -->
         
-        <Button 
+        <Button v-if="isAdminUser" 
           icon="pi pi-sync" 
           class="action-toggle"
           @click="$emit('change-password')"
@@ -56,10 +56,13 @@
 </template>
 
 <script setup>
-import { ref } from 'vue'
+import { ref,computed } from 'vue'
 import Button from 'primevue/button'
 import FileManager from '@/components/FileManager.vue'
+import { useDeviceStore } from '@/stores/useDeviceStore'
 
+const deviceStore = useDeviceStore()
+const reset = ref(null)
 const props = defineProps({
   isSidebarOpen: Boolean,
   formattedDateTime: String,
@@ -68,6 +71,7 @@ const props = defineProps({
   cronEnabled: Boolean,
   searchQuery: String
 })
+
 
 const emit = defineEmits([
   'toggle-sidebar', 
@@ -93,6 +97,15 @@ const openFileManager = () => {
     console.error('FileManager ref is not available')
   }
 }
+
+
+//  ==== COMPUTED переменные ====
+const isAdminUser = computed(() => {
+  const currentIp = deviceStore.currentUserId 
+  return currentIp === '172.16.80.204'
+})
+
+
 </script>
 
 <style scoped>

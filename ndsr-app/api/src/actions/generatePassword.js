@@ -1,6 +1,6 @@
 import fs from 'fs';
 
-function generatePassword(length = 8) {
+function generatePassword(length = 15) {
     let password = '';
     for (let i = 0; i < length; i++) {
         const string = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ><}{_?)(0123456789!@#$%^&*+/';

@@ -94,6 +94,7 @@ function removeDevice(deviceId) {
     saveConfig(process.env.DEVICES_CONFIG_PATH, devices);
     return { success: true };
 }
+
 function addDevice(device) {
     const exists = devices.find(d => 
         String(d.id) === String(device.id) || 
@@ -107,6 +108,34 @@ function addDevice(device) {
     console.log(`✅ Device added: ${device.hwId} (${device.shortName})`);
     return { success: true, device };
 }
+
+function updateDeviceShortName(deviceId, newShortName) {
+    const index = devices.findIndex(d => String(d.id) === String(deviceId));
+    
+    if (index === -1) {
+        return { 
+            success: false, 
+            error: `Device with ID ${deviceId} not found` 
+        };
+    }
+    
+    const oldName = devices[index].shortName;
+    
+    devices[index].shortName = newShortName;
+    
+    saveConfig(process.env.DEVICES_CONFIG_PATH, devices);
+    
+    console.log(`✅ Device ${deviceId} shortName updated: "${oldName}" -> "${newShortName}"`);
+    
+    return {
+        success: true,
+        deviceId,
+        oldName,
+        newName: newShortName,
+        message: `Device name updated from "${oldName}" to "${newShortName}"`
+    };
+}
+
 function reloadConfigs() {
     devices = readConfig(process.env.DEVICES_CONFIG_PATH);
     wanTypes = readConfig(process.env.WAN_TYPES_CONFIG_PATH);
@@ -127,5 +156,6 @@ export {
     getParamRouter,
     removeDevice,
     reloadConfigs,
-    addDevice
+    addDevice,
+    updateDeviceShortName 
 }

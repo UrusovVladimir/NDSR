@@ -54,12 +54,12 @@ const upload = multer({
         files: 50
     },
     fileFilter: (req, file, cb) => {
-        const allowedTypes = ['.bin'];
+        const allowedTypes = ['.bin','.txt','.conf'];
         const ext = path.extname(file.originalname).toLowerCase();
         if (allowedTypes.includes(ext)) {
             cb(null, true);
         } else {
-            cb(new Error('Invalid file type. Allowed: .bin'));
+            cb(new Error('Invalid file type. Allowed: .bin/.txt/.conf'));
         }
     }
 });
@@ -125,7 +125,7 @@ app.post('/api/upload', (req, res) => {
             });
         }
         
-        // Проверяем каждый файл на размер (дополнительная защита)
+        // Проверяем каждый файл на размер
         const oversizedFiles = req.files.filter(f => f.size > 100 * 1024 * 1024);
         if (oversizedFiles.length > 0) {
             return res.status(413).json({ 
@@ -228,7 +228,7 @@ app.delete('/api/files/:filename', (req, res) => {
     });
 });
 
-// ========== СОЗДАЕМ HTTP СЕРВЕР ==========
+// ========== HTTP СЕРВЕР ==========
 
 const server = http.createServer(app);
 

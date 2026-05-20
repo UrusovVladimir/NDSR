@@ -60,6 +60,7 @@
             </div>
           </div>
         </template>
+        
         <Column field="statusCode" header="Status" :sortable="true" style="min-width: 85px">
           <template #body="{ data }">
             <StatusIndicator :status="data.statusCode" :type="data.type" />
@@ -67,23 +68,61 @@
         </Column>
 
         <Column field="hwId" header="Device" :sortable="true" style="min-width: 200px">
-          <template #body="{ data }">
-            <div class="common-device-info-container">
-              <div class="common-device-avatar" :class="getDeviceAvatarClass(data)">
-                <i :class="deviceIcon(data.type)" class="common-device-icon"></i>
-              </div>
+    <template #body="{ data }">
+      <div class="common-device-info-container">
+        <div class="common-device-avatar" :class="getDeviceAvatarClass(data)">
+          <i :class="deviceIcon(data.type)" class="common-device-icon"></i>
+        </div>
+    
+          <div class="common-device-info">
+          <div class="common-device-name">
+          <template v-if="editingDeviceId === data.id">
+            <div class="edit-name-container">
+              <input
+                ref="nameInput"
+                v-model="editingName"
+                class="edit-name-input-native"
+                @keyup.enter="saveDeviceName(data)"
+                @keyup.escape="cancelEditName"
+                @blur="saveDeviceName(data)"
+                autofocus
+              />
+            </div>
+          </template>
+            <template v-else>
+              <span 
+                class="editable-name"
+                @click.stop="startEditName(data)"
+                v-tooltip="'Click to edit device name'"
+              >
+                {{ data.shortName }}
+                <i class="pi pi-pencil edit-name-icon"></i>
+              </span>
+            </template>
+            
+            <i 
+              class="pi pi-info-circle details-inline" 
+              @click="showDeviceDetails(data)" 
+              v-tooltip="'View device details'"
+            ></i>
+          </div>
           
-              <div class="common-device-info">
-                <div class="common-device-name">{{ data.shortName }}
-                  <i class="pi pi-info-circle details-inline" @click="showDeviceDetails(data)" v-tooltip="'View device details'"></i>
-                </div>
-                
-                <div class="common-device-hwid">
-                  {{ data.hwId }}
-                  <span class="site-badge" v-if="data.site">SITE {{ data.site }}</span>
-                  <div class="common-device-hwid">Country: {{ data.country }}</div>
+          <div class="common-device-hwid">
+            {{ data.hwId }}
+            <span class="site-badge" v-if="data.site">SITE {{ data.site }}</span>
+            <div class="common-device-hwid">Country: {{ data.country }}</div>
+          </div>
 
-                </div>
+              <div class="common-device-hwid">
+                Servicetag: {{ data.servicetag || 'N/A' }}
+                <i 
+                  v-if="data.servicetag"
+                  class="pi pi-copy details-inline" 
+                  @click="copyToClipboard(data.servicetag, 'Servicetag')" 
+                  v-tooltip="'Copy Servicetag'"
+                ></i>
+              </div>
+
                 <div class="common-device-hwid">
                   Current Mode: <b>{{ getDisplayMode(data.id) }}</b>
                   <i class="pi pi-refresh details-inline m-1" @click="refreshDeviceMode(data.id)" v-tooltip="'Refresh mode info'"></i>
@@ -319,7 +358,6 @@
               <div class="field-value-group">
                   <span class="field-value">{{ selectedDevice.site || 'N/A' }}</span>
               </div>
-
               </div>
             </div>
           </div>
@@ -534,6 +572,7 @@
           />
         </template>
       </Dialog>
+
       <Dialog v-model:visible="showAddNoteDialog" modal header="Add Note" :style="{ width: '400px' }">
         <div>
           <Textarea v-model="newNoteText" rows="3" class="w-full" placeholder="Enter note text..." />
@@ -562,7 +601,7 @@ import ProgressModal from './ProgressModal.vue'
 import ChangeModeModal from './ChangeModeModal.vue'
 import FirmwareVersion from '@/components/FirmwareVersion.vue'
 import Textarea from 'primevue/textarea'
-
+import InputText from 'primevue/inputtext'
 
 // -----------ЗАМЕТКИ!!!------------
 const deviceNotes = ref([])
@@ -656,6 +695,7 @@ const confirmDeleteNote = (noteId) => {
   })
 }
 
+
 // Форматирование времени
 const formatNoteTime = (timestamp) => {
   if (!timestamp) return ''
@@ -695,7 +735,9 @@ const showDetailsDialog = ref(false)
 const selectedPowerAction = ref(null)
 const powerActionDevice = ref(null)
 const tableKey = ref(0)
-
+const editingDeviceId = ref(null)
+const editingName = ref('')
+const nameInput = ref(null)
 const currentDeviceWanType = computed(() => selectedDevice.value ? deviceStore.getDeviceWanType(selectedDevice.value.id) : null)
 
 // ✅ Запрос статуса питания для всех устройств с rebootPort
@@ -984,6 +1026,81 @@ const copyAllDetails = (device) => {
   copyToClipboard(details, 'All Device Details')
 }
 
+// !!!!! Функиции на изменение ShortName !!!!
+const startEditName = (device) => {
+  editingDeviceId.value = device.id
+  editingName.value = device.shortName
+  
+  // Фокус на input после рендеринга
+  nextTick(() => {
+    // Для нативного input не нужен $el
+    if (nameInput.value) {
+      nameInput.value.focus()
+      // Выделяем весь текст для удобства
+      nameInput.value.select()
+    }
+  })
+}
+
+const cancelEditName = () => {
+  editingDeviceId.value = null
+  editingName.value = ''
+}
+
+const saveDeviceName = async (device) => {
+  if (editingDeviceId.value !== device.id) return
+  
+  if (!editingName.value || !editingName.value.trim()) {
+    cancelEditName()
+    return
+  }
+  
+  const newName = editingName.value.trim()
+  
+  if (newName === device.shortName) {
+    cancelEditName()
+    return
+  }
+  
+  const deviceId = device.id
+  const oldName = device.shortName
+  
+  try {
+    console.log('🔄 Saving device name:', { deviceId, oldName, newName })
+    
+    // ❌ Убираем deviceStore.loading = true
+    // deviceStore.loading = true
+    
+    await deviceStore.updateDeviceShortName(deviceId, newName)
+    
+    toast.add({
+      severity: 'success',
+      summary: 'Device Name Updated',
+      detail: `Name changed from "${oldName}" to "${newName}"`,
+      life: 3000
+    })
+    
+    tableKey.value++
+    
+  } catch (error) {
+    console.error('Failed to update device name:', error)
+    
+    toast.add({
+      severity: 'error',
+      summary: 'Error',
+      detail: error.message || 'Failed to update device name',
+      life: 5000
+    })
+    
+    editingName.value = oldName
+  } finally {
+    // ❌ Убираем deviceStore.loading = false
+    // deviceStore.loading = false
+    cancelEditName()
+  }
+}
+// !!!!!! -------------- !!!!!!!!
+
 // ✅ Watch для отслеживания новых устройств
 watch(
   () => deviceStore.availableDevices?.length,
@@ -1010,16 +1127,33 @@ onMounted(() => {
   isMounted.value = true
   socket.on('device:firmwareUpdated', handleFirmwareUpdated)
   
-  // Запрашиваем статусы питания с задержкой для инициализации
+  // ✅ Закрытие редактирования при клике вне input
+  document.addEventListener('click', handleClickOutside)
+  
   setTimeout(() => {
     requestPowerStatuses()
   }, 1000)
 })
 
+// Добавьте в onBeforeUnmount
 onBeforeUnmount(() => { 
   isMounted.value = false
   socket.off('device:firmwareUpdated', handleFirmwareUpdated)
+  document.removeEventListener('click', handleClickOutside) // ✅ Очистка
 })
+
+// Добавьте функцию
+const handleClickOutside = (event) => {
+  if (editingDeviceId.value && nameInput.value) {
+    // Если клик был вне input
+    if (!nameInput.value.contains(event.target)) {
+      const device = deviceStore.devices.find(d => d.id === editingDeviceId.value)
+      if (device) {
+        saveDeviceName(device)
+      }
+    }
+  }
+}
 </script>
 <style scoped>
 
@@ -1542,4 +1676,77 @@ onBeforeUnmount(() => {
 .text-red-500 {
   color: #ef4444 !important;
 }
+
+
+/* Стили для изменения: Start ShortName */
+.editable-name {
+  cursor: pointer;
+  position: relative;
+  padding: 2px 6px;
+  border-radius: 4px;
+  transition: all 0.2s ease;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center; 
+  gap: 4px;
+  font-weight: 600;
+  text-align: center;
+  min-width: 50px; 
+}
+
+.editable-name:hover {
+  background-color: var(--surface-hover);
+  color: var(--primary-color);
+}
+
+.edit-name-icon {
+  font-size: 0.7rem;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+  color: var(--primary-color);
+}
+
+.editable-name:hover .edit-name-icon {
+  opacity: 1;
+}
+
+.edit-name-container {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.common-device-name .details-inline {
+  margin-left: 0px;
+  flex-shrink: 0;
+}
+.common-device-name {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 600;
+  text-align: center;
+  min-height: 24px; 
+}
+.edit-name-input-native {
+  width: 100%;
+  max-width: 180px;
+  font-size: 0.9rem;
+  font-weight: 600;
+  padding: 0.5rem 0.75rem;
+  text-align: center;
+  border: 1px solid var(--surface-300);
+  border-radius: 6px;
+  outline: none;
+  transition: border-color 0.2s;
+  background: var(--surface-card);
+  color: var(--text-color);
+}
+
+.edit-name-input-native:focus {
+  border-color: var(--primary-color);
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.1);
+}
+/* End ShortName */
+
 </style>

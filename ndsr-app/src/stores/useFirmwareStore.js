@@ -67,7 +67,7 @@ export const useFirmwareStore = defineStore('firmware', () => {
     }))
   }
 
-  // ✅ ИСПРАВЛЕНО: убрана зависимость от бронирования
+  
   const checkAllFirmwares = async (devices, todayPassword) => {
     if (!devices || devices.length === 0) return
     
@@ -239,7 +239,7 @@ export const useFirmwareStore = defineStore('firmware', () => {
     })
   }
 
-  // ✅ ИСПРАВЛЕНО: убрана зависимость от бронирования
+  
   const refreshFirmwareForDevice = async (device, todayPassword) => {
     const password = todayPassword
 

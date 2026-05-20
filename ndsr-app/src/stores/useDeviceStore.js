@@ -81,9 +81,10 @@ export const useDeviceStore = defineStore('devices', () => {
       devices.value[deviceIndex].statusCode = statusCode
     }
   }
+  
   const addDevice = (device) => {
-  return new Promise((resolve, reject) => {
-    socket.emit('device:add', device, (response) => {
+    return new Promise((resolve, reject) => {
+      socket.emit('device:add', device, (response) => {
         if (response?.success) {
           resolve(response)
         } else {
@@ -92,6 +93,7 @@ export const useDeviceStore = defineStore('devices', () => {
       })
     })
   }
+  
   // ✅ Управление конфигурацией
   const removeDevice = (deviceId) => {
     return new Promise((resolve, reject) => {
@@ -117,6 +119,26 @@ export const useDeviceStore = defineStore('devices', () => {
     })
   }
 
+  const updateDeviceShortName = (deviceId, newShortName) => {
+    return new Promise((resolve, reject) => {
+      socket.emit('device:updateShortName', {
+        deviceId: String(deviceId),
+        shortName: newShortName.trim()
+      }, (response) => {
+        if (response?.success) {
+          // Обновляем имя в локальном состоянии
+          const device = devices.value.find(d => String(d.id) === String(deviceId))
+          if (device) {
+            device.shortName = response.newName
+          }
+          resolve(response)
+        } else {
+          reject(new Error(response?.error || 'Failed to update device name'))
+        }
+      })
+    })
+  }
+
   // ========== SOCKET LISTENERS ==========
   const initializeSocketListeners = () => {
     socket.on('device:statuses:initial', (statuses) => {
@@ -124,17 +146,39 @@ export const useDeviceStore = defineStore('devices', () => {
         updateDeviceStatus(deviceId, status)
       })
     })
-    socket.on('device:list', (newDevices) => {
-      setDevices(newDevices)
-      loading.value = false
-    })
-    socket.on('device:removed', (deviceId) => {
-      devices.value = devices.value.filter(d => String(d.id) !== String(deviceId))
-    })
+    socket.on('device:powerStatus', (data) => {
+      if (data && data.deviceId) {
+        const device = devices.value.find(d => String(d.id) === String(data.deviceId));
+        if (device) {
+          device.powerStatus = data.status;
+        }
+      }
+    });
+    socket.on('device:configUpdated', (data) => {
+        console.log('🔄 Config updated event received:', data);
+        
+        if (data.deviceId && data.status !== undefined) {
+          updateDeviceStatus(data.deviceId, data.status);
+        }
+      });
 
     socket.on('device:list', (newDevices) => {
-      setDevices(newDevices)
-      loading.value = false
+      // ✅ Обновляем устройства с powerStatus
+      setDevices(newDevices.map(device => {
+        // Если в данных есть powerStatus - сохраняем его
+        if (device.powerStatus) {
+          return {
+            ...device,
+            powerStatus: device.powerStatus
+          };
+        }
+        return device;
+      }));
+      loading.value = false;
+    })
+    
+    socket.on('device:removed', (deviceId) => {
+      devices.value = devices.value.filter(d => String(d.id) !== String(deviceId))
     })
 
     socket.on('device:status', (data) => {
@@ -158,6 +202,13 @@ export const useDeviceStore = defineStore('devices', () => {
         }
       })
     })
+
+    socket.on('device:nameUpdated', (data) => {
+      const device = devices.value.find(d => String(d.id) === String(data.deviceId))
+      if (device) {
+        device.shortName = data.shortName
+      }
+    })
   }
 
   const cleanupSocketListeners = () => {
@@ -167,6 +218,9 @@ export const useDeviceStore = defineStore('devices', () => {
     socket.off('device:siteUpdated')
     socket.off('device:sites')
     socket.off('device:removed')
+    socket.off('device:nameUpdated')
+    socket.off('device:configUpdated');
+    socket.off('device:powerStatus');
   }
 
   // ========== RETURN ==========
@@ -199,6 +253,7 @@ export const useDeviceStore = defineStore('devices', () => {
     getDeviceWanType,
     removeDevice,
     reloadConfigs,
-    addDevice
+    addDevice,
+    updateDeviceShortName
   }
 })

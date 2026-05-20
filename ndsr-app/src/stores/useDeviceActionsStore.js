@@ -125,19 +125,26 @@ export const useDeviceActionsStore = defineStore('deviceActions', () => {
   // ✅ Инициализация слушателей статуса питания
   const initializePowerListeners = () => {
     socket.on('device:powerStatus', (data) => {
-      const oldStatus = powerStatuses.value.get(data.deviceId)
-      const statusChanged = oldStatus !== data.status
+      if (!data || !data.deviceId) return; // ✅ Защита от пустых данных
       
-      powerStatuses.value.set(data.deviceId, data.status)
+      const oldStatus = powerStatuses.value.get(data.deviceId);
+      const statusChanged = oldStatus !== data.status;
       
+      // ✅ Обновляем статус в Map (один раз)
+      powerStatuses.value.set(data.deviceId, data.status);
+      
+      // ✅ Увеличиваем версию только при изменении или начальной загрузке
       if (statusChanged || data.isInitial) {
-        powerStatusVersion.value++
+        powerStatusVersion.value++;
       }
       
-      const device = deviceStore.devices?.find(d => d.id === data.deviceId)
-      if (device) device.powerStatus = data.status
-    })
-  }
+      // ✅ Обновляем статус в deviceStore (если есть)
+      const device = deviceStore.devices?.find(d => String(d.id) === String(data.deviceId));
+      if (device) {
+        device.powerStatus = data.status;
+      }
+    });
+  };
 
   initializePowerListeners()
 

@@ -29,7 +29,7 @@
             ref="fileInputRef"
             type="file"
             multiple
-            accept=".bin"
+            accept=".bin,.txt,.conf"
             style="display: none"
             @change="onFileInputChange"
           />
@@ -43,8 +43,8 @@
               <span class="subtitle">or click to browse</span>
             </div>
             <div class="upload-hint">
-              <i class="pi pi-info-circle"></i>
-              <span>Supported: .bin files up to 100MB</span>
+                <i class="pi pi-info-circle"></i>
+                <span>Supported: .bin, .txt, .conf up to 100MB</span>
             </div>
           </div>
         </div>
@@ -182,7 +182,7 @@
         <div v-else-if="files.length === 0" class="empty-state">
           <i class="pi pi-inbox"></i>
           <p>No files uploaded yet</p>
-          <small>Upload your first .bin file</small>
+          <small>Upload .bin, .txt, or .conf files</small>
         </div>
 
         <TransitionGroup name="file-list" tag="div" class="files-list">
@@ -334,13 +334,15 @@ const addFiles = (newFiles) => {
   for (const file of newFiles) {
     if (file.size > MAX_FILE_SIZE) {
       oversizedFiles.push(file.name)
-    } else if (file.name.toLowerCase().endsWith('.bin')) {
-      validFiles.push(file)
+    } else if (file.name.toLowerCase().endsWith('.bin') || 
+               file.name.toLowerCase().endsWith('.txt') || 
+               file.name.toLowerCase().endsWith('.conf')) {
+      validFiles.push(file)  // ✅ Принимаем .bin, .txt, .conf
     } else {
       toast.add({
         severity: 'warn',
         summary: 'Invalid File',
-        detail: `${file.name} is not a .bin file`,
+        detail: `${file.name} is not a supported file type`,
         life: 3000
       })
     }
@@ -637,7 +639,12 @@ const closeModal = () => {
 const getFileIcon = (fileName) => {
   if (!fileName) return 'pi pi-file'
   const ext = fileName.split('.').pop().toLowerCase()
-  return ext === 'bin' ? 'pi pi-microchip' : 'pi pi-file'
+  switch (ext) {
+    case 'bin': return 'pi pi-microchip'
+    case 'txt': return 'pi pi-file-edit'
+    case 'conf': return 'pi pi-cog'
+    default: return 'pi pi-file'
+  }
 }
 
 const formatFileSize = (bytes) => {
