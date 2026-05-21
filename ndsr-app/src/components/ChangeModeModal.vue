@@ -1,10 +1,11 @@
-<template>
+<template >
   <Dialog 
     v-model:visible="visible" 
     :modal="true" 
     :header="modalTitle"
     :style="dialogStyle"
     :breakpoints="breakpoints"
+    appendTo="body"
     @hide="closeModal"
     class="change-mode-dialog"
     :contentStyle="contentStyle"
@@ -927,19 +928,18 @@ const breakpoints = computed(() => {
     }
   }
 })
-
 const contentStyle = computed(() => {
   if (isMobile.value) {
     return {
       maxHeight: 'calc(100vh - 120px)',
-      overflowY: 'auto',
+      overflowY: 'auto',        
       padding: '1rem',
       paddingBottom: 'env(safe-area-inset-bottom, 1rem)'
     }
   }
   return {
     maxHeight: '70vh',
-    overflowY: 'auto',
+    overflowY: 'auto',         
     padding: '1.5rem'
   }
 })
@@ -1376,20 +1376,9 @@ defineExpose({ show })
   }
 }
 
-/* Простые и рабочие стили для dropdown */
-.router-dropdown {
-  position: relative;
-}
-
-/* Панель dropdown будет позиционироваться автоматически */
-:deep(.modal-dropdown-panel) {
+:deep(.p-dropdown-panel) {
+  position: absolute !important;
   z-index: 10001 !important;
-  max-height: 200px !important;
-}
-
-/* Убираем конфликтующие стили */
-.change-mode-dialog :deep(.p-dialog-content) {
-  overflow-y: auto !important;
 }
 
 </style>

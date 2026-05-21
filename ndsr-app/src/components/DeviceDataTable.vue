@@ -68,78 +68,78 @@
         </Column>
 
         <Column field="hwId" header="Device" :sortable="true" style="min-width: 200px">
-    <template #body="{ data }">
-      <div class="common-device-info-container">
-        <div class="common-device-avatar" :class="getDeviceAvatarClass(data)">
-          <i :class="deviceIcon(data.type)" class="common-device-icon"></i>
-        </div>
-    
-          <div class="common-device-info">
-          <div class="common-device-name">
-          <template v-if="editingDeviceId === data.id">
-            <div class="edit-name-container">
-              <input
-                ref="nameInput"
-                v-model="editingName"
-                class="edit-name-input-native"
-                @keyup.enter="saveDeviceName(data)"
-                @keyup.escape="cancelEditName"
-                @blur="saveDeviceName(data)"
-                autofocus
-              />
-            </div>
-          </template>
-            <template v-else>
-              <span 
-                class="editable-name"
-                @click.stop="startEditName(data)"
-                v-tooltip="'Click to edit device name'"
-              >
-                {{ data.shortName }}
-                <i class="pi pi-pencil edit-name-icon"></i>
-              </span>
-            </template>
-            
-            <i 
-              class="pi pi-info-circle details-inline" 
-              @click="showDeviceDetails(data)" 
-              v-tooltip="'View device details'"
-            ></i>
-          </div>
-          
-          <div class="common-device-hwid">
-            {{ data.hwId }}
-            <span class="site-badge" v-if="data.site">SITE {{ data.site }}</span>
-            <div class="common-device-hwid">Country: {{ data.country }}</div>
-          </div>
-
-              <div class="common-device-hwid">
-                Servicetag: {{ data.servicetag || 'N/A' }}
-                <i 
-                  v-if="data.servicetag"
-                  class="pi pi-copy details-inline" 
-                  @click="copyToClipboard(data.servicetag, 'Servicetag')" 
-                  v-tooltip="'Copy Servicetag'"
-                ></i>
+          <template #body="{ data }">
+              <div class="common-device-info-container">
+                <div class="common-device-avatar" :class="getDeviceAvatarClass(data)">
+                  <i :class="deviceIcon(data.type)" class="common-device-icon"></i>
+                </div>
+      
+            <div class="common-device-info">
+            <div class="common-device-name">
+            <template v-if="editingDeviceId === data.id">
+              <div class="edit-name-container">
+                <input
+                  ref="nameInput"
+                  v-model="editingName"
+                  class="edit-name-input-native"
+                  @keyup.enter="saveDeviceName(data)"
+                  @keyup.escape="cancelEditName"
+                  @blur="saveDeviceName(data)"
+                  autofocus
+                />
               </div>
+            </template>
+              <template v-else>
+                <span 
+                  class="editable-name"
+                  @click.stop="startEditName(data)"
+                  v-tooltip="'Click to edit device name'"
+                >
+                  {{ data.shortName }}
+                  <i class="pi pi-pencil edit-name-icon"></i>
+                </span>
+              </template>
+              
+              <i 
+                class="pi pi-info-circle details-inline" 
+                @click="showDeviceDetails(data)" 
+                v-tooltip="'View device details'"
+              ></i>
+            </div>
+            
+            <div class="common-device-hwid">
+              {{ data.hwId }}
+              <span class="site-badge" v-if="data.site">SITE {{ data.site }}</span>
+              <div class="common-device-hwid">Country: {{ data.country }}</div>
+            </div>
 
                 <div class="common-device-hwid">
-                  Current Mode: <b>{{ getDisplayMode(data.id) }}</b>
-                  <i class="pi pi-refresh details-inline m-1" @click="refreshDeviceMode(data.id)" v-tooltip="'Refresh mode info'"></i>
+                  Servicetag: {{ data.servicetag || 'N/A' }}
+                  <i 
+                    v-if="data.servicetag"
+                    class="pi pi-copy details-inline" 
+                    @click="copyToClipboard(data.servicetag, 'Servicetag')" 
+                    v-tooltip="'Copy Servicetag'"
+                  ></i>
                 </div>
-                <div v-if="shouldShowConnectionInfo(data.id)" class="common-device-hwid">
-                  Connected to: <b>{{ getConnectedRouterInfo(data.id) }}</b>
-                </div>
-                <div v-if="data.rebootPort" class="common-device-hwid">
-                  Power Port Status: 
-                  <span :class="getPowerStatusClass(data.id)">
-                    <i :class="getPowerStatusIcon(data.id)" class="mr-1"></i>
-                    {{ getPowerStatusText(data.id) }}
-                  </span>
-                  <i class="pi pi-refresh details-inline" @click="refreshPowerStatus(data.id)" v-tooltip="'Refresh power status'"></i>
+
+                  <div class="common-device-hwid">
+                    Current Mode: <b>{{ getDisplayMode(data.id) }}</b>
+                    <i class="pi pi-refresh details-inline m-1" @click="refreshDeviceMode(data.id)" v-tooltip="'Refresh mode info'"></i>
+                  </div>
+                  <div v-if="shouldShowConnectionInfo(data.id)" class="common-device-hwid">
+                    Connected to: <b>{{ getConnectedRouterInfo(data.id) }}</b>
+                  </div>
+                  <div v-if="data.rebootPort" class="common-device-hwid">
+                    Power Port Status: 
+                    <span :class="getPowerStatusClass(data.id)">
+                      <i :class="getPowerStatusIcon(data.id)" class="mr-1"></i>
+                      {{ getPowerStatusText(data.id) }}
+                    </span>
+                    <i class="pi pi-refresh details-inline" @click="refreshPowerStatus(data.id)" v-tooltip="'Refresh power status'"></i>
+                  </div>
                 </div>
               </div>
-            </div>
           </template>
         </Column>
 
@@ -266,7 +266,13 @@
         :available-routers="deviceStore.routerDevices"
         @operation-started="handleOperationStarted" @mode-changed="handleModeChanged" />
 
-      <Dialog v-model:visible="showResetConfirmDialog" modal :blockScroll="false" header="Reset Configuration" :style="{ width: '450px' }">
+      <Dialog 
+      v-model:visible="showResetConfirmDialog" 
+      :modal="true"
+      :blockScroll="false" 
+      header="Reset Configuration"
+      :style="{ width: '450px' }"
+      >
         <div class="confirmation-content">
           <i class="pi pi-exclamation-triangle mr-3" style="font-size: 2rem; color: #e74c3c;" />
           <div><h4 class="mb-2">Reset device configuration?</h4><p class="text-color-secondary mb-0">This will erase all settings for <strong>{{ selectedDevice?.hwId }}</strong>.</p></div>

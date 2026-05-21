@@ -20,7 +20,6 @@ html, body {
   /* Z-index система */
   --z-index-sidebar: 1000;
   --z-index-modal: 1050;
-  --z-index-dropdown: 1100;
   --z-index-tooltip: 1200;
   --z-index-toast: 1300;
   
@@ -46,15 +45,6 @@ body.p-overflow-hidden {
   overflow-y: auto !important;
 }
 
-/* Фикс для Dropdown внутри модалки */
-.p-dropdown-panel {
-  position: fixed !important;
-  z-index: 10000 !important;
-}
-body.p-overflow-hidden {
-    overflow-y: scroll !important;
-    padding-right: 0 !important;
-}
 /* Стили для Progress Dialog */
 .operation-dialog-overlay .p-dialog {
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3) !important;
@@ -262,11 +252,6 @@ body.p-overflow-hidden {
   background: #F9FAFB !important;
 }
 
-/* Dropdown стили */
-.p-dropdown-panel {
-  z-index: var(--z-index-dropdown) !important;
-  position: absolute !important;
-}
 
 /* Стили для спиннера */
 .p-button.p-button-rounded .pi-spinner {
@@ -275,22 +260,7 @@ body.p-overflow-hidden {
   visibility: visible !important;
 }
 
-/* Отключаем блокировку прокрутки от Dropdown в модалках */
-.p-dialog .p-dropdown-panel,
-.p-dialog-mask .p-dropdown-panel {
-    position: fixed !important;
-}
 
-/* Предотвращаем добавление overflow:hidden к body от Dropdown */
-body.p-overflow-hidden {
-    overflow-y: scroll !important;
-    padding-right: 0 !important;
-}
-
-/* Отключаем блокировку прокрутки для Dropdown в модалках */
-.p-dialog .p-dropdown-panel {
-    z-index: 10001 !important;
-}
 
 @keyframes spin {
   from { transform: rotate(0deg); }
@@ -336,3 +306,30 @@ body.p-overflow-hidden {
 }
 
 
+/* ========== DROPDOWN & MODAL FIXES ========== */
+
+.p-dropdown-panel {
+  z-index: 1100 !important;
+}
+
+/* Dropdown внутри модальных окон */
+.p-dialog .p-dropdown-panel {
+  position: absolute !important;
+  z-index: 10001 !important;
+}
+
+/* Блокируем скролл body при открытом модальном окне */
+body.p-overflow-hidden {
+  overflow: hidden !important;
+  padding-right: 0 !important;
+}
+
+/* Разрешаем скролл внутри модального окна */
+.p-dialog .p-dialog-content {
+  overflow-y: auto !important;
+}
+
+/* Модальная маска */
+.p-dialog-mask {
+  overflow-y: auto !important;
+}

@@ -372,7 +372,6 @@ watch(
   (newModes) => {
     const deviceCount = Object.keys(newModes).length;
     if (deviceCount > 0) {
-      // Логирование
     }
   },
   { deep: true, flush: 'post' }
@@ -384,10 +383,8 @@ let timer
 onMounted(() => {
   console.log('📱 App mounted - starting initialization');
   
-  // Инициализация
   initializeApp();
 
-  // Socket слушатели
   if (socket) {
     socket.on('DAILY_PASSWORDS', (data) => {
       if (data && data.today && data.yesterday) {
@@ -479,6 +476,7 @@ onUnmounted(() => {
   
   console.log('✅ App.vue cleanup completed')
 })
+
 </script>
 
 <style>

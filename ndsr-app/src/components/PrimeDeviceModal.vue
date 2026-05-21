@@ -946,6 +946,8 @@ defineExpose({
     console.log('Progress update:', newProgress, step, details)
   }
 })
+
+
 </script>
 
 <style scoped>
