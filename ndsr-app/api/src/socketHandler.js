@@ -2471,7 +2471,51 @@ const handleBatchFirmwareCheck = async (socket, data, callback) => {
       }
     }
   });
+  // В notes:add после успешного добавления:
+  socket.on('notes:add', (data, callback) => {
+    const { deviceId, note } = data;
+    const user = users.find(u => u.ip === socket.clientIp);
+    const authorName = user?.name || `User_${socket.clientIp?.split('.')?.pop() || 'Unknown'}`;
+    
+    const newNote = addDeviceNote(deviceId, {
+      text: note.text,
+      author: authorName,
+      authorIp: socket.clientIp
+    });
+    
+    // ✅ Уведомляем всех клиентов об обновлении заметок
+    io.emit('notes:updated', { deviceId, action: 'add', noteId: newNote.id });
+    
+    callback({ success: true, note: newNote });
+  });
+
+  // В notes:update после успешного обновления:
+  socket.on('notes:update', (data, callback) => {
+    const { deviceId, noteId, text } = data;
+    const updated = updateDeviceNote(deviceId, noteId, text);
+    
+    // ✅ Уведомляем всех клиентов
+    if (updated) {
+      io.emit('notes:updated', { deviceId, action: 'update', noteId });
+    }
+    
+    callback({ success: !!updated, note: updated });
+  });
+
+  // В notes:delete после успешного удаления:
+  socket.on('notes:delete', (data, callback) => {
+    const { deviceId, noteId } = data;
+    const deleted = deleteDeviceNote(deviceId, noteId);
+    
+    // ✅ Уведомляем всех клиентов
+    if (deleted) {
+      io.emit('notes:updated', { deviceId, action: 'delete', noteId });
+    }
+    
+    callback({ success: deleted });
+  });
 } 
+
 const initDockerManagerOnStart = async () => {
     try {
         console.log('🔧 [STARTUP] Initializing DockerManager...');

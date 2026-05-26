@@ -15,7 +15,8 @@
         current-page-report-template="Showing {first} to {last} of {totalRecords} devices"
         :removable-sort="false"
         responsive-layout="scroll"
-        class="full-width-table"
+        class="full-width-table notes-table"
+        rowHover
       >
         <template #header>
           <div class="table-header">
@@ -69,59 +70,69 @@
 
         <Column field="hwId" header="Device" :sortable="true" style="min-width: 200px">
           <template #body="{ data }">
+            <div
+              v-tooltip.right="{
+                value: getNotesForTooltip(data.id),
+                escape: false,
+                class: 'notes-tooltip',
+                showDelay: 500
+              }"
+              @mouseenter="loadNotesForTooltip(data.id)"
+              class="device-row-tooltip-wrapper"
+            >
               <div class="common-device-info-container">
                 <div class="common-device-avatar" :class="getDeviceAvatarClass(data)">
                   <i :class="deviceIcon(data.type)" class="common-device-icon"></i>
                 </div>
       
-            <div class="common-device-info">
-            <div class="common-device-name">
-            <template v-if="editingDeviceId === data.id">
-              <div class="edit-name-container">
-                <input
-                  ref="nameInput"
-                  v-model="editingName"
-                  class="edit-name-input-native"
-                  @keyup.enter="saveDeviceName(data)"
-                  @keyup.escape="cancelEditName"
-                  @blur="saveDeviceName(data)"
-                  autofocus
-                />
-              </div>
-            </template>
-              <template v-else>
-                <span 
-                  class="editable-name"
-                  @click.stop="startEditName(data)"
-                  v-tooltip="'Click to edit device name'"
-                >
-                  {{ data.shortName }}
-                  <i class="pi pi-pencil edit-name-icon"></i>
-                </span>
-              </template>
-              
-              <i 
-                class="pi pi-info-circle details-inline" 
-                @click="showDeviceDetails(data)" 
-                v-tooltip="'View device details'"
-              ></i>
-            </div>
-            
-            <div class="common-device-hwid">
-              {{ data.hwId }}
-              <span class="site-badge" v-if="data.site">SITE {{ data.site }}</span>
-              <div class="common-device-hwid">Country: {{ data.country }}</div>
-            </div>
+                <div class="common-device-info">
+                  <div class="common-device-name">
+                    <template v-if="editingDeviceId === data.id">
+                      <div class="edit-name-container">
+                        <input
+                          ref="nameInput"
+                          v-model="editingName"
+                          class="edit-name-input-native"
+                          @keyup.enter="saveDeviceName(data)"
+                          @keyup.escape="cancelEditName"
+                          @blur="saveDeviceName(data)"
+                          autofocus
+                        />
+                      </div>
+                    </template>
+                    <template v-else>
+                      <span 
+                        class="editable-name"
+                        @click.stop="startEditName(data)"
+                        v-tooltip="'Click to edit device name'"
+                      >
+                        {{ data.shortName }}
+                        <i class="pi pi-pencil edit-name-icon"></i>
+                      </span>
+                    </template>
+                    
+                    <i 
+                      class="pi pi-info-circle details-inline" 
+                      @click="showDeviceDetails(data)" 
+                      v-tooltip="'View device details'"
+                    ></i>
+                  </div>
+                  
+                  <div class="common-device-hwid">
+                    {{ data.hwId }}
+                    <span class="site-badge" v-if="data.site">SITE {{ data.site }}</span>
+                    <div class="common-device-hwid">Country: {{ data.country }}</div>
+                  </div>
 
-                <div class="common-device-hwid">
-                  Servicetag: {{ data.servicetag || 'N/A' }}
-                  <i 
-                    v-if="data.servicetag"
-                    class="pi pi-copy details-inline" 
-                    @click="copyToClipboard(data.servicetag, 'Servicetag')" 
-                    v-tooltip="'Copy Servicetag'"
-                  ></i>
-                </div>
+                  <div class="common-device-hwid">
+                    Servicetag: {{ data.servicetag || 'N/A' }}
+                    <i 
+                      v-if="data.servicetag"
+                      class="pi pi-copy details-inline" 
+                      @click="copyToClipboard(data.servicetag, 'Servicetag')" 
+                      v-tooltip="'Copy Servicetag'"
+                    ></i>
+                  </div>
 
                   <div class="common-device-hwid">
                     Current Mode: <b>{{ getDisplayMode(data.id) }}</b>
@@ -140,6 +151,7 @@
                   </div>
                 </div>
               </div>
+            </div>
           </template>
         </Column>
 
@@ -266,13 +278,7 @@
         :available-routers="deviceStore.routerDevices"
         @operation-started="handleOperationStarted" @mode-changed="handleModeChanged" />
 
-      <Dialog 
-      v-model:visible="showResetConfirmDialog" 
-      :modal="true"
-      :blockScroll="false" 
-      header="Reset Configuration"
-      :style="{ width: '450px' }"
-      >
+      <Dialog v-model:visible="showResetConfirmDialog" modal :blockScroll="false" header="Reset Configuration" :style="{ width: '450px' }">
         <div class="confirmation-content">
           <i class="pi pi-exclamation-triangle mr-3" style="font-size: 2rem; color: #e74c3c;" />
           <div><h4 class="mb-2">Reset device configuration?</h4><p class="text-color-secondary mb-0">This will erase all settings for <strong>{{ selectedDevice?.hwId }}</strong>.</p></div>
@@ -323,266 +329,80 @@
         </template>
       </Dialog>
 
-      <Dialog 
-        v-model:visible="showDetailsDialog" 
-        header="Device Details" 
-        :modal="true"
-        :blockScroll="false"
-        :style="{ width: '700px', maxWidth: '90vw' }"
-        :contentStyle="{ maxHeight: '70vh' }"
-      >
+      <Dialog v-model:visible="showDetailsDialog" header="Device Details" modal :blockScroll="false" :style="{ width: '700px', maxWidth: '90vw' }" :contentStyle="{ maxHeight: '70vh' }">
         <div v-if="selectedDevice" class="device-details-horizontal">
-          <div class="detail-section">
-            <h4>Basic Information</h4>
+          <div class="detail-section"><h4>Basic Information</h4>
             <div class="horizontal-grid">
-              <div class="field-group">
-                <label class="field-label">Name</label>
-                <div class="field-value-group">
-                  <span class="field-value">{{ selectedDevice.shortName }}</span>
-                </div>
-              </div>
-              <div class="field-group">
-                <label class="field-label">HW ID</label>
-                <div class="field-value-group">
-                  <span class="field-value">{{ selectedDevice.hwId }}</span>
-                </div>
-              </div>
-              <div class="field-group">
-                <label class="field-label">Type</label>
-                <div class="field-value-group">
-                  <span class="field-value">{{ selectedDevice.type }}</span>
-                </div>
-              </div>
-              <div class="field-group">
-                <label class="field-label">Country</label>
-                <div class="field-value-group">
-                  <span class="field-value">{{ selectedDevice.country || 'N/A' }}</span>
-                </div>
-              </div>
-              <div class="field-group">
-                <label class="field-label"> Site</label>
-              <div class="field-value-group">
-                  <span class="field-value">{{ selectedDevice.site || 'N/A' }}</span>
-              </div>
-              </div>
+              <div class="field-group"><label class="field-label">Name</label><div class="field-value-group"><span class="field-value">{{ selectedDevice.shortName }}</span></div></div>
+              <div class="field-group"><label class="field-label">HW ID</label><div class="field-value-group"><span class="field-value">{{ selectedDevice.hwId }}</span></div></div>
+              <div class="field-group"><label class="field-label">Type</label><div class="field-value-group"><span class="field-value">{{ selectedDevice.type }}</span></div></div>
+              <div class="field-group"><label class="field-label">Country</label><div class="field-value-group"><span class="field-value">{{ selectedDevice.country || 'N/A' }}</span></div></div>
+              <div class="field-group"><label class="field-label">Site</label><div class="field-value-group"><span class="field-value">{{ selectedDevice.site || 'N/A' }}</span></div></div>
             </div>
           </div>
-
-          <div class="detail-section">
-            <h4>Technical Information</h4>
+          <div class="detail-section"><h4>Technical Information</h4>
             <div class="horizontal-grid">
-              <div class="field-group">
-                <label class="field-label">MAC Address</label>
-                <div class="field-value-group">
-                  <span class="field-value">{{ selectedDevice.macAddress || 'N/A' }}</span>
-                  <Button 
-                    v-if="selectedDevice.macAddress"
-                    icon="pi pi-copy" 
-                    class="p-button-text p-button-sm copy-btn"
-                    @click="copyToClipboard(selectedDevice.macAddress, 'MAC Address')"
-                  />
-                </div>
-              </div>
-              <div class="field-group">
-                <label class="field-label">Servicetag</label>
-                <div class="field-value-group">
-                  <span class="field-value">{{ selectedDevice.servicetag || 'N/A' }}</span>
-                  <Button 
-                    v-if="selectedDevice.servicetag"
-                    icon="pi pi-copy" 
-                    class="p-button-text p-button-sm copy-btn"
-                    @click="copyToClipboard(selectedDevice.servicetag, 'Servicetag')"
-                  />
-                </div>
-              </div>
-              <div class="field-group">
-                <label class="field-label">Serial Number</label>
-                <div class="field-value-group">
-                  <span class="field-value">{{ selectedDevice.serialNumber || 'N/A' }}</span>
-                  <Button 
-                    v-if="selectedDevice.serialNumber"
-                    icon="pi pi-copy" 
-                    class="p-button-text p-button-sm copy-btn"
-                    @click="copyToClipboard(selectedDevice.serialNumber, 'Serial Number')"
-                  />
-                </div>
-              </div>
+              <div class="field-group"><label class="field-label">MAC Address</label><div class="field-value-group"><span class="field-value">{{ selectedDevice.macAddress || 'N/A' }}</span><Button v-if="selectedDevice.macAddress" icon="pi pi-copy" class="p-button-text p-button-sm copy-btn" @click="copyToClipboard(selectedDevice.macAddress, 'MAC Address')" /></div></div>
+              <div class="field-group"><label class="field-label">Servicetag</label><div class="field-value-group"><span class="field-value">{{ selectedDevice.servicetag || 'N/A' }}</span><Button v-if="selectedDevice.servicetag" icon="pi pi-copy" class="p-button-text p-button-sm copy-btn" @click="copyToClipboard(selectedDevice.servicetag, 'Servicetag')" /></div></div>
+              <div class="field-group"><label class="field-label">Serial Number</label><div class="field-value-group"><span class="field-value">{{ selectedDevice.serialNumber || 'N/A' }}</span><Button v-if="selectedDevice.serialNumber" icon="pi pi-copy" class="p-button-text p-button-sm copy-btn" @click="copyToClipboard(selectedDevice.serialNumber, 'Serial Number')" /></div></div>
             </div>
           </div>
-
-          <div class="detail-section">
-            <h4>Network Information</h4>
+          <div class="detail-section"><h4>Network Information</h4>
             <div class="horizontal-grid">
-              <div class="field-group">
-                <label class="field-label">IP Address Container</label>
-                <div class="field-value-group">
-                  <span class="field-value">{{ selectedDevice.ip || 'N/A' }}</span>
-                  <Button 
-                    v-if="selectedDevice.ip"
-                    icon="pi pi-copy" 
-                    class="p-button-text p-button-sm copy-btn"
-                    @click="copyToClipboard(selectedDevice.ip, 'IP Address')"
-                  />
-                </div>
-              </div>
-              <div class="field-group">
-                <label class="field-label">Check URL</label>
-                <div class="field-value-group">
-                  <span class="field-value url-text">{{ selectedDevice.checkUrl || 'N/A' }}</span>
-                  <Button 
-                    v-if="selectedDevice.checkUrl"
-                    icon="pi pi-copy" 
-                    class="p-button-text p-button-sm copy-btn"
-                    @click="copyToClipboard(selectedDevice.checkUrl, 'Check URL')"
-                  />
-                </div>
-              </div>
-              <div class="field-group">
-                <label class="field-label">VNC URL</label>
-                <div class="field-value-group">
-                  <span class="field-value url-text">{{ selectedDevice.vncUrl || 'N/A' }}</span>
-                  <Button 
-                    v-if="selectedDevice.vncUrl"
-                    icon="pi pi-copy" 
-                    class="p-button-text p-button-sm copy-btn"
-                    @click="copyToClipboard(selectedDevice.vncUrl, 'VNC URL')"
-                  />
-                </div>
-              </div>
-              <div class="field-group">
-                <label class="field-label">SSH Container</label>
-                <div class="field-value-group">
-                  <span class="field-value">{{ selectedDevice.sshContainer || 'N/A' }}</span>
-                  <Button 
-                    v-if="selectedDevice.sshContainer"
-                    icon="pi pi-copy" 
-                    class="p-button-text p-button-sm copy-btn"
-                    @click="copyToClipboard(selectedDevice.sshContainer, 'SSH Container')"
-                  />
-                </div>
-              </div>
+              <div class="field-group"><label class="field-label">IP Address Container</label><div class="field-value-group"><span class="field-value">{{ selectedDevice.ip || 'N/A' }}</span><Button v-if="selectedDevice.ip" icon="pi pi-copy" class="p-button-text p-button-sm copy-btn" @click="copyToClipboard(selectedDevice.ip, 'IP Address')" /></div></div>
+              <div class="field-group"><label class="field-label">Check URL</label><div class="field-value-group"><span class="field-value url-text">{{ selectedDevice.checkUrl || 'N/A' }}</span><Button v-if="selectedDevice.checkUrl" icon="pi pi-copy" class="p-button-text p-button-sm copy-btn" @click="copyToClipboard(selectedDevice.checkUrl, 'Check URL')" /></div></div>
+              <div class="field-group"><label class="field-label">VNC URL</label><div class="field-value-group"><span class="field-value url-text">{{ selectedDevice.vncUrl || 'N/A' }}</span><Button v-if="selectedDevice.vncUrl" icon="pi pi-copy" class="p-button-text p-button-sm copy-btn" @click="copyToClipboard(selectedDevice.vncUrl, 'VNC URL')" /></div></div>
+              <div class="field-group"><label class="field-label">SSH Container</label><div class="field-value-group"><span class="field-value">{{ selectedDevice.sshContainer || 'N/A' }}</span><Button v-if="selectedDevice.sshContainer" icon="pi pi-copy" class="p-button-text p-button-sm copy-btn" @click="copyToClipboard(selectedDevice.sshContainer, 'SSH Container')" /></div></div>
             </div>
           </div>
-
-          <div class="detail-section">
-            <h4>Ports & Configuration</h4>
+          <div class="detail-section"><h4>Ports & Configuration</h4>
             <div class="horizontal-grid compact-grid">
-              <div class="field-group" v-if="selectedDevice.consolePort">
-                <label class="field-label">Console Port</label>
-                <div class="field-value-group">
-                  <span class="field-value">{{ selectedDevice.consolePort }}</span>
-                </div>
-              </div>
-              <div class="field-group" v-if="selectedDevice.resetPort">
-                <label class="field-label">Reset Port</label>
-                <div class="field-value-group">
-                  <span class="field-value">{{ selectedDevice.resetPort }}</span>
-                </div>
-              </div>
-              <div class="field-group" v-if="selectedDevice.rebootPort">
-                <label class="field-label">Reboot Port</label>
-                <div class="field-value-group">
-                  <span class="field-value">{{ selectedDevice.rebootPort }}</span>
-                </div>
-              </div>
-              <div class="field-group" v-if="selectedDevice.vlanLocal">
-                <label class="field-label">VLAN Local</label>
-                <div class="field-value-group">
-                  <span class="field-value">{{ selectedDevice.vlanLocal }}</span>
-                </div>
-              </div>
-              <div class="field-group" v-if="selectedDevice.switchID">
-                <label class="field-label">Switch ID</label>
-                <div class="field-value-group">
-                  <span class="field-value">{{ selectedDevice.switchID }}</span>
-                </div>
-              </div>
-              <div class="field-group" v-if="selectedDevice.switchPortWan">
-                <label class="field-label">WAN Port</label>
-                <div class="field-value-group">
-                  <span class="field-value">{{ selectedDevice.switchPortWan }}</span>
-                </div>
-              </div>
-              <div class="field-group" v-if="selectedDevice.switchPortLan">
-                <label class="field-label">LAN Port</label>
-                <div class="field-value-group">
-                  <span class="field-value">{{ selectedDevice.switchPortLan }}</span>
-                </div>
-              </div>
-              <div class="field-group" v-if="selectedDevice.jeromeID">
-                <label class="field-label">Jerome ID</label>
-                <div class="field-value-group">
-                  <span class="field-value">{{ selectedDevice.jeromeID }}</span>
-                </div>
-              </div>
-              <div class="field-group" v-if="selectedDevice.consoleID">
-                <label class="field-label">Console ID</label>
-                <div class="field-value-group">
-                  <span class="field-value">{{ selectedDevice.consoleID }}</span>
-                </div>
-              </div>
+              <div class="field-group" v-if="selectedDevice.consolePort"><label class="field-label">Console Port</label><div class="field-value-group"><span class="field-value">{{ selectedDevice.consolePort }}</span></div></div>
+              <div class="field-group" v-if="selectedDevice.resetPort"><label class="field-label">Reset Port</label><div class="field-value-group"><span class="field-value">{{ selectedDevice.resetPort }}</span></div></div>
+              <div class="field-group" v-if="selectedDevice.rebootPort"><label class="field-label">Reboot Port</label><div class="field-value-group"><span class="field-value">{{ selectedDevice.rebootPort }}</span></div></div>
+              <div class="field-group" v-if="selectedDevice.vlanLocal"><label class="field-label">VLAN Local</label><div class="field-value-group"><span class="field-value">{{ selectedDevice.vlanLocal }}</span></div></div>
+              <div class="field-group" v-if="selectedDevice.switchID"><label class="field-label">Switch ID</label><div class="field-value-group"><span class="field-value">{{ selectedDevice.switchID }}</span></div></div>
+              <div class="field-group" v-if="selectedDevice.switchPortWan"><label class="field-label">WAN Port</label><div class="field-value-group"><span class="field-value">{{ selectedDevice.switchPortWan }}</span></div></div>
+              <div class="field-group" v-if="selectedDevice.switchPortLan"><label class="field-label">LAN Port</label><div class="field-value-group"><span class="field-value">{{ selectedDevice.switchPortLan }}</span></div></div>
+              <div class="field-group" v-if="selectedDevice.jeromeID"><label class="field-label">Jerome ID</label><div class="field-value-group"><span class="field-value">{{ selectedDevice.jeromeID }}</span></div></div>
+              <div class="field-group" v-if="selectedDevice.consoleID"><label class="field-label">Console ID</label><div class="field-value-group"><span class="field-value">{{ selectedDevice.consoleID }}</span></div></div>
             </div>
           </div>
           <div class="detail-section">
-     <div class="notes-header">
-             <h4>Notes</h4>
-       <Button icon="pi pi-plus" class="p-button-sm p-button-outlined p-button-rounded" @click="addNote" v-tooltip="'Add note'" />
-  </div>
-  
-  <div v-if="loadingNotes" class="loading-state">
-    <i class="pi pi-spin pi-spinner"></i>
-    <span>Loading notes...</span>
-  </div>
-  
-  <div v-else-if="deviceNotes.length === 0" class="empty-notes">
-    <i class="pi pi-pencil"></i>
-    <span>No notes. Click + to add one.</span>
-  </div>
-  
-  <div v-else class="notes-list">
-    <div v-for="note in deviceNotes" :key="note.id" class="note-item">
-      <div class="note-header">
-        <span class="note-author"><i class="pi pi-user"></i> {{ note.author }}</span>
-        <span class="note-time">{{ formatNoteTime(note.timestamp) }}</span>
-        <div class="note-actions">
-          <Button icon="pi pi-pencil" class="p-button-text p-button-sm p-button-rounded" @click="editNote(note)" v-tooltip="'Edit'" />
-          <Button icon="pi pi-trash" class="p-button-text p-button-sm p-button-rounded text-red-500" @click="confirmDeleteNote(note.id)" v-tooltip="'Delete'" />
+            <div class="notes-header"><h4>Notes</h4><Button icon="pi pi-plus" class="p-button-sm p-button-outlined p-button-rounded" @click="addNote" v-tooltip="'Add note'" /></div>
+            <div v-if="loadingNotes" class="loading-state"><i class="pi pi-spin pi-spinner"></i><span>Loading notes...</span></div>
+            <div v-else-if="deviceNotes.length === 0" class="empty-notes"><i class="pi pi-pencil"></i><span>No notes. Click + to add one.</span></div>
+            <div v-else class="notes-list">
+              <div v-for="note in deviceNotes" :key="note.id" class="note-item">
+                <div class="note-header">
+                  <span class="note-author"><i class="pi pi-user"></i> {{ note.author }}</span>
+                  <span class="note-time">{{ formatNoteTime(note.timestamp) }}</span>
+                  <div class="note-actions">
+                    <Button icon="pi pi-pencil" class="p-button-text p-button-sm p-button-rounded" @click="editNote(note)" v-tooltip="'Edit'" />
+                    <Button icon="pi pi-trash" class="p-button-text p-button-sm p-button-rounded text-red-500" @click="confirmDeleteNote(note.id)" v-tooltip="'Delete'" />
+                  </div>
+                </div>
+                <div v-if="editingNoteId === note.id" class="note-edit">
+                  <Textarea v-model="editingNoteText" rows="2" class="w-full" />
+                  <div class="note-edit-actions">
+                    <Button label="Save" icon="pi pi-check" class="p-button-sm p-button-success" @click="saveNoteEdit()" />
+                    <Button label="Cancel" icon="pi pi-times" class="p-button-sm p-button-text" @click="cancelNoteEdit()" />
+                  </div>
+                </div>
+                <div v-else class="note-text">{{ note.text }}</div>
+                <div v-if="note.editedAt" class="note-edited">edited</div>
+              </div>
+            </div>
+          </div>
         </div>
-      </div>
-      <div v-if="editingNoteId === note.id" class="note-edit">
-        <Textarea v-model="editingNoteText" rows="2" class="w-full" />
-        <div class="note-edit-actions">
-          <Button label="Save" icon="pi pi-check" class="p-button-sm p-button-success" @click="saveNoteEdit()" />
-          <Button label="Cancel" icon="pi pi-times" class="p-button-sm p-button-text" @click="cancelNoteEdit()" />
-        </div>
-      </div>
-      <div v-else class="note-text">{{ note.text }}</div>
-      <div v-if="note.editedAt" class="note-edited">edited</div>
-    </div>
-  </div>
-</div>
-        </div>
-
         <template #footer>
-          <Button 
-            label="Close" 
-            icon="pi pi-times" 
-            @click="showDetailsDialog = false" 
-            class="p-button-text"
-          />
-          <Button 
-            label="Copy All" 
-            icon="pi pi-copy" 
-            @click="copyAllDetails(selectedDevice)" 
-            class="p-button-secondary"
-          />
+          <Button label="Close" icon="pi pi-times" @click="showDetailsDialog = false" class="p-button-text" />
+          <Button label="Copy All" icon="pi pi-copy" @click="copyAllDetails(selectedDevice)" class="p-button-secondary" />
         </template>
       </Dialog>
 
       <Dialog v-model:visible="showAddNoteDialog" modal header="Add Note" :style="{ width: '400px' }">
-        <div>
-          <Textarea v-model="newNoteText" rows="3" class="w-full" placeholder="Enter note text..." />
-        </div>
+        <div><Textarea v-model="newNoteText" rows="3" class="w-full" placeholder="Enter note text..." /></div>
         <template #footer>
           <Button label="Cancel" icon="pi pi-times" class="p-button-text" @click="showAddNoteDialog = false" />
           <Button label="Add" icon="pi pi-check" class="p-button-success" @click="saveNewNote" :disabled="!newNoteText.trim()" />
@@ -593,7 +413,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, nextTick, inject, onBeforeUnmount, watch } from 'vue'
+import { ref, reactive, computed, onMounted, nextTick, inject, onBeforeUnmount, watch } from 'vue'
 import { useToast } from 'primevue/usetoast'
 import { useDeviceStore } from '@/stores/useDeviceStore'
 import { useDeviceActionsStore } from '@/stores/useDeviceActionsStore'
@@ -618,7 +438,6 @@ const editingNoteId = ref(null)
 const editingNoteText = ref('')
 const editingNoteOriginal = ref(null)
 
-// Получение заметок при открытии деталей
 const loadNotes = (deviceId) => {
   loadingNotes.value = true
   socket.emit('notes:get', String(deviceId), (response) => {
@@ -633,82 +452,40 @@ const showDeviceDetails = (d) => {
   loadNotes(d.id)
 }
 
-// Добавление заметки
-const addNote = () => {
-  newNoteText.value = ''
-  showAddNoteDialog.value = true
-}
+const addNote = () => { newNoteText.value = ''; showAddNoteDialog.value = true }
 
 const saveNewNote = () => {
   if (!newNoteText.value.trim() || !selectedDevice.value) return
-  
-  socket.emit('notes:add', {
-    deviceId: String(selectedDevice.value.id),
-    note: {
-      text: newNoteText.value.trim(),
-      author: socket.id || 'User'
-    }
-  }, (response) => {
-    if (response?.success) {
-      deviceNotes.value.push(response.note)
-      showAddNoteDialog.value = false
-    }
+  socket.emit('notes:add', { deviceId: String(selectedDevice.value.id), note: { text: newNoteText.value.trim(), author: socket.id || 'User' } }, (response) => {
+    if (response?.success) { deviceNotes.value.push(response.note); showAddNoteDialog.value = false; clearNotesCache(selectedDevice.value.id) }
   })
 }
 
-// Редактирование заметки
-const editNote = (note) => {
-  editingNoteId.value = note.id
-  editingNoteText.value = note.text
-  editingNoteOriginal.value = note
-}
+const editNote = (note) => { editingNoteId.value = note.id; editingNoteText.value = note.text; editingNoteOriginal.value = note }
 
 const saveNoteEdit = () => {
   if (!editingNoteText.value.trim() || !selectedDevice.value) return
-  
-  socket.emit('notes:update', {
-    deviceId: String(selectedDevice.value.id),
-    noteId: editingNoteId.value,
-    text: editingNoteText.value.trim()
-  }, (response) => {
+  socket.emit('notes:update', { deviceId: String(selectedDevice.value.id), noteId: editingNoteId.value, text: editingNoteText.value.trim() }, (response) => {
     if (response?.success) {
       const idx = deviceNotes.value.findIndex(n => n.id === editingNoteId.value)
-      if (idx !== -1) {
-        deviceNotes.value[idx] = response.note
-      }
-      cancelNoteEdit()
+      if (idx !== -1) deviceNotes.value[idx] = response.note
+      cancelNoteEdit(); clearNotesCache(selectedDevice.value.id)
     }
   })
 }
 
-const cancelNoteEdit = () => {
-  editingNoteId.value = null
-  editingNoteText.value = ''
-  editingNoteOriginal.value = null
-}
+const cancelNoteEdit = () => { editingNoteId.value = null; editingNoteText.value = ''; editingNoteOriginal.value = null }
 
-// Удаление заметки
 const confirmDeleteNote = (noteId) => {
   if (!selectedDevice.value) return
-  
-  socket.emit('notes:delete', {
-    deviceId: String(selectedDevice.value.id),
-    noteId: noteId
-  }, (response) => {
-    if (response?.success) {
-      deviceNotes.value = deviceNotes.value.filter(n => n.id !== noteId)
-    }
+  socket.emit('notes:delete', { deviceId: String(selectedDevice.value.id), noteId }, (response) => {
+    if (response?.success) { deviceNotes.value = deviceNotes.value.filter(n => n.id !== noteId); clearNotesCache(selectedDevice.value.id) }
   })
 }
 
-
-// Форматирование времени
 const formatNoteTime = (timestamp) => {
   if (!timestamp) return ''
-  const date = new Date(timestamp)
-  const now = new Date()
-  const diff = now - date
-  
+  const date = new Date(timestamp); const now = new Date(); const diff = now - date
   if (diff < 60000) return 'just now'
   if (diff < 3600000) return `${Math.floor(diff / 60000)}m ago`
   if (diff < 86400000) return `${Math.floor(diff / 3600000)}h ago`
@@ -746,17 +523,11 @@ const editingName = ref('')
 const nameInput = ref(null)
 const currentDeviceWanType = computed(() => selectedDevice.value ? deviceStore.getDeviceWanType(selectedDevice.value.id) : null)
 
-// ✅ Запрос статуса питания для всех устройств с rebootPort
 const requestPowerStatuses = async () => {
   const devices = deviceStore.availableDevices || deviceStore.devices || []
-  
   for (const device of devices) {
     if (device.rebootPort && !deviceActionsStore.hasPowerStatus(device.id)) {
-      try {
-        await deviceActionsStore.requestPowerStatus(device.id)
-      } catch (error) {
-        console.error(`Failed to get power status for ${device.hwId}:`, error)
-      }
+      try { await deviceActionsStore.requestPowerStatus(device.id) } catch (error) { console.error(`Failed to get power status for ${device.hwId}:`, error) }
     }
   }
 }
@@ -764,9 +535,7 @@ const requestPowerStatuses = async () => {
 const filteredDevices = computed(() => {
   if (!globalFilter.value) return deviceStore.availableDevices
   const filter = globalFilter.value.toLowerCase()
-  return deviceStore.availableDevices.filter(d => 
-    d.hwId?.toLowerCase().includes(filter) || d.id?.toString().toLowerCase().includes(filter) || 
-    d.shortName?.toLowerCase().includes(filter) || d.type?.toLowerCase().includes(filter))
+  return deviceStore.availableDevices.filter(d => d.hwId?.toLowerCase().includes(filter) || d.id?.toString().toLowerCase().includes(filter) || d.shortName?.toLowerCase().includes(filter) || d.type?.toLowerCase().includes(filter))
 })
 
 const sortedAndFilteredDevices = computed(() => {
@@ -785,55 +554,29 @@ const sortedAndFilteredDevices = computed(() => {
   })
 })
 
-const handleOpenChangeMode = (device) => { 
-  selectedDevice.value = device
-  nextTick(() => {
-    if (changeModeModal.value) {
-      changeModeModal.value.show(todayPassword.value, 'global')
-    }
-  })
-}
-
+const handleOpenChangeMode = (device) => { selectedDevice.value = device; nextTick(() => { if (changeModeModal.value) changeModeModal.value.show(todayPassword.value, 'global') }) }
 const clearSearch = () => { globalFilter.value = '' }
 const getNestedValue = (obj, path) => path.split('.').reduce((c, k) => c?.[k] ?? null, obj)
 const onSort = (e) => { sortField.value = e.sortField; sortOrder.value = e.sortOrder }
 
-const deviceIcon = (type) => {
-  const icons = { router: 'bi bi-router', AP: 'bi bi-wifi', switch: 'pi pi-sitemap' }
-  return icons[type] || 'pi pi-box'
-}
-
-const getDeviceAvatarClass = (device) => {
-  if (device.statusCode !== 200) return 'offline'
-  if (device.type === 'AP') return 'ap'
-  return 'online'
-}
+const deviceIcon = (type) => { const icons = { router: 'bi bi-router', AP: 'bi bi-wifi', switch: 'pi pi-sitemap' }; return icons[type] || 'pi pi-box' }
+const getDeviceAvatarClass = (device) => { if (device.statusCode !== 200) return 'offline'; if (device.type === 'AP') return 'ap'; return 'online' }
 
 const getDisplayMode = (deviceId) => {
   if (!isMounted.value) return 'Loading...'
   const info = modeStore.getDeviceModeInfo(deviceId)
-  const modeMap = {
-    'router': 'Router',
-    'extender': 'Extender', 
-    'extender_connect': 'Extender (Connected)',
-    'extender_disconnect': 'AP'
-  }
+  const modeMap = { 'router': 'Router', 'extender': 'Extender', 'extender_connect': 'Extender (Connected)', 'extender_disconnect': 'AP' }
   if (!info?.mode) return 'Unknown'
   return modeMap[info.mode] || info.mode
 }
 
-const shouldShowConnectionInfo = (deviceId) => {
-  if (!isMounted.value) return false
-  const modeInfo = modeStore.getDeviceModeInfo(deviceId)
-  return (modeInfo?.mode === 'extender_connect') && modeInfo?.routerId
-}
+const shouldShowConnectionInfo = (deviceId) => { if (!isMounted.value) return false; const modeInfo = modeStore.getDeviceModeInfo(deviceId); return (modeInfo?.mode === 'extender_connect') && modeInfo?.routerId }
 
 const getConnectedRouterInfo = (deviceId) => {
   if (!isMounted.value) return 'Loading...'
   const modeInfo = modeStore.getDeviceModeInfo(deviceId)
   if (modeInfo?.routerId) {
-    const router = deviceStore.devices?.find(d => String(d.id) === String(modeInfo.routerId)) ||
-                   deviceStore.allDevices?.find(d => String(d.id) === String(modeInfo.routerId))
+    const router = deviceStore.devices?.find(d => String(d.id) === String(modeInfo.routerId)) || deviceStore.allDevices?.find(d => String(d.id) === String(modeInfo.routerId))
     return router ? `${router.hwId} (${router.shortName})` : `Router ${modeInfo.routerId}`
   }
   return 'Not connected'
@@ -845,38 +588,18 @@ const isInitializing = (d) => deviceActionsStore.getDeviceOperation(d.id) === 'i
 const isResetting = (d) => deviceActionsStore.getDeviceOperation(d.id) === 'resetting'
 const isResettingDsl = (d) => deviceActionsStore.getDeviceOperation(d.id) === 'resettingDsl'
 
-const getPowerStatusText = (id) => {
-  const _ = deviceActionsStore.powerStatusVersion
-  if (!deviceActionsStore.hasPowerStatus(id)) return 'Loading...'
-  return deviceActionsStore.isPoweredOn(id) ? 'On' : 'Off'
-}
-
-const getPowerStatusIcon = (id) => {
-  const _ = deviceActionsStore.powerStatusVersion
-  if (!deviceActionsStore.hasPowerStatus(id)) return 'pi pi-spinner pi-spin'
-  return deviceActionsStore.isPoweredOn(id) ? 'pi pi-circle-fill power-on' : 'pi pi-circle-fill power-off'
-}
-
-const getPowerStatusClass = (deviceId) => {
-  const _ = deviceActionsStore.powerStatusVersion
-  if (!deviceActionsStore.hasPowerStatus(deviceId)) return 'text-secondary'
-  return deviceActionsStore.isPoweredOn(deviceId) ? 'text-green-600' : 'text-gray-500'
-}
+const getPowerStatusText = (id) => { const _ = deviceActionsStore.powerStatusVersion; if (!deviceActionsStore.hasPowerStatus(id)) return 'Loading...'; return deviceActionsStore.isPoweredOn(id) ? 'On' : 'Off' }
+const getPowerStatusIcon = (id) => { const _ = deviceActionsStore.powerStatusVersion; if (!deviceActionsStore.hasPowerStatus(id)) return 'pi pi-spinner pi-spin'; return deviceActionsStore.isPoweredOn(id) ? 'pi pi-circle-fill power-on' : 'pi pi-circle-fill power-off' }
+const getPowerStatusClass = (deviceId) => { const _ = deviceActionsStore.powerStatusVersion; if (!deviceActionsStore.hasPowerStatus(deviceId)) return 'text-secondary'; return deviceActionsStore.isPoweredOn(deviceId) ? 'text-green-600' : 'text-gray-500' }
 
 const showPowerMenu = (d) => { powerActionDevice.value = d; showPowerMenuDialog.value = true }
 const selectPowerAction = (a) => { selectedPowerAction.value = a; showPowerMenuDialog.value = false; setTimeout(() => showPowerActionConfirmDialog.value = true, 100) }
-const confirmPowerAction = () => {
-  if (!powerActionDevice.value || !selectedPowerAction.value) return
-  const d = powerActionDevice.value, a = selectedPowerAction.value
-  if (a === 'reboot') deviceActionsStore.rebootDevice(d)
-  else deviceActionsStore.powerDevice(d, a)
-  showPowerActionConfirmDialog.value = false
-  setTimeout(() => { powerActionDevice.value = null; selectedPowerAction.value = null }, 300)
-}
+const confirmPowerAction = () => { if (!powerActionDevice.value || !selectedPowerAction.value) return; const d = powerActionDevice.value, a = selectedPowerAction.value; if (a === 'reboot') deviceActionsStore.rebootDevice(d); else deviceActionsStore.powerDevice(d, a); showPowerActionConfirmDialog.value = false; setTimeout(() => { powerActionDevice.value = null; selectedPowerAction.value = null }, 300) }
 const cancelPowerAction = () => { showPowerActionConfirmDialog.value = false; powerActionDevice.value = null; selectedPowerAction.value = null }
 const getPowerActionLabel = (a) => ({ reboot: 'Reboot Device', on: 'Power On', off: 'Power Off' }[a] || a)
 const getPowerActionIcon = (a) => ({ reboot: 'pi pi-refresh', on: 'pi pi-power-off', off: 'pi pi-power-off' }[a] || 'pi pi-question')
 const getPowerActionSeverity = (a) => ({ reboot: 'warning', on: 'success', off: 'danger' }[a] || 'secondary')
+
 const refreshPowerStatus = async (deviceId) => {
   try {
     toast.add({ severity: 'info', summary: 'Refreshing...', detail: 'Checking power status, please wait...', life: 2000 })
@@ -889,69 +612,30 @@ const refreshPowerStatus = async (deviceId) => {
   }
 }
 
-
-
 const handleConsoleClick = (d) => consoleStore.isConsoleOpen(d.id) ? consoleStore.focusConsole(d.id) : handleOpenConsole(d)
 const handleInitialization = (d) => deviceActionsStore.initializationDevice(d, todayPassword.value)
 
-const openVnc = (d) => {
-  const params = `scrollbars=no,resizable=no,status=no,location=no,toolbar=no,menubar=no,width=900,height=600,left=200,top=100`
-  window.open(d.vncUrl, d.hwId, params)
-  toast.add({ severity: 'info', summary: 'VNC', detail: 'Password: password', life: 5000 })
-}
+const openVnc = (d) => { const params = `scrollbars=no,resizable=no,status=no,location=no,toolbar=no,menubar=no,width=900,height=600,left=200,top=100`; window.open(d.vncUrl, d.hwId, params); toast.add({ severity: 'info', summary: 'VNC', detail: 'Password: password', life: 5000 }) }
+const openDeviceInterface = (d) => { if (d.URL) { window.open(d.URL, '_blank'); toast.add({ severity: 'info', summary: 'Interface', detail: `Opening ${d.hwId}`, life: 2000 }) } }
 
-const openDeviceInterface = (d) => {
-  if (d.URL) { window.open(d.URL, '_blank'); toast.add({ severity: 'info', summary: 'Interface', detail: `Opening ${d.hwId}`, life: 2000 }) }
-}
-
-const handleOpenModal = (device, modalType) => {
-  selectedDevice.value = device
-  nextTick(() => deviceModal.value?.show(modalType, modalType === 'mwsConnection' ? todayPassword.value : undefined, 'global'))
-}
+const handleOpenModal = (device, modalType) => { selectedDevice.value = device; nextTick(() => deviceModal.value?.show(modalType, modalType === 'mwsConnection' ? todayPassword.value : undefined, 'global')) }
 
 const handleOpenConsole = async (device) => {
   try {
-    const response = await new Promise((resolve, reject) => {
-      socket.emit('device:getConsoleUrl', device.id, r => r?.success ? resolve(r) : reject(new Error(r?.error || 'Failed')))
-      setTimeout(() => reject(new Error('Timeout')), 5000)
-    })
+    const response = await new Promise((resolve, reject) => { socket.emit('device:getConsoleUrl', device.id, r => r?.success ? resolve(r) : reject(new Error(r?.error || 'Failed'))); setTimeout(() => reject(new Error('Timeout')), 5000) })
     window.open(response.url, `console_${device.id}`, 'scrollbars=no,resizable=no,width=900,height=600')
   } catch (e) { toast.add({ severity: 'error', summary: 'Error', detail: e.message, life: 4000 }) }
 }
 
 const copyToClipboard = async (text, fieldName = 'Text') => {
-    if (!text) return
-    
-    try {
-        await navigator.clipboard.writeText(text)
-        toast.add({
-            severity: 'success',
-            summary: 'Copied!',
-            detail: `${fieldName} copied to clipboard`,
-            life: 2000
-        })
-    } catch (err) {
-        const textArea = document.createElement('textarea')
-        textArea.value = text
-        document.body.appendChild(textArea)
-        textArea.select()
-        document.execCommand('copy')
-        document.body.removeChild(textArea)
-        
-        toast.add({
-            severity: 'success',
-            summary: 'Copied!',
-            detail: `${fieldName} copied to clipboard`,
-            life: 2000
-        })
-    }
+  if (!text) return
+  try { await navigator.clipboard.writeText(text); toast.add({ severity: 'success', summary: 'Copied!', detail: `${fieldName} copied to clipboard`, life: 2000 }) }
+  catch (err) { const textArea = document.createElement('textarea'); textArea.value = text; document.body.appendChild(textArea); textArea.select(); document.execCommand('copy'); document.body.removeChild(textArea); toast.add({ severity: 'success', summary: 'Copied!', detail: `${fieldName} copied to clipboard`, life: 2000 }) }
 }
+
 const refreshDeviceMode = async (deviceId) => {
-  try {
-    const mode = await modeStore.getCurrentMode(deviceId, todayPassword.value)
-    if (mode) { modeStore.currentMode[deviceId] = { mode, routerId: null, updatedAt: Date.now() } }
-    toast.add({ severity: 'success', summary: 'Mode Refreshed', detail: `Mode: ${mode}`, life: 3000 })
-  } catch (e) { toast.add({ severity: 'error', summary: 'Error', detail: e.message, life: 4000 }) }
+  try { const mode = await modeStore.getCurrentMode(deviceId, todayPassword.value); if (mode) { modeStore.currentMode[deviceId] = { mode, routerId: null, updatedAt: Date.now() } }; toast.add({ severity: 'success', summary: 'Mode Refreshed', detail: `Mode: ${mode}`, life: 3000 }) }
+  catch (e) { toast.add({ severity: 'error', summary: 'Error', detail: e.message, life: 4000 }) }
 }
 
 const showResetConfirm = (d) => { selectedDevice.value = d; showResetConfirmDialog.value = true }
@@ -965,201 +649,97 @@ const canChangeMode = (device) => !isOffline(device)
 const canOpenVnc = (device) => !isOffline(device) && device.vncUrl
 const canResetConfig = (device) => !isAnyOperationOnThisDevice(device)
 const canResetDsl = (device) => device.dslPort
-const canPowerManage = (device) => {
-  return !isAnyOperationOnThisDevice(device) && device.rebootPort
-}
+const canPowerManage = (device) => !isAnyOperationOnThisDevice(device) && device.rebootPort
 
-const handleOperationStarted = (data) => {
-  if (!data?.deviceId || !data?.operationType) return
-  const d = deviceStore.devices.find(x => x.id === data.deviceId)
-  if (d && progressModal.value) progressModal.value.show(data.operationType, d, data.operationData || {})
-}
-
+const handleOperationStarted = (data) => { if (!data?.deviceId || !data?.operationType) return; const d = deviceStore.devices.find(x => x.id === data.deviceId); if (d && progressModal.value) progressModal.value.show(data.operationType, d, data.operationData || {}) }
 const handleModeChanged = () => {}
 const handleFirmwareUpdated = (data) => { if (data.deviceId && data.version) { const d = deviceStore.devices.find(x => x.id === data.deviceId); if (d) d.firmwareVersion = data.version } }
 
 const handleModalSave = (data) => {
   if (!data?.callback) return
   const { value, type, action, callback } = data
-  if (type === 'wanTypes') {
-    socket.emit('device:wanTypes:save', selectedDevice.value?.id, value, r => callback(r?.status === 'ok', r?.status === 'ok' ? 'WAN updated' : r?.message || 'Failed'))
-  } else if (type === 'mwsApConnection') {
-    socket.emit('device:mwsConnected', { deviceId: selectedDevice.value.id, routerId: value, action }, r => callback(r?.status === 'ok', r?.status === 'ok' ? `MWS ${action} done` : r?.error || 'Failed'))
-  }
+  if (type === 'wanTypes') socket.emit('device:wanTypes:save', selectedDevice.value?.id, value, r => callback(r?.status === 'ok', r?.status === 'ok' ? 'WAN updated' : r?.message || 'Failed'))
+  else if (type === 'mwsApConnection') socket.emit('device:mwsConnected', { deviceId: selectedDevice.value.id, routerId: value, action }, r => callback(r?.status === 'ok', r?.status === 'ok' ? `MWS ${action} done` : r?.error || 'Failed'))
 }
 
 const copyAllDetails = (device) => {
-  const sections = [
-    '=== BASIC INFORMATION ===',
-    `Name: ${device.shortName}`,
-    `HW ID: ${device.hwId}`,
-    `Type: ${device.type}`,
-    `Country: ${device.country || 'N/A'}`,
-    '',
-    '=== TECHNICAL INFORMATION ===',
-    `MAC Address: ${device.macAddress || 'N/A'}`,
-    `Servicetag: ${device.servicetag || 'N/A'}`,
-    `Serial Number: ${device.serialNumber || 'N/A'}`,
-    '',
-    '=== NETWORK INFORMATION ===',
-    `IP Address: ${device.ip || 'N/A'}`,
-    `Check URL: ${device.checkUrl || 'N/A'}`,
-    `VNC URL: ${device.vncUrl || 'N/A'}`,
-    `SSH Container: ${device.sshContainer || 'N/A'}`,
-    '',
-    '=== PORTS & CONFIGURATION ==='
-  ]
-
-  const portFields = [
-    { label: 'Console Port', value: device.consolePort },
-    { label: 'Reset Port', value: device.resetPort },
-    { label: 'Reboot Port', value: device.rebootPort },
-    { label: 'VLAN Local', value: device.vlanLocal },
-    { label: 'Switch ID', value: device.switchID },
-    { label: 'WAN Port', value: device.switchPortWan },
-    { label: 'LAN Port', value: device.switchPortLan },
-    { label: 'Jerome ID', value: device.jeromeID },
-    { label: 'Console ID', value: device.consoleID }
-  ]
-
-  portFields.forEach(field => {
-    if (field.value) {
-      sections.push(`${field.label}: ${field.value}`)
-    }
-  })
-
-  const details = sections.join('\n')
-  copyToClipboard(details, 'All Device Details')
+  const sections = ['=== BASIC INFORMATION ===', `Name: ${device.shortName}`, `HW ID: ${device.hwId}`, `Type: ${device.type}`, `Country: ${device.country || 'N/A'}`, '', '=== TECHNICAL INFORMATION ===', `MAC Address: ${device.macAddress || 'N/A'}`, `Servicetag: ${device.servicetag || 'N/A'}`, `Serial Number: ${device.serialNumber || 'N/A'}`, '', '=== NETWORK INFORMATION ===', `IP Address: ${device.ip || 'N/A'}`, `Check URL: ${device.checkUrl || 'N/A'}`, `VNC URL: ${device.vncUrl || 'N/A'}`, `SSH Container: ${device.sshContainer || 'N/A'}`, '', '=== PORTS & CONFIGURATION ===']
+  const portFields = [{ label: 'Console Port', value: device.consolePort }, { label: 'Reset Port', value: device.resetPort }, { label: 'Reboot Port', value: device.rebootPort }, { label: 'VLAN Local', value: device.vlanLocal }, { label: 'Switch ID', value: device.switchID }, { label: 'WAN Port', value: device.switchPortWan }, { label: 'LAN Port', value: device.switchPortLan }, { label: 'Jerome ID', value: device.jeromeID }, { label: 'Console ID', value: device.consoleID }]
+  portFields.forEach(field => { if (field.value) sections.push(`${field.label}: ${field.value}`) })
+  copyToClipboard(sections.join('\n'), 'All Device Details')
 }
 
 // !!!!! Функиции на изменение ShortName !!!!
-const startEditName = (device) => {
-  editingDeviceId.value = device.id
-  editingName.value = device.shortName
-  
-  // Фокус на input после рендеринга
-  nextTick(() => {
-    // Для нативного input не нужен $el
-    if (nameInput.value) {
-      nameInput.value.focus()
-      // Выделяем весь текст для удобства
-      nameInput.value.select()
-    }
-  })
-}
-
-const cancelEditName = () => {
-  editingDeviceId.value = null
-  editingName.value = ''
-}
+const startEditName = (device) => { editingDeviceId.value = device.id; editingName.value = device.shortName; nextTick(() => { if (nameInput.value) { nameInput.value.focus(); nameInput.value.select() } }) }
+const cancelEditName = () => { editingDeviceId.value = null; editingName.value = '' }
 
 const saveDeviceName = async (device) => {
   if (editingDeviceId.value !== device.id) return
-  
-  if (!editingName.value || !editingName.value.trim()) {
-    cancelEditName()
-    return
-  }
-  
+  if (!editingName.value || !editingName.value.trim()) { cancelEditName(); return }
   const newName = editingName.value.trim()
-  
-  if (newName === device.shortName) {
-    cancelEditName()
-    return
-  }
-  
-  const deviceId = device.id
-  const oldName = device.shortName
-  
+  if (newName === device.shortName) { cancelEditName(); return }
+  const deviceId = device.id; const oldName = device.shortName
   try {
-    console.log('🔄 Saving device name:', { deviceId, oldName, newName })
-    
-    // ❌ Убираем deviceStore.loading = true
-    // deviceStore.loading = true
-    
     await deviceStore.updateDeviceShortName(deviceId, newName)
-    
-    toast.add({
-      severity: 'success',
-      summary: 'Device Name Updated',
-      detail: `Name changed from "${oldName}" to "${newName}"`,
-      life: 3000
-    })
-    
+    toast.add({ severity: 'success', summary: 'Device Name Updated', detail: `Name changed from "${oldName}" to "${newName}"`, life: 3000 })
     tableKey.value++
-    
   } catch (error) {
     console.error('Failed to update device name:', error)
-    
-    toast.add({
-      severity: 'error',
-      summary: 'Error',
-      detail: error.message || 'Failed to update device name',
-      life: 5000
-    })
-    
+    toast.add({ severity: 'error', summary: 'Error', detail: error.message || 'Failed to update device name', life: 5000 })
     editingName.value = oldName
-  } finally {
-    // ❌ Убираем deviceStore.loading = false
-    // deviceStore.loading = false
-    cancelEditName()
-  }
+  } finally { cancelEditName() }
 }
 // !!!!!! -------------- !!!!!!!!
 
-// ✅ Watch для отслеживания новых устройств
-watch(
-  () => deviceStore.availableDevices?.length,
-  (newLength, oldLength) => {
-    if (newLength > (oldLength || 0) && isMounted.value) {
-      setTimeout(() => {
-        requestPowerStatuses()
-      }, 500)
-    }
-  }
-)
+watch(() => deviceStore.availableDevices?.length, (newLength, oldLength) => { if (newLength > (oldLength || 0) && isMounted.value) setTimeout(() => requestPowerStatuses(), 500) })
+watch(() => deviceActionsStore.powerStatusVersion, (newVersion, oldVersion) => { if (newVersion !== oldVersion && isMounted.value) tableKey.value += 1 })
 
-// ✅ Watch для обновления таблицы при изменении статуса питания
-watch(
-  () => deviceActionsStore.powerStatusVersion,
-  (newVersion, oldVersion) => {
-    if (newVersion !== oldVersion && isMounted.value) {
-      tableKey.value += 1
+// ========== КЭШ ЗАМЕТОК ДЛЯ ТУЛТИПОВ ==========
+const notesCache = reactive(new Map())
+const notesLoaded = ref(new Set())
+
+const getNotesForTooltip = (deviceId) => {
+  const notes = notesCache.get(String(deviceId))
+  if (!notes || notes.length === 0) return 'No notes'
+  return notes.map(note => { const time = formatNoteTime(note.timestamp); return `${note.author} (${time}):\n${note.text}` }).join('\n───────────\n')
+}
+
+const loadNotesForTooltip = (deviceId) => {
+  const id = String(deviceId)
+  if (notesLoaded.value.has(id)) return
+  notesLoaded.value.add(id)
+  socket.emit('notes:get', id, (response) => { if (response?.notes) notesCache.set(id, response.notes) })
+}
+
+const clearNotesCache = (deviceId) => { const id = String(deviceId); notesCache.delete(id); notesLoaded.value.delete(id) }
+
+const setupNotesListeners = () => { socket.on('notes:updated', (data) => { if (data?.deviceId) clearNotesCache(data.deviceId) }) }
+const cleanupNotesListeners = () => { socket.off('notes:updated') }
+// -------------------------
+
+const handleClickOutside = (event) => {
+  if (editingDeviceId.value && nameInput.value) {
+    if (!nameInput.value.contains(event.target)) {
+      const device = deviceStore.devices.find(d => d.id === editingDeviceId.value)
+      if (device) saveDeviceName(device)
     }
   }
-)
+}
 
 onMounted(() => {
   isMounted.value = true
   socket.on('device:firmwareUpdated', handleFirmwareUpdated)
-  
-  // ✅ Закрытие редактирования при клике вне input
+  setupNotesListeners()
   document.addEventListener('click', handleClickOutside)
-  
-  setTimeout(() => {
-    requestPowerStatuses()
-  }, 1000)
+  setTimeout(() => requestPowerStatuses(), 1000)
 })
 
-// Добавьте в onBeforeUnmount
-onBeforeUnmount(() => { 
+onBeforeUnmount(() => {
   isMounted.value = false
   socket.off('device:firmwareUpdated', handleFirmwareUpdated)
-  document.removeEventListener('click', handleClickOutside) // ✅ Очистка
+  cleanupNotesListeners()
+  document.removeEventListener('click', handleClickOutside)
 })
-
-// Добавьте функцию
-const handleClickOutside = (event) => {
-  if (editingDeviceId.value && nameInput.value) {
-    // Если клик был вне input
-    if (!nameInput.value.contains(event.target)) {
-      const device = deviceStore.devices.find(d => d.id === editingDeviceId.value)
-      if (device) {
-        saveDeviceName(device)
-      }
-    }
-  }
-}
 </script>
 <style scoped>
 
@@ -1754,5 +1334,42 @@ const handleClickOutside = (event) => {
   box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.1);
 }
 /* End ShortName */
+
+/* Стили для тултипа с заметками */
+:deep(.p-tooltip.notes-tooltip) {
+  max-width: 350px !important;
+  padding: 0.75rem !important;
+  background: #1e293b !important;
+  border: 1px solid #334155 !important;
+  border-radius: 8px !important;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.3) !important;
+}
+
+:deep(.p-tooltip.notes-tooltip .p-tooltip-text) {
+  white-space: pre-line !important;
+  font-size: 0.8rem !important;
+  line-height: 1.5 !important;
+  color: #e2e8f0 !important;
+  max-height: 300px !important;
+  overflow-y: auto !important;
+}
+
+:global(.p-tooltip.notes-tooltip .p-tooltip-arrow) {
+  border-right-color: #1e293b !important;
+}
+
+/* Индикатор наличия заметок */
+.notes-table :deep(.p-datatable-tbody > tr.has-notes) {
+  position: relative;
+}
+
+.notes-table :deep(.p-datatable-tbody > tr.has-notes)::after {
+  content: '📝';
+  position: absolute;
+  top: 4px;
+  right: 8px;
+  font-size: 0.7rem;
+  opacity: 0.6;
+}
 
 </style>
