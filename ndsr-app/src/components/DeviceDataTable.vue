@@ -2,7 +2,6 @@
   <div class="devices-management">
     <div class="card">
       <DataTable
-        :key="tableKey"
         :value="sortedAndFilteredDevices"
         :loading="deviceStore.loading"
         :sort-field="sortField"
@@ -71,12 +70,7 @@
         <Column field="hwId" header="Device" :sortable="true" style="min-width: 200px">
           <template #body="{ data }">
             <div
-              v-tooltip.right="{
-                value: getNotesForTooltip(data.id),
-                escape: false,
-                class: 'notes-tooltip',
-                showDelay: 500
-              }"
+              v-tooltip.right="getTooltipOptions(data.id)"
               @mouseenter="loadNotesForTooltip(data.id)"
               class="device-row-tooltip-wrapper"
             >
@@ -129,7 +123,7 @@
                     <i 
                       v-if="data.servicetag"
                       class="pi pi-copy details-inline" 
-                      @click="copyToClipboard(data.servicetag, 'Servicetag')" 
+                      @click="handleCopyToClipboard(data.servicetag, 'Servicetag')" 
                       v-tooltip="'Copy Servicetag'"
                     ></i>
                   </div>
@@ -161,7 +155,6 @@
               :device="data"
               :current-user-id="deviceStore.currentUserId"
               :today-password="todayPassword"
-              :key="`fw-${data.id}-${data.firmwareVersion || 'unknown'}-${data.statusCode}`"
               @firmware-updated="handleFirmwareUpdated"
             />
           </template>
@@ -342,17 +335,17 @@
           </div>
           <div class="detail-section"><h4>Technical Information</h4>
             <div class="horizontal-grid">
-              <div class="field-group"><label class="field-label">MAC Address</label><div class="field-value-group"><span class="field-value">{{ selectedDevice.macAddress || 'N/A' }}</span><Button v-if="selectedDevice.macAddress" icon="pi pi-copy" class="p-button-text p-button-sm copy-btn" @click="copyToClipboard(selectedDevice.macAddress, 'MAC Address')" /></div></div>
-              <div class="field-group"><label class="field-label">Servicetag</label><div class="field-value-group"><span class="field-value">{{ selectedDevice.servicetag || 'N/A' }}</span><Button v-if="selectedDevice.servicetag" icon="pi pi-copy" class="p-button-text p-button-sm copy-btn" @click="copyToClipboard(selectedDevice.servicetag, 'Servicetag')" /></div></div>
-              <div class="field-group"><label class="field-label">Serial Number</label><div class="field-value-group"><span class="field-value">{{ selectedDevice.serialNumber || 'N/A' }}</span><Button v-if="selectedDevice.serialNumber" icon="pi pi-copy" class="p-button-text p-button-sm copy-btn" @click="copyToClipboard(selectedDevice.serialNumber, 'Serial Number')" /></div></div>
+              <div class="field-group"><label class="field-label">MAC Address</label><div class="field-value-group"><span class="field-value">{{ selectedDevice.macAddress || 'N/A' }}</span><Button v-if="selectedDevice.macAddress" icon="pi pi-copy" class="p-button-text p-button-sm copy-btn" @click="handleCopyToClipboard(selectedDevice.macAddress, 'MAC Address')" /></div></div>
+              <div class="field-group"><label class="field-label">Servicetag</label><div class="field-value-group"><span class="field-value">{{ selectedDevice.servicetag || 'N/A' }}</span><Button v-if="selectedDevice.servicetag" icon="pi pi-copy" class="p-button-text p-button-sm copy-btn" @click="handleCopyToClipboard(selectedDevice.servicetag, 'Servicetag')" /></div></div>
+              <div class="field-group"><label class="field-label">Serial Number</label><div class="field-value-group"><span class="field-value">{{ selectedDevice.serialNumber || 'N/A' }}</span><Button v-if="selectedDevice.serialNumber" icon="pi pi-copy" class="p-button-text p-button-sm copy-btn" @click="handleCopyToClipboard(selectedDevice.serialNumber, 'Serial Number')" /></div></div>
             </div>
           </div>
           <div class="detail-section"><h4>Network Information</h4>
             <div class="horizontal-grid">
-              <div class="field-group"><label class="field-label">IP Address Container</label><div class="field-value-group"><span class="field-value">{{ selectedDevice.ip || 'N/A' }}</span><Button v-if="selectedDevice.ip" icon="pi pi-copy" class="p-button-text p-button-sm copy-btn" @click="copyToClipboard(selectedDevice.ip, 'IP Address')" /></div></div>
-              <div class="field-group"><label class="field-label">Check URL</label><div class="field-value-group"><span class="field-value url-text">{{ selectedDevice.checkUrl || 'N/A' }}</span><Button v-if="selectedDevice.checkUrl" icon="pi pi-copy" class="p-button-text p-button-sm copy-btn" @click="copyToClipboard(selectedDevice.checkUrl, 'Check URL')" /></div></div>
-              <div class="field-group"><label class="field-label">VNC URL</label><div class="field-value-group"><span class="field-value url-text">{{ selectedDevice.vncUrl || 'N/A' }}</span><Button v-if="selectedDevice.vncUrl" icon="pi pi-copy" class="p-button-text p-button-sm copy-btn" @click="copyToClipboard(selectedDevice.vncUrl, 'VNC URL')" /></div></div>
-              <div class="field-group"><label class="field-label">SSH Container</label><div class="field-value-group"><span class="field-value">{{ selectedDevice.sshContainer || 'N/A' }}</span><Button v-if="selectedDevice.sshContainer" icon="pi pi-copy" class="p-button-text p-button-sm copy-btn" @click="copyToClipboard(selectedDevice.sshContainer, 'SSH Container')" /></div></div>
+              <div class="field-group"><label class="field-label">IP Address Container</label><div class="field-value-group"><span class="field-value">{{ selectedDevice.ip || 'N/A' }}</span><Button v-if="selectedDevice.ip" icon="pi pi-copy" class="p-button-text p-button-sm copy-btn" @click="handleCopyToClipboard(selectedDevice.ip, 'IP Address')" /></div></div>
+              <div class="field-group"><label class="field-label">Check URL</label><div class="field-value-group"><span class="field-value url-text">{{ selectedDevice.checkUrl || 'N/A' }}</span><Button v-if="selectedDevice.checkUrl" icon="pi pi-copy" class="p-button-text p-button-sm copy-btn" @click="handleCopyToClipboard(selectedDevice.checkUrl, 'Check URL')" /></div></div>
+              <div class="field-group"><label class="field-label">VNC URL</label><div class="field-value-group"><span class="field-value url-text">{{ selectedDevice.vncUrl || 'N/A' }}</span><Button v-if="selectedDevice.vncUrl" icon="pi pi-copy" class="p-button-text p-button-sm copy-btn" @click="handleCopyToClipboard(selectedDevice.vncUrl, 'VNC URL')" /></div></div>
+              <div class="field-group"><label class="field-label">SSH Container</label><div class="field-value-group"><span class="field-value">{{ selectedDevice.sshContainer || 'N/A' }}</span><Button v-if="selectedDevice.sshContainer" icon="pi pi-copy" class="p-button-text p-button-sm copy-btn" @click="handleCopyToClipboard(selectedDevice.sshContainer, 'SSH Container')" /></div></div>
             </div>
           </div>
           <div class="detail-section"><h4>Ports & Configuration</h4>
@@ -428,6 +421,7 @@ import ChangeModeModal from './ChangeModeModal.vue'
 import FirmwareVersion from '@/components/FirmwareVersion.vue'
 import Textarea from 'primevue/textarea'
 import InputText from 'primevue/inputtext'
+import { copyToClipboard } from '@/utils/copyToClipboard.js'
 
 // -----------ЗАМЕТКИ!!!------------
 const deviceNotes = ref([])
@@ -486,6 +480,7 @@ const confirmDeleteNote = (noteId) => {
 const formatNoteTime = (timestamp) => {
   if (!timestamp) return ''
   const date = new Date(timestamp); const now = new Date(); const diff = now - date
+  if (isNaN(date.getTime())) return ''
   if (diff < 60000) return 'just now'
   if (diff < 3600000) return `${Math.floor(diff / 60000)}m ago`
   if (diff < 86400000) return `${Math.floor(diff / 3600000)}h ago`
@@ -517,7 +512,6 @@ const showPowerActionConfirmDialog = ref(false)
 const showDetailsDialog = ref(false)
 const selectedPowerAction = ref(null)
 const powerActionDevice = ref(null)
-const tableKey = ref(0)
 const editingDeviceId = ref(null)
 const editingName = ref('')
 const nameInput = ref(null)
@@ -604,7 +598,6 @@ const refreshPowerStatus = async (deviceId) => {
   try {
     toast.add({ severity: 'info', summary: 'Refreshing...', detail: 'Checking power status, please wait...', life: 2000 })
     await deviceActionsStore.requestPowerStatus(deviceId)
-    tableKey.value++
     toast.add({ severity: 'success', summary: 'Updated', detail: 'Power status refreshed', life: 2000 })
   } catch (error) {
     console.error(`Failed to refresh power status for ${deviceId}:`, error)
@@ -627,10 +620,25 @@ const handleOpenConsole = async (device) => {
   } catch (e) { toast.add({ severity: 'error', summary: 'Error', detail: e.message, life: 4000 }) }
 }
 
-const copyToClipboard = async (text, fieldName = 'Text') => {
-  if (!text) return
-  try { await navigator.clipboard.writeText(text); toast.add({ severity: 'success', summary: 'Copied!', detail: `${fieldName} copied to clipboard`, life: 2000 }) }
-  catch (err) { const textArea = document.createElement('textarea'); textArea.value = text; document.body.appendChild(textArea); textArea.select(); document.execCommand('copy'); document.body.removeChild(textArea); toast.add({ severity: 'success', summary: 'Copied!', detail: `${fieldName} copied to clipboard`, life: 2000 }) }
+
+const handleCopyToClipboard = async (text, fieldName = 'Text') => {
+  const success = await copyToClipboard(text)
+
+  if (success) {
+    toast.add({
+      severity: 'success',
+      summary: 'Copied!',
+      detail: `${fieldName} copied to clipboard`,
+      life: 2000
+    })
+  } else {
+    toast.add({
+      severity: 'error',
+      summary: 'Copy Failed',
+      detail: `Unable to copy ${fieldName}`,
+      life: 3000
+    })
+  }
 }
 
 const refreshDeviceMode = async (deviceId) => {
@@ -666,7 +674,7 @@ const copyAllDetails = (device) => {
   const sections = ['=== BASIC INFORMATION ===', `Name: ${device.shortName}`, `HW ID: ${device.hwId}`, `Type: ${device.type}`, `Country: ${device.country || 'N/A'}`, '', '=== TECHNICAL INFORMATION ===', `MAC Address: ${device.macAddress || 'N/A'}`, `Servicetag: ${device.servicetag || 'N/A'}`, `Serial Number: ${device.serialNumber || 'N/A'}`, '', '=== NETWORK INFORMATION ===', `IP Address: ${device.ip || 'N/A'}`, `Check URL: ${device.checkUrl || 'N/A'}`, `VNC URL: ${device.vncUrl || 'N/A'}`, `SSH Container: ${device.sshContainer || 'N/A'}`, '', '=== PORTS & CONFIGURATION ===']
   const portFields = [{ label: 'Console Port', value: device.consolePort }, { label: 'Reset Port', value: device.resetPort }, { label: 'Reboot Port', value: device.rebootPort }, { label: 'VLAN Local', value: device.vlanLocal }, { label: 'Switch ID', value: device.switchID }, { label: 'WAN Port', value: device.switchPortWan }, { label: 'LAN Port', value: device.switchPortLan }, { label: 'Jerome ID', value: device.jeromeID }, { label: 'Console ID', value: device.consoleID }]
   portFields.forEach(field => { if (field.value) sections.push(`${field.label}: ${field.value}`) })
-  copyToClipboard(sections.join('\n'), 'All Device Details')
+  handleCopyToClipboard(sections.join('\n'), 'All Device Details')
 }
 
 // !!!!! Функиции на изменение ShortName !!!!
@@ -682,7 +690,6 @@ const saveDeviceName = async (device) => {
   try {
     await deviceStore.updateDeviceShortName(deviceId, newName)
     toast.add({ severity: 'success', summary: 'Device Name Updated', detail: `Name changed from "${oldName}" to "${newName}"`, life: 3000 })
-    tableKey.value++
   } catch (error) {
     console.error('Failed to update device name:', error)
     toast.add({ severity: 'error', summary: 'Error', detail: error.message || 'Failed to update device name', life: 5000 })
@@ -691,27 +698,54 @@ const saveDeviceName = async (device) => {
 }
 // !!!!!! -------------- !!!!!!!!
 
-watch(() => deviceStore.availableDevices?.length, (newLength, oldLength) => { if (newLength > (oldLength || 0) && isMounted.value) setTimeout(() => requestPowerStatuses(), 500) })
-watch(() => deviceActionsStore.powerStatusVersion, (newVersion, oldVersion) => { if (newVersion !== oldVersion && isMounted.value) tableKey.value += 1 })
+let powerStatusTimeout = null
 
+watch(
+  () => deviceStore.availableDevices,
+  () => {
+    if (!isMounted.value) return
+
+    clearTimeout(powerStatusTimeout)
+
+    powerStatusTimeout = setTimeout(() => {
+      requestPowerStatuses()
+    }, 300)
+  }
+)
 // ========== КЭШ ЗАМЕТОК ДЛЯ ТУЛТИПОВ ==========
-const notesCache = reactive(new Map())
+const notesCache = reactive({})
+
 const notesLoaded = ref(new Set())
 
+const getTooltipOptions = (deviceId) => ({
+  value: getNotesForTooltip(deviceId),
+  escape: false,
+  class: 'notes-tooltip',
+  showDelay: 500
+})
 const getNotesForTooltip = (deviceId) => {
-  const notes = notesCache.get(String(deviceId))
+  const notes = notesCache[String(deviceId)]
   if (!notes || notes.length === 0) return 'No notes'
   return notes.map(note => { const time = formatNoteTime(note.timestamp); return `${note.author} (${time}):\n${note.text}` }).join('\n───────────\n')
 }
 
-const loadNotesForTooltip = (deviceId) => {
+const loadNotesForTooltip = async (deviceId) => {
   const id = String(deviceId)
+
   if (notesLoaded.value.has(id)) return
+
   notesLoaded.value.add(id)
-  socket.emit('notes:get', id, (response) => { if (response?.notes) notesCache.set(id, response.notes) })
+
+  socket.emit('notes:get', id, (response) => {
+    notesCache[id] = response?.notes || []
+  })
 }
 
-const clearNotesCache = (deviceId) => { const id = String(deviceId); notesCache.delete(id); notesLoaded.value.delete(id) }
+const clearNotesCache = (deviceId) => {
+  const id = String(deviceId)
+  delete notesCache[id]
+  notesLoaded.value.delete(id)
+}
 
 const setupNotesListeners = () => { socket.on('notes:updated', (data) => { if (data?.deviceId) clearNotesCache(data.deviceId) }) }
 const cleanupNotesListeners = () => { socket.off('notes:updated') }
@@ -739,6 +773,9 @@ onBeforeUnmount(() => {
   socket.off('device:firmwareUpdated', handleFirmwareUpdated)
   cleanupNotesListeners()
   document.removeEventListener('click', handleClickOutside)
+  if (powerStatusTimeout) {
+  clearTimeout(powerStatusTimeout)
+}
 })
 </script>
 <style scoped>
