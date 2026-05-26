@@ -213,7 +213,7 @@
                   v-tooltip.bottom="'Connection AP to Router(MWS)'"
                   icon="pi pi-wifi"
                   class="p-button-sm p-button-outlined p-button-success p-button-rounded action-btn"
-                  @click="$emit('open-modal', data, 'mwsConnection')"
+                  @click="handleOpenModal(data, 'mwsConnection')"
                   :disabled="!canMwsConnect(data)"
                 />
                 
