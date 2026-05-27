@@ -1,7 +1,7 @@
 <template>
   <header class="app-header">
     <div class="header-left">
-      <Button 
+      <Button v-if="isAdminUser" 
         icon="pi pi-bars" 
         class="p-button-text sidebar-toggle"
         @click="$emit('toggle-sidebar')"
@@ -102,7 +102,7 @@ const openFileManager = () => {
 //  ==== COMPUTED переменные ====
 const isAdminUser = computed(() => {
   const currentIp = deviceStore.currentUserId 
-  return currentIp === '172.16.80.204'
+  return currentIp === '172.16.80.204' || '192.168.5.150' || '10.9.1.77'
 })
 
 
