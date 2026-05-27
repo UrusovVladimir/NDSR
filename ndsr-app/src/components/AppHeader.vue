@@ -102,9 +102,8 @@ const openFileManager = () => {
 //  ==== COMPUTED переменные ====
 const isAdminUser = computed(() => {
   const currentIp = deviceStore.currentUserId 
-  return currentIp === '172.16.80.204' || '192.168.5.150' || '10.9.1.77'
+  return currentIp === '172.16.80.204' || currentIp === '192.168.5.150' || currentIp === '10.9.1.77'
 })
-
 
 </script>
 
