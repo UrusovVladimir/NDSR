@@ -67,7 +67,7 @@
           </template>
         </Column>
 
-        <Column field="hwId" header="Device" :sortable="true" style="min-width: 200px">
+        <Column field="shortName" header="Device" :sortable="true" style="min-width: 200px">
           <template #body="{ data }">
             <div
               v-tooltip.right="getTooltipOptions(data.id)"
@@ -529,7 +529,13 @@ const requestPowerStatuses = async () => {
 const filteredDevices = computed(() => {
   if (!globalFilter.value) return deviceStore.availableDevices
   const filter = globalFilter.value.toLowerCase()
-  return deviceStore.availableDevices.filter(d => d.hwId?.toLowerCase().includes(filter) || d.id?.toString().toLowerCase().includes(filter) || d.shortName?.toLowerCase().includes(filter) || d.type?.toLowerCase().includes(filter))
+  return deviceStore.availableDevices.filter(d => 
+    d.hwId?.toLowerCase().includes(filter) || 
+    d.id?.toString().toLowerCase().includes(filter) || 
+    d.shortName?.toLowerCase().includes(filter) || 
+    d.type?.toLowerCase().includes(filter) ||
+    d.servicetag?.toLowerCase().includes(filter)
+  )
 })
 
 const sortedAndFilteredDevices = computed(() => {

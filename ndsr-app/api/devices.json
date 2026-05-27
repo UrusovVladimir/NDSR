@@ -187,7 +187,7 @@
     "type": "router",
     "country": "EA",
     "ip": "10.10.12.9/24",
-    "shortName": "Explorer  4G+",
+    "shortName": "Explorer 4G",
     "checkUrl": "http://172.16.81.254:4910",
     "URL": "http://172.16.81.254:4910",
     "consolePort": "4008",
@@ -265,7 +265,7 @@
     "type": "router",
     "country": "EA",
     "ip": "10.10.12.12/24",
-    "shortName": "Hero 4G",
+    "shortName": "Hero 4G+",
     "checkUrl": "http://172.16.81.254:2311",
     "URL": "http://172.16.81.254:2311",
     "consolePort": "4011",
@@ -438,7 +438,8 @@
     "macAddress": "",
     "servicetag": "",
     "serialNumber": "",
-    "tftpInterfaceName": "kn371010"
+    "tftpInterfaceName": "kn371010",
+    "hwType": "yes"
   },
   {
     "id": "630",
@@ -463,7 +464,8 @@
     "macAddress": "",
     "servicetag": "",
     "serialNumber": "",
-    "tftpInterfaceName": "nap6300"
+    "tftpInterfaceName": "nap6300",
+    "hwType": "yes"
   },
   {
     "id": "2212",
@@ -516,5 +518,55 @@
     "servicetag": "951203526554830",
     "serialNumber": "S2122RJ000105",
     "tftpInterfaceName": "kn12130"
+  },
+  {
+    "id": "3410",
+    "hwId": "KN-3410",
+    "type": "AP",
+    "country": "EA",
+    "ip": "10.10.12.22/24",
+    "shortName": "Buddy 5S",
+    "checkUrl": "http://172.16.81.254:3410",
+    "URL": "http://172.16.81.254:3410",
+    "consolePort": "4020",
+    "resetPort": "13",
+    "rebootPort": "10",
+    "sshContainer": "172.16.81.254:4020",
+    "vncUrl": "http://172.16.81.254:6720/vnc.html",
+    "jeromeID": "2",
+    "vlanLocal": "3030",
+    "switchID": "1",
+    "switchPortLan": "21",
+    "consoleID": "2",
+    "macAddress": "50:ff:20:62:83:a8",
+    "servicetag": "689311176426278",
+    "serialNumber": "S2118NS029078",
+    "tftpInterfaceName": "kn34100",
+    "hwType": "yes"
+  },
+  {
+    "id": "3411",
+    "hwId": "KN-3411",
+    "type": "AP",
+    "country": "EA",
+    "ip": "10.10.12.23/24",
+    "shortName": "Buddy 6",
+    "checkUrl": "http://172.16.81.254:3411",
+    "URL": "http://172.16.81.254:3411",
+    "consolePort": "4021",
+    "resetPort": "12",
+    "rebootPort": "11",
+    "sshContainer": "172.16.81.254:4021",
+    "vncUrl": "http://172.16.81.254:6721/vnc.html",
+    "jeromeID": "2",
+    "vlanLocal": "3031",
+    "switchID": "1",
+    "switchPortLan": "22",
+    "consoleID": "2",
+    "macAddress": "50:ff:20:b5:0d:22",
+    "servicetag": "265673119761550",
+    "serialNumber": "S2403RJ014740",
+    "tftpInterfaceName": "kn34110",
+    "hwType": "yes"
   }
 ]
