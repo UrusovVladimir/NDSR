@@ -6,6 +6,7 @@
       :closeOnEscape="userCanClose"
       :dismissableMask="userCanClose"
       :header="modalHeader"
+      :blockScroll="true"
       :style="{ width: mobileView ? '95vw' : '550px' }"
       class="universal-progress-modal"
     >

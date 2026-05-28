@@ -10,6 +10,7 @@
     class="change-mode-dialog"
     :contentStyle="contentStyle"
     :position="isMobile ? 'top' : 'center'"
+    :block-scroll="true"
   >
     <div class="change-mode-modal" v-if="currentDevice">
 

@@ -5,6 +5,7 @@
         :closable="false"
         :dismissableMask="false"
         :breakpoints="breakpoints"
+        :blockScroll="true"
         header="Operation in Progress"
         :style="{ width: '450px' }"
     >
@@ -189,16 +190,14 @@ const handleClose = () => {
 
 // ✅ ПРОСТОЙ И НАДЕЖНЫЙ WATCHER
 watch(() => deviceActionsStore.activeOperations.size, (newSize) => {
-    // console.log('🌍 Active operations count:', newSize)
-    
-    if (newSize === 0) {
-        // Все операции завершены
-        lastOperationId.value = null
-        visible.value = false
-        // console.log('✅ All operations completed')
-    } else {
-        // Есть активные операции - показываем диалог
-        visible.value = true
+  if (newSize === 0) {
+    lastOperationId.value = null
+    // ✅ Задержка перед закрытием, чтобы другие диалоги успели открыться
+    setTimeout(() => {
+      visible.value = false
+    }, 200)
+  } else {
+    visible.value = true
         // console.log('🔄 Operations in progress:', newSize)
         
         // ✅ ПРИНУДИТЕЛЬНО ОБНОВЛЯЕМ ТЕКУЩУЮ ОПЕРАЦИЮ

@@ -129,7 +129,7 @@ export const useDeviceStore = defineStore('devices', () => {
           // Обновляем имя в локальном состоянии
           const device = devices.value.find(d => String(d.id) === String(deviceId))
           if (device) {
-            device.shortName = response.newName
+            device.shortName = newShortName.trim() 
           }
           resolve(response)
         } else {

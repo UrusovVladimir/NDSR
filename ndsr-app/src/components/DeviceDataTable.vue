@@ -271,7 +271,9 @@
         :available-routers="deviceStore.routerDevices"
         @operation-started="handleOperationStarted" @mode-changed="handleModeChanged" />
 
-      <Dialog v-model:visible="showResetConfirmDialog" modal :blockScroll="false" header="Reset Configuration" :style="{ width: '450px' }">
+      <Dialog 
+      v-model:visible="showResetConfirmDialog" 
+      modal :block-scroll="true" header="Reset Configuration" :style="{ width: '450px' }">
         <div class="confirmation-content">
           <i class="pi pi-exclamation-triangle mr-3" style="font-size: 2rem; color: #e74c3c;" />
           <div><h4 class="mb-2">Reset device configuration?</h4><p class="text-color-secondary mb-0">This will erase all settings for <strong>{{ selectedDevice?.hwId }}</strong>.</p></div>
@@ -282,7 +284,7 @@
         </template>
       </Dialog>
 
-      <Dialog v-model:visible="showDslResetConfirmDialog" modal :blockScroll="false" header="Reset DSL Line" :style="{ width: '450px' }">
+      <Dialog v-model:visible="showDslResetConfirmDialog" modal :block-scroll="true" header="Reset DSL Line" :style="{ width: '450px' }">
         <div class="confirmation-content">
           <i class="pi pi-exclamation-triangle mr-3" style="font-size: 2rem; color: #3498db;" />
           <div><h4 class="mb-2">Reset DSL line?</h4><p class="text-color-secondary mb-0">DSL connection for <strong>{{ selectedDevice?.hwId }}</strong> will be reset.</p></div>
@@ -293,8 +295,8 @@
         </template>
       </Dialog>
 
-      <Dialog :blockScroll="false" v-model:visible="showPowerMenuDialog" modal header="Power Management" :style="{ width: '400px' }">
-        <div class="power-menu-content">
+      <Dialog :block-scroll="true" v-model:visible="showPowerMenuDialog" modal header="Power Management" :style="{ width: '400px' }">
+        <div v-if="!hidePowerMenuDialog" class="power-menu-content">
           <p class="mb-3">Select action for <strong>{{ powerActionDevice?.hwId }}</strong>:</p>
           <div class="power-options">
             <div class="power-option p-3 border-round surface-ground mb-2" @click="selectPowerAction('reboot')">
@@ -311,7 +313,7 @@
         <template #footer><Button label="Cancel" icon="pi pi-times" class="p-button-text" @click="showPowerMenuDialog = false" /></template>
       </Dialog>
 
-      <Dialog :blockScroll="false" v-model:visible="showPowerActionConfirmDialog" modal :header="`Confirm ${getPowerActionLabel(selectedPowerAction)}`" :style="{ width: '450px' }">
+      <Dialog v-model:visible="showPowerActionConfirmDialog" modal :block-scroll="true" :header="`Confirm ${getPowerActionLabel(selectedPowerAction)}`" :style="{ width: '450px' }">
         <div class="confirmation-content">
           <i :class="getPowerActionIcon(selectedPowerAction)" class="mr-3" style="font-size: 2rem;" :style="{ color: selectedPowerAction === 'reboot' ? '#f39c12' : selectedPowerAction === 'on' ? '#28a745' : '#dc3545' }"></i>
           <div><h4 class="mb-2">{{ getPowerActionLabel(selectedPowerAction) }}?</h4><p class="text-color-secondary mb-0">Device <strong>{{ powerActionDevice?.hwId }}</strong> will be affected.</p></div>
@@ -322,7 +324,7 @@
         </template>
       </Dialog>
 
-      <Dialog v-model:visible="showDetailsDialog" header="Device Details" modal :blockScroll="false" :style="{ width: '700px', maxWidth: '90vw' }" :contentStyle="{ maxHeight: '70vh' }">
+      <Dialog v-model:visible="showDetailsDialog" header="Device Details" modal :block-scroll="true" :style="{ width: '700px', maxWidth: '90vw' }" :contentStyle="{ maxHeight: '70vh' }">
         <div v-if="selectedDevice" class="device-details-horizontal">
           <div class="detail-section"><h4>Basic Information</h4>
             <div class="horizontal-grid">
@@ -394,7 +396,7 @@
         </template>
       </Dialog>
 
-      <Dialog v-model:visible="showAddNoteDialog" modal header="Add Note" :style="{ width: '400px' }">
+      <Dialog v-model:visible="showAddNoteDialog" :block-scroll="true" modal header="Add Note" :style="{ width: '400px' }">
         <div><Textarea v-model="newNoteText" rows="3" class="w-full" placeholder="Enter note text..." /></div>
         <template #footer>
           <Button label="Cancel" icon="pi pi-times" class="p-button-text" @click="showAddNoteDialog = false" />
@@ -516,6 +518,7 @@ const editingDeviceId = ref(null)
 const editingName = ref('')
 const nameInput = ref(null)
 const currentDeviceWanType = computed(() => selectedDevice.value ? deviceStore.getDeviceWanType(selectedDevice.value.id) : null)
+const hidePowerMenuDialog = ref(false) 
 
 const requestPowerStatuses = async () => {
   const devices = deviceStore.availableDevices || deviceStore.devices || []
@@ -593,9 +596,41 @@ const getPowerStatusIcon = (id) => { const _ = deviceActionsStore.powerStatusVer
 const getPowerStatusClass = (deviceId) => { const _ = deviceActionsStore.powerStatusVersion; if (!deviceActionsStore.hasPowerStatus(deviceId)) return 'text-secondary'; return deviceActionsStore.isPoweredOn(deviceId) ? 'text-green-600' : 'text-gray-500' }
 
 const showPowerMenu = (d) => { powerActionDevice.value = d; showPowerMenuDialog.value = true }
-const selectPowerAction = (a) => { selectedPowerAction.value = a; showPowerMenuDialog.value = false; setTimeout(() => showPowerActionConfirmDialog.value = true, 100) }
-const confirmPowerAction = () => { if (!powerActionDevice.value || !selectedPowerAction.value) return; const d = powerActionDevice.value, a = selectedPowerAction.value; if (a === 'reboot') deviceActionsStore.rebootDevice(d); else deviceActionsStore.powerDevice(d, a); showPowerActionConfirmDialog.value = false; setTimeout(() => { powerActionDevice.value = null; selectedPowerAction.value = null }, 300) }
-const cancelPowerAction = () => { showPowerActionConfirmDialog.value = false; powerActionDevice.value = null; selectedPowerAction.value = null }
+// const selectPowerAction = (a) => { selectedPowerAction.value = a; showPowerMenuDialog.value = false; setTimeout(() => showPowerActionConfirmDialog.value = true, 200) }
+
+const selectPowerAction = (a) => { 
+  selectedPowerAction.value = a
+  hidePowerMenuDialog.value = true        // скрываем содержимое, диалог остаётся
+  showPowerActionConfirmDialog.value = true  // открываем второй
+}
+
+// const confirmPowerAction = () => { if (!powerActionDevice.value || !selectedPowerAction.value) return; const d = powerActionDevice.value, a = selectedPowerAction.value; if (a === 'reboot') deviceActionsStore.rebootDevice(d); else deviceActionsStore.powerDevice(d, a); showPowerActionConfirmDialog.value = false; setTimeout(() => { powerActionDevice.value = null; selectedPowerAction.value = null }, 300) }
+// const cancelPowerAction = () => { showPowerActionConfirmDialog.value = false; powerActionDevice.value = null; selectedPowerAction.value = null }
+const confirmPowerAction = () => { 
+  if (!powerActionDevice.value || !selectedPowerAction.value) return
+  const d = powerActionDevice.value, a = selectedPowerAction.value
+  if (a === 'reboot') deviceActionsStore.rebootDevice(d)
+  else deviceActionsStore.powerDevice(d, a)
+  
+  showPowerActionConfirmDialog.value = false
+  showPowerMenuDialog.value = false       // теперь закрываем оба
+  hidePowerMenuDialog.value = false       // сбрасываем для следующего раза
+  
+  setTimeout(() => { 
+    powerActionDevice.value = null
+    selectedPowerAction.value = null 
+  }, 300) 
+}
+
+const cancelPowerAction = () => { 
+  showPowerActionConfirmDialog.value = false
+  showPowerMenuDialog.value = false       // закрываем оба
+  hidePowerMenuDialog.value = false       // сбрасываем
+  powerActionDevice.value = null
+  selectedPowerAction.value = null 
+}
+
+
 const getPowerActionLabel = (a) => ({ reboot: 'Reboot Device', on: 'Power On', off: 'Power Off' }[a] || a)
 const getPowerActionIcon = (a) => ({ reboot: 'pi pi-refresh', on: 'pi pi-power-off', off: 'pi pi-power-off' }[a] || 'pi pi-question')
 const getPowerActionSeverity = (a) => ({ reboot: 'warning', on: 'success', off: 'danger' }[a] || 'secondary')

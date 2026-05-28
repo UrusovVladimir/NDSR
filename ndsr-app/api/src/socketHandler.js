@@ -987,30 +987,30 @@ const handleBatchFirmwareCheck = async (socket, data, callback) => {
           routerId: routerId,
           timestamp: Date.now()
         });
-          const routerDevice = getDeviceById(routerId)
-            if (routerDevice && routerDevice.type === 'router') {
-              // ✅ Назначаем site только если у роутера ещё нет site
-              if (!deviceSites.has(routerId)) {
-                  const existingSites = Array.from(deviceSites.values()).filter(Boolean)
-                  const nextSite = existingSites.length > 0 ? Math.max(...existingSites) + 1 : 1
-                  deviceSites.set(routerId, nextSite)
-              }
-              // ✅ Передаём site extender'у
-              const site = deviceSites.get(routerId);
-              if (site) {
-                  deviceSites.set(deviceId, site);
-                  io.emit('device:siteUpdated', {
-                      deviceId: routerId,
-                      site: site,
-                      timestamp: Date.now()
-                  });
-                  io.emit('device:siteUpdated', {
-                      deviceId: deviceId,
-                      site: site,
-                      timestamp: Date.now()
-                  });
-              }
-            }
+      const routerDevice = getDeviceById(routerId)
+      if (routerDevice && routerDevice.type === 'router') {
+        // ✅ Назначаем site только если у роутера ещё нет site
+        if (!deviceSites.has(routerId)) {
+          const device = getDeviceById(routerId)
+          const site = device.shortName  // Берём значение из shortName
+          deviceSites.set(routerId, site)
+        }
+        // ✅ Передаём site extender'у
+        const site = deviceSites.get(routerId)
+        if (site) {
+          deviceSites.set(deviceId, site)
+          io.emit('device:siteUpdated', {
+            deviceId: routerId,
+            site: site,
+            timestamp: Date.now()
+          })
+          io.emit('device:siteUpdated', {
+            deviceId: deviceId,
+            site: site,
+            timestamp: Date.now()
+          })
+        }
+      }
         console.log(`🔧 Режим устройства ${deviceId} обновлен: extender_connect к роутеру ${routerId}`);
         
         io.emit('device:modeUpdated', {
@@ -1905,16 +1905,16 @@ const handleBatchFirmwareCheck = async (socket, data, callback) => {
       });
     }
     
-    // ✅ CHANGE MODE — с логикой site
+    // ✅ CHANGE MODE — с логикой site (используем shortName)
     if (mode === 'extender_connect' && routerId) {
         currentModes.set(deviceId, { mode: 'extender_connect', routerId, timestamp: Date.now() });
         
         const routerDevice = getDeviceById(routerId);
         if (routerDevice?.type === 'router') {
+            // ✅ Назначаем site только если у роутера ещё нет site
             if (!deviceSites.has(routerId)) {
-                const existingSites = Array.from(deviceSites.values()).filter(Boolean);
-                const nextSite = existingSites.length > 0 ? Math.max(...existingSites) + 1 : 1;
-                deviceSites.set(routerId, nextSite);
+                const site = routerDevice.shortName;
+                deviceSites.set(routerId, site);
             }
             // ✅ Передаём site extender'у
             const site = deviceSites.get(routerId);
@@ -1924,7 +1924,8 @@ const handleBatchFirmwareCheck = async (socket, data, callback) => {
                 io.emit('device:siteUpdated', { deviceId, site, timestamp: Date.now() });
             }
         }
-    } else if (mode === 'extender_disconnect') {
+    }
+    else if (mode === 'extender_disconnect') {
         const oldModeInfo = currentModes.get(deviceId);
         const oldRouterId = oldModeInfo?.routerId;
         
@@ -2400,13 +2401,39 @@ const handleBatchFirmwareCheck = async (socket, data, callback) => {
         }
         
         // 3. Отправляем событие об имени
-        io.emit('device:nameUpdated', {
-          deviceId,
-          shortName: shortName.trim(),
-          oldName: result.oldName,
-          timestamp: Date.now()
-        });
-        
+          io.emit('device:nameUpdated', {
+            deviceId,
+            shortName: shortName.trim(),
+            oldName: result.oldName,
+            timestamp: Date.now()
+          });
+        // ОБНОВЛЯЕМ site у роутера и всех его extender'ов при смене shortName
+        if (deviceSites.has(deviceId)) {
+          const oldSite = deviceSites.get(deviceId);
+          const newSite = shortName.trim();
+          
+          // Обновляем site у самого роутера
+          deviceSites.set(deviceId, newSite);
+          io.emit('device:siteUpdated', {
+            deviceId: deviceId,
+            site: newSite,
+            timestamp: Date.now()
+          });
+          
+          // Находим все extender'ы, подключенные к этому роутеру, и обновляем их site
+          currentModes.forEach((modeInfo, extenderId) => {
+            if (modeInfo.mode === 'extender_connect' && modeInfo.routerId === deviceId) {
+              deviceSites.set(extenderId, newSite);
+              io.emit('device:siteUpdated', {
+                deviceId: extenderId,
+                site: newSite,
+                timestamp: Date.now()
+              });
+            }
+          });
+          
+          console.log(`🔄 Site updated for router ${deviceId}: "${oldSite}" → "${newSite}"`);
+        }
         // 4. Проверяем статус устройства
         console.log('🔄 Checking status for updated device...');
         
@@ -2534,8 +2561,6 @@ setTimeout(() => {
     initDockerManagerOnStart();
 }, 2000);
 
-setInterval(() => autoReleaseOldBookings(globalIO), 60 * 1000);
-setInterval(() => console.log('Current bookings:', Array.from(deviceBookings.entries())), 30000);
 
 export {
   sendInitData,
