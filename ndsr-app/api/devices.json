@@ -307,7 +307,7 @@
     "switchPortWan": "12",
     "consoleID": "2",
     "macAddress": "7c:be:ce:00:6f:be",
-    "servicetag": "608668495711934",
+    "servicetag": "608-668-495-711-934",
     "serialNumber": "S2530UX000024",
     "tftpInterfaceName": "nc41100"
   },
@@ -568,5 +568,57 @@
     "serialNumber": "S2403RJ014740",
     "tftpInterfaceName": "kn34110",
     "hwType": "yes"
+  },
+    {
+    "id": "3310",
+    "hwId": "KN-3310",
+    "type": "AP",
+    "country": "EA",
+    "shortName": "Buddy 5",
+    "checkUrl": "http://172.16.81.254:3310",
+    "URL": "http://172.16.81.254:3310",
+    "servicetag": "726-060-112-713-759",
+    "serialNumber": "S2118NS025384",
+    "hwType": "yes",
+    "standAlone": "yes"
+  },
+    {
+    "id": "3311",
+    "hwId": "KN-3311",
+    "type": "AP",
+    "country": "EA",
+    "shortName": "Buddy 5",
+    "checkUrl": "http://172.16.81.254:3311",
+    "URL": "http://172.16.81.254:3311",
+    "servicetag": "979-039-794-304-391",
+    "serialNumber": "S2413RJ000002",
+    "hwType": "yes",
+    "standAlone": "yes"
+  },
+    {
+    "id": "3211",
+    "hwId": "KN-3211",
+    "type": "AP",
+    "country": "EA",
+    "shortName": "Buddy 4",
+    "checkUrl": "http://172.16.81.254:3211",
+    "URL": "http://172.16.81.254:3211",
+    "servicetag": "681-397-649-111-244",
+    "serialNumber": "S2347RJ008641",
+    "hwType": "yes",
+    "standAlone": "yes"
+  },
+    {
+    "id": "33111",
+    "hwId": "KN-3311",
+    "type": "AP",
+    "country": "EA",
+    "shortName": "Buddy 5",
+    "checkUrl": "http://172.16.81.254:33111",
+    "URL": "http://172.16.81.254:33111",
+    "servicetag": "827-473-878-818-206",
+    "serialNumber": "S2348RJ008644",
+    "hwType": "yes",
+    "standAlone": "yes"
   }
 ]

@@ -84,7 +84,8 @@ function getVlanId(){
     return wanVlan
 }
 
-// ✅ Функции управления конфигом
+// ==================== УПРАВЛЕНИЕ УСТРОЙСТВАМИ ====================
+
 function removeDevice(deviceId) {
     const index = devices.findIndex(d => String(d.id) === String(deviceId));
     if (index === -1) {
@@ -136,15 +137,95 @@ function updateDeviceShortName(deviceId, newShortName) {
     };
 }
 
+// ==================== УПРАВЛЕНИЕ ПОЛЬЗОВАТЕЛЯМИ ====================
+
+function getUserByIp(ip) {
+    const normalizedIp = String(ip).trim();
+    const user = users.find(u => String(u.ip).trim() === normalizedIp);
+    return user || null;
+}
+
+function addUser(newUser) {
+    // Проверка обязательных полей
+    if (!newUser || !newUser.ip || !newUser.name) {
+        return { success: false, error: 'User must have ip and name fields' };
+    }
+    
+    // Проверка на дубликат по ip
+    const existsByIp = users.find(u => String(u.ip).trim() === String(newUser.ip).trim());
+    if (existsByIp) {
+        return { success: false, error: `User with ip=${newUser.ip} already exists` };
+    }
+    
+    users.push({
+        ip: String(newUser.ip).trim(),
+        name: String(newUser.name).trim()
+    });
+    
+    saveConfig(process.env.USER_CONFIG_PATH, users);
+    console.log(`✅ User added: ${newUser.name} (${newUser.ip})`);
+    
+    return { success: true, user: newUser };
+}
+
+function removeUser(ip) {
+    const index = users.findIndex(u => String(u.ip).trim() === String(ip).trim());
+    if (index === -1) {
+        return { success: false, error: 'User not found' };
+    }
+    
+    const removedUser = users[index];
+    users.splice(index, 1);
+    saveConfig(process.env.USER_CONFIG_PATH, users);
+    
+    console.log(`✅ User removed: ${removedUser.name} (${removedUser.ip})`);
+    return { success: true, user: removedUser };
+}
+
+function updateUserName(ip, newName) {
+    const index = users.findIndex(u => String(u.ip).trim() === String(ip).trim());
+    
+    if (index === -1) {
+        return { success: false, error: `User with ip=${ip} not found` };
+    }
+    
+    if (!newName || !newName.trim()) {
+        return { success: false, error: 'User name cannot be empty' };
+    }
+    
+    const oldName = users[index].name;
+    users[index].name = String(newName).trim();
+    
+    saveConfig(process.env.USER_CONFIG_PATH, users);
+    
+    console.log(`✅ User ${ip} name updated: "${oldName}" -> "${newName.trim()}"`);
+    
+    return {
+        success: true,
+        ip,
+        oldName,
+        newName: newName.trim()
+    };
+}
+
+// ==================== ПЕРЕЧИТЫВАНИЕ КОНФИГОВ ====================
+
 function reloadConfigs() {
     devices = readConfig(process.env.DEVICES_CONFIG_PATH);
     wanTypes = readConfig(process.env.WAN_TYPES_CONFIG_PATH);
     users = readConfig(process.env.USER_CONFIG_PATH);
     console.log('🔄 Configs reloaded');
-    return { success: true, devicesCount: devices.length };
+    return { success: true, devicesCount: devices.length, usersCount: users.length };
+}
+
+function reloadUsersConfig() {
+    users = readConfig(process.env.USER_CONFIG_PATH);
+    console.log(`🔄 Users config reloaded: ${users.length} users`);
+    return { success: true, usersCount: users.length };
 }
 
 export {
+    // Устройства
     devices,
     wanTypes,
     users,
@@ -157,5 +238,12 @@ export {
     removeDevice,
     reloadConfigs,
     addDevice,
-    updateDeviceShortName 
+    updateDeviceShortName,
+    
+    // Пользователи
+    getUserByIp,
+    addUser,
+    removeUser,
+    updateUserName,
+    reloadUsersConfig
 }

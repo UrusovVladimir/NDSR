@@ -181,6 +181,7 @@
                   class="p-button-sm p-button-outlined p-button-secondary p-button-rounded action-btn"
                   @click="handleConsoleClick(data)"
                   :class="{ 'console-open': consoleStore.isConsoleOpen(data.id) }"
+                  :disabled="data.standAlone === 'yes'"
                 />
                 
                 <Button
@@ -197,7 +198,7 @@
                   v-tooltip.bottom="isResetting(data) ? 'Resetting...' : 'Reset Configuration'"
                   :icon="isResetting(data) ? 'pi pi-spinner pi-spin' : 'pi pi-refresh'"
                   class="p-button-sm p-button-outlined p-button-danger p-button-rounded action-btn"
-                  :disabled="!canResetConfig(data) || isAnyOperationOnThisDevice(data)" 
+                  :disabled="!canResetConfig(data) || isAnyOperationOnThisDevice(data) || data.standAlone === 'yes'" 
                   @click="showResetConfirm(data)"
                 />
                 
@@ -207,7 +208,7 @@
                   icon="pi pi-wifi"
                   class="p-button-sm p-button-outlined p-button-success p-button-rounded action-btn"
                   @click="handleOpenModal(data, 'mwsConnection')"
-                  :disabled="!canMwsConnect(data)"
+                  :disabled="!canMwsConnect(data) && data.standAlone === 'yes'"
                 />
                 
                 <Button
@@ -224,7 +225,7 @@
                   v-tooltip.bottom="isResettingDsl(data) ? 'Resetting DSL...' : 'Reset DSL Line'"
                   :icon="isResettingDsl(data) ? 'pi pi-spinner pi-spin' : 'pi pi-phone'"
                   class="p-button-sm p-button-outlined p-button-help p-button-rounded action-btn"
-                  :disabled="!canResetDsl(data) || isAnyOperationOnThisDevice(data)"
+                  :disabled="!canResetDsl(data) || isAnyOperationOnThisDevice(data) || data.standAlone === 'yes'"
                   @click="showDslResetConfirm(data)"
                 />
                 
@@ -234,7 +235,7 @@
                   icon="pi pi-desktop"
                   class="p-button-sm p-button-outlined p-button-secondary p-button-rounded action-btn"
                   @click="openVnc(data)"
-                  :disabled="!canOpenVnc(data)"
+                  :disabled="!canOpenVnc(data) && data.standAlone !== 'yes'"
                 />
                 
                 <Button
@@ -250,7 +251,7 @@
                   v-tooltip.bottom="isInitializing(data) ? 'Initializing...' : 'Skip Wizard - set password'"
                   :icon="isInitializing(data) ? 'pi pi-spinner pi-spin' : 'bi bi-magic'"
                   class="p-button-sm p-button-outlined p-button-warning p-button-rounded action-btn"
-                  :disabled="!canInitialize(data) || isAnyOperationOnThisDevice(data)" 
+                  :disabled="!canInitialize(data) || isAnyOperationOnThisDevice(data) || data.standAlone === 'yes'" 
                   @click="handleInitialization(data)"
                 />
               </div>

@@ -16,9 +16,33 @@
       @open-faq="openFaqModal"
       @show-remove-confirm="showRemoveDialog"
       @show-add-device="openAddDeviceDialog"
+      @show-add-user="openAddUserDialog"
+      @reload-users="handleReloadUsers"
     />
     </Sidebar>
-
+    <Dialog 
+  v-model:visible="showAddUserDialog" 
+  header="Add User" 
+  :modal="true"
+  :blockScroll="true" 
+  :style="{ width: '400px' }"
+>
+  <div class="add-user-form">
+    <div class="form-field">
+      <label>IP Address *</label>
+      <InputText v-model="newUser.ip" placeholder="10.9.1.100" class="w-full" />
+    </div>
+    <div class="form-field">
+      <label>Name *</label>
+      <InputText v-model="newUser.name" placeholder="Ivanov.I" class="w-full" />
+    </div>
+    <small class="text-color-secondary mt-2 block">* Required fields</small>
+  </div>
+  <template #footer>
+    <Button label="Cancel" icon="pi pi-times" class="p-button-text" @click="showAddUserDialog = false" />
+    <Button label="Add User" icon="pi pi-user-plus" class="p-button-success" @click="addUser" :disabled="!newUser.ip || !newUser.name" />
+  </template>
+    </Dialog>
     <Dialog v-model:visible="showRemoveConfirm" modal header="Confirm Device Removal" :style="{ width: '450px' }">
       <div style="display: flex; align-items: flex-start; padding: 0.5rem 0;">
         <i class="pi pi-exclamation-triangle mr-3" style="font-size: 2rem; color: #e74c3c;" />
@@ -136,7 +160,11 @@ import ChatWidget from '@/components/chat/ChatWidget.vue'
 import GlobalProgressDialog from '@/components/GlobalProgressDialog.vue' 
 import PrimeDeviceModal from './components/PrimeDeviceModal.vue'
 import InputText from 'primevue/inputtext'
-// ✅ Убедитесь, что все импорты корректны
+import { socket } from '@/socket'
+import Dialog from 'primevue/dialog'
+import Button from 'primevue/button'
+
+
 // Удаляем импорт FileManager из App.vue, так как он используется только в AppHeader
 const showChangePasswordDialog = ref(false)
 const isChangingPassword = ref(false)
@@ -152,12 +180,38 @@ const changePassword = () => {
     }
   })
 }
-// Socket
-import { socket } from '@/socket'
-// В script добавить:
-import Dialog from 'primevue/dialog'
-import Button from 'primevue/button'
+const showAddUserDialog = ref(false)
+const newUser = ref({ ip: '', name: '' })
 
+const openAddUserDialog = () => {
+  newUser.value = { ip: '', name: '' }
+  showAddUserDialog.value = true
+}
+
+const addUser = () => {
+  if (!newUser.value.ip || !newUser.value.name) return
+  
+  socket.emit('users:add', {
+    ip: newUser.value.ip.trim(),
+    name: newUser.value.name.trim()
+  }, (response) => {
+    if (response?.success) {
+      toast.add({ severity: 'success', summary: 'User Added', detail: `${newUser.value.name} added successfully`, life: 3000 })
+      showAddUserDialog.value = false
+    } else {
+      toast.add({ severity: 'error', summary: 'Error', detail: response?.error || 'Failed to add user', life: 5000 })
+    }
+  })
+}
+const handleReloadUsers = () => {
+  socket.emit('users:reload', (response) => {
+    if (response?.success) {
+      toast.add({ severity: 'success', summary: 'Users Reloaded', detail: `${response.usersCount} users loaded`, life: 3000 })
+    } else {
+      toast.add({ severity: 'error', summary: 'Error', detail: response?.error || 'Failed to reload users', life: 5000 })
+    }
+  })
+}
 const showRemoveConfirm = ref(false)
 const devicesToRemove = ref([])
 const isRemoving = ref(false)

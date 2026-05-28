@@ -198,9 +198,6 @@ watch(() => deviceActionsStore.activeOperations.size, (newSize) => {
     }, 200)
   } else {
     visible.value = true
-        // console.log('🔄 Operations in progress:', newSize)
-        
-        // ✅ ПРИНУДИТЕЛЬНО ОБНОВЛЯЕМ ТЕКУЩУЮ ОПЕРАЦИЮ
         // Это заставляет computed activeOperation пересчитаться
         const entries = Array.from(deviceActionsStore.activeOperations.entries())
         if (entries.length > 0) {

@@ -8,7 +8,11 @@ import {
   removeDevice,
   reloadConfigs,
   addDevice,
-  updateDeviceShortName
+  updateDeviceShortName,
+  addUser,
+  removeUser,
+  updateUserName,
+  reloadUsersConfig 
 } from "./devices.js";
 
 import { getDeviceNotes, addDeviceNote, updateDeviceNote, deleteDeviceNote } from './actions/notes.js';
@@ -731,6 +735,38 @@ const handleBatchFirmwareCheck = async (socket, data, callback) => {
     });
   
 
+  socket.on('users:add', (userData, callback) => {
+  const result = addUser(userData);
+  if (result.success) {
+    io.emit('device:users', users);
+  }
+  callback(result);
+});
+
+  socket.on('users:remove', (ip, callback) => {
+    const result = removeUser(ip);
+    if (result.success) {
+      io.emit('device:users', users);
+    }
+    callback(result);
+  });
+
+  socket.on('users:updateName', (data, callback) => {
+    const result = updateUserName(data.ip, data.name);
+    if (result.success) {
+      io.emit('device:users', users);
+    }
+    callback(result);
+  });
+
+  socket.on('users:reload', (callback) => {
+    const result = reloadUsersConfig();
+    if (result.success) {
+      io.emit('device:users', users);
+    }
+    callback(result);
+  });
+
   socket.on('device:remove', (deviceId, callback) => {
     const result = removeDevice(deviceId);
     if (result.success) {
@@ -1048,19 +1084,18 @@ const handleBatchFirmwareCheck = async (socket, data, callback) => {
               });
           }
           
-            const hasOtherExtenders = Array.from(currentModes.entries()).some(
-                  ([id, info]) => id !== deviceId && info.mode === 'extender_connect' && info.routerId === routerId
-                )
-                
-                // Если больше нет подключенных экстендеров - убираем site у роутера
-                if (!hasOtherExtenders) {
-                  deviceSites.delete(routerId)
-                  io.emit('device:siteUpdated', {
-                    deviceId: routerId,
-                    site: null,
-                    timestamp: Date.now()
-                  })
-                }
+          const hasOtherExtenders = Array.from(currentModes.entries()).some(
+              ([id, info]) => id !== deviceId && info.mode === 'extender_connect' && info.routerId === routerId
+          )
+
+          if (!hasOtherExtenders) {
+              deviceSites.delete(routerId)
+              io.emit('device:siteUpdated', {
+                  deviceId: routerId,
+                  site: null,
+                  timestamp: Date.now()
+              })
+          }
           try {
             // ✅ ДЛЯ ПЕРЕЗАГРУЗКИ ИСПОЛЬЗУЕМ СЦЕНАРИЙ 'mode_change' (прямой URL)
             const rebootUrl = getDeviceUrl(deviceId, 'mode_change');
@@ -1911,12 +1946,10 @@ const handleBatchFirmwareCheck = async (socket, data, callback) => {
         
         const routerDevice = getDeviceById(routerId);
         if (routerDevice?.type === 'router') {
-            // ✅ Назначаем site только если у роутера ещё нет site
             if (!deviceSites.has(routerId)) {
                 const site = routerDevice.shortName;
                 deviceSites.set(routerId, site);
             }
-            // ✅ Передаём site extender'у
             const site = deviceSites.get(routerId);
             if (site) {
                 deviceSites.set(deviceId, site);
@@ -1929,17 +1962,19 @@ const handleBatchFirmwareCheck = async (socket, data, callback) => {
         const oldModeInfo = currentModes.get(deviceId);
         const oldRouterId = oldModeInfo?.routerId;
         
-        // ✅ Убираем site у extender'а
+        // СНАЧАЛА обновляем currentModes
+        currentModes.delete(deviceId);
+        
+        // Убираем site у отключенного extender'а
         if (deviceSites.has(deviceId)) {
             deviceSites.delete(deviceId);
             io.emit('device:siteUpdated', { deviceId, site: null, timestamp: Date.now() });
         }
         
-        currentModes.delete(deviceId);
-        
+        // Проверяем, остались ли другие extender'ы у этого роутера
         if (oldRouterId) {
             const hasOtherExtenders = Array.from(currentModes.entries()).some(
-                ([dId, info]) => dId !== deviceId && info.mode === 'extender_connect' && info.routerId === oldRouterId
+                ([id, info]) => info.mode === 'extender_connect' && info.routerId === oldRouterId
             );
             if (!hasOtherExtenders) {
                 deviceSites.delete(oldRouterId);
@@ -1949,6 +1984,8 @@ const handleBatchFirmwareCheck = async (socket, data, callback) => {
     }
     
     deviceStatusCache.delete(deviceId);
+
+
     
     sendModeChangeProgress(io, deviceId, 10, 'initializing');
     
@@ -2043,10 +2080,8 @@ const handleBatchFirmwareCheck = async (socket, data, callback) => {
       
       if (mode === 'extender_disconnect') {
         finalMode = 'router';
-      } else if (mode === 'extender_connect') {
-        finalMode = 'extender_connect';
-        finalRouterId = routerId;
-      } else {
+      }
+       else {
         finalMode = mode;
       }
       
@@ -2075,15 +2110,9 @@ const handleBatchFirmwareCheck = async (socket, data, callback) => {
           status: 'connected',
           timestamp: Date.now()
         });
-      } else if (mode === 'extender_disconnect') {
-        io.emit('device:mwsStatusUpdated', {
-          deviceId: deviceId,
-          routerId: routerId,
-          status: 'disconnected', 
-          timestamp: Date.now()
-        });
-      }
-      
+      } 
+
+          
     } else {
       sendModeChangeProgress(io, deviceId, 0, 'error');
       

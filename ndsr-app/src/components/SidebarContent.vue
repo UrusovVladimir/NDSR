@@ -100,23 +100,42 @@
                 </div>
               </div>
             </Transition>
+            
+            <!-- Управление пользователями -->
+            <div class="dropdown-divider"></div>
+            <div class="dropdown-item tool-item" @click="openAddUserForm">
+              <i class="pi pi-user-plus text-green-500"></i>
+              <div class="tool-details">
+                <span class="tool-label">Add User</span>
+                <span class="tool-desc">Register a new user</span>
+              </div>
+            </div>
+            <div class="dropdown-item tool-item" @click="handleReloadUsers">
+              <i class="pi pi-sync text-blue-500"></i>
+              <div class="tool-details">
+                <span class="tool-label">Reload Users</span>
+                <span class="tool-desc">Reload users from JSON</span>
+              </div>
+            </div>
           </div>
         </Transition>
       </div>
 
       <Button label="FAQ & Help" icon="pi pi-question-circle" class="p-button-text p-button-secondary w-full justify-start menu-button" @click="$emit('open-faq')" />
     </div>
+
+
   </div>
 </template>
 
 <script setup>
-import { ref } from 'vue'
+import { ref, inject } from 'vue'
 import Button from 'primevue/button'
 import Checkbox from 'primevue/checkbox'
 import { useToast } from 'primevue/usetoast'
 import { useDeviceStore } from '@/stores/useDeviceStore'
 
-const emit = defineEmits(['open-faq', 'show-remove-confirm', 'show-add-device'])
+const emit = defineEmits(['open-faq', 'show-remove-confirm', 'show-add-device', 'show-add-user', 'reload-users'])
 
 const toast = useToast()
 const deviceStore = useDeviceStore()
@@ -129,7 +148,17 @@ const isRemoveDeviceOpen = ref(false)
 const selectedDeviceIds = ref([])
 const isReloading = ref(false)
 const devices = ref([])
+const closeSidebar = inject('closeSidebar', () => {})
 
+const openAddUserForm = () => {
+  emit('show-add-user')
+  closeSidebar() 
+}
+
+const handleReloadUsers = () => {
+  emit('reload-users')
+  closeSidebar() 
+}
 const toggleToolsDropdown = () => { isToolsOpen.value = !isToolsOpen.value }
 const toggleDeviceMgmtDropdown = () => {
   isDeviceMgmtOpen.value = !isDeviceMgmtOpen.value
@@ -177,7 +206,6 @@ const copyServerAddress = (server) => {
 
 defineProps({ onlineCount: Number, offlineCount: Number, totalDevices: Number })
 </script>
-
 <style scoped>
 .sidebar-content {
   padding: 1rem 0;

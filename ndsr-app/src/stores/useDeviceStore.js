@@ -62,7 +62,7 @@ export const useDeviceStore = defineStore('devices', () => {
     return devices.value || []
   })
 
-  // ========== METHODS ==========
+  // ========== METHODS: DEVICES ==========
   const setDevices = (newDevices) => {
     devices.value = newDevices
   }
@@ -94,7 +94,6 @@ export const useDeviceStore = defineStore('devices', () => {
     })
   }
   
-  // ✅ Управление конфигурацией
   const removeDevice = (deviceId) => {
     return new Promise((resolve, reject) => {
       socket.emit('device:remove', String(deviceId), (response) => {
@@ -126,7 +125,6 @@ export const useDeviceStore = defineStore('devices', () => {
         shortName: newShortName.trim()
       }, (response) => {
         if (response?.success) {
-          // Обновляем имя в локальном состоянии
           const device = devices.value.find(d => String(d.id) === String(deviceId))
           if (device) {
             device.shortName = newShortName.trim() 
@@ -139,6 +137,59 @@ export const useDeviceStore = defineStore('devices', () => {
     })
   }
 
+  // ========== METHODS: USERS ==========
+  const addUser = (userData) => {
+    return new Promise((resolve, reject) => {
+      socket.emit('users:add', userData, (response) => {
+        if (response?.success) {
+          resolve(response)
+        } else {
+          reject(new Error(response?.error || 'Failed to add user'))
+        }
+      })
+    })
+  }
+
+  const removeUser = (ip) => {
+    return new Promise((resolve, reject) => {
+      socket.emit('users:remove', ip, (response) => {
+        if (response?.success) {
+          resolve(response)
+        } else {
+          reject(new Error(response?.error || 'Failed to remove user'))
+        }
+      })
+    })
+  }
+
+  const updateUserName = (ip, newName) => {
+    return new Promise((resolve, reject) => {
+      socket.emit('users:updateName', { ip, name: newName.trim() }, (response) => {
+        if (response?.success) {
+          const user = users.value.find(u => String(u.ip).trim() === String(ip).trim())
+          if (user) {
+            user.name = newName.trim()
+          }
+          resolve(response)
+        } else {
+          reject(new Error(response?.error || 'Failed to update user name'))
+        }
+      })
+    })
+  }
+
+  const reloadUsers = () => {
+    return new Promise((resolve, reject) => {
+      socket.emit('users:reload', (response) => {
+        if (response?.success) {
+          resolve(response)
+        } else {
+          reject(new Error(response?.error || 'Failed to reload users'))
+        }
+      })
+    })
+  }
+
   // ========== SOCKET LISTENERS ==========
   const initializeSocketListeners = () => {
     socket.on('device:statuses:initial', (statuses) => {
@@ -146,6 +197,7 @@ export const useDeviceStore = defineStore('devices', () => {
         updateDeviceStatus(deviceId, status)
       })
     })
+    
     socket.on('device:powerStatus', (data) => {
       if (data && data.deviceId) {
         const device = devices.value.find(d => String(d.id) === String(data.deviceId));
@@ -153,24 +205,19 @@ export const useDeviceStore = defineStore('devices', () => {
           device.powerStatus = data.status;
         }
       }
-    });
+    })
+    
     socket.on('device:configUpdated', (data) => {
-        console.log('🔄 Config updated event received:', data);
-        
-        if (data.deviceId && data.status !== undefined) {
-          updateDeviceStatus(data.deviceId, data.status);
-        }
-      });
+      console.log('🔄 Config updated event received:', data);
+      if (data.deviceId && data.status !== undefined) {
+        updateDeviceStatus(data.deviceId, data.status);
+      }
+    })
 
     socket.on('device:list', (newDevices) => {
-      // ✅ Обновляем устройства с powerStatus
       setDevices(newDevices.map(device => {
-        // Если в данных есть powerStatus - сохраняем его
         if (device.powerStatus) {
-          return {
-            ...device,
-            powerStatus: device.powerStatus
-          };
+          return { ...device, powerStatus: device.powerStatus };
         }
         return device;
       }));
@@ -209,6 +256,11 @@ export const useDeviceStore = defineStore('devices', () => {
         device.shortName = data.shortName
       }
     })
+
+    // ✅ Слушатель обновления списка пользователей
+    socket.on('device:users', (usersData) => {
+      setUsers(usersData)
+    })
   }
 
   const cleanupSocketListeners = () => {
@@ -219,8 +271,9 @@ export const useDeviceStore = defineStore('devices', () => {
     socket.off('device:sites')
     socket.off('device:removed')
     socket.off('device:nameUpdated')
-    socket.off('device:configUpdated');
-    socket.off('device:powerStatus');
+    socket.off('device:configUpdated')
+    socket.off('device:powerStatus')
+    socket.off('device:users')
   }
 
   // ========== RETURN ==========
@@ -240,7 +293,7 @@ export const useDeviceStore = defineStore('devices', () => {
     availableDevices,
     getDeviceSite,
 
-    // Methods
+    // Methods: General
     getUserName,
     getUserByIp,
     getUserById,
@@ -251,9 +304,17 @@ export const useDeviceStore = defineStore('devices', () => {
     initializeSocketListeners,
     cleanupSocketListeners,
     getDeviceWanType,
+
+    // Methods: Devices
     removeDevice,
     reloadConfigs,
     addDevice,
-    updateDeviceShortName
+    updateDeviceShortName,
+
+    // ✅ Methods: Users
+    addUser,
+    removeUser,
+    updateUserName,
+    reloadUsers
   }
 })
