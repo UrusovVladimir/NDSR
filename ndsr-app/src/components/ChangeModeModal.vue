@@ -472,6 +472,7 @@ const availableRoutersFormatted = computed(() => {
       const isNotCurrentDevice = device.id !== currentDevice.value?.id
       return isRouter && isOnline && isNotCurrentDevice
     })
+    .sort((a, b) => (a.shortName || '').localeCompare(b.shortName || ''))
     .map(router => ({
       id: router.id,
       displayName: `${router.hwId} ${router.shortName}`

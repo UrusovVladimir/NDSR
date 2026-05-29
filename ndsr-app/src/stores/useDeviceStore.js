@@ -9,6 +9,8 @@ export const useDeviceStore = defineStore('devices', () => {
   const currentUserId = ref(null)
   const allDevices = ref([])
   const users = ref([])
+  const deviceBadges = ref({})
+
 
   // ========== COMPUTED ==========
   const userMap = computed(() => {
@@ -190,6 +192,26 @@ export const useDeviceStore = defineStore('devices', () => {
     })
   }
 
+
+  // ========== METHODS: BADGE ==========
+  const setDeviceBadge = (deviceId, badge) => {
+    return new Promise((resolve, reject) => {
+        socket.emit('badges:set', { deviceId, badge }, (response) => {
+            if (response?.success) {
+                // Обновляем локально
+                if (badge) {
+                    deviceBadges.value[deviceId] = badge
+                } else {
+                    delete deviceBadges.value[deviceId]
+                }
+                resolve(response)
+            } else {
+                reject(new Error(response?.error || 'Failed to set badge'))
+            }
+        })
+    })
+  }
+
   // ========== SOCKET LISTENERS ==========
   const initializeSocketListeners = () => {
     socket.on('device:statuses:initial', (statuses) => {
@@ -258,10 +280,28 @@ export const useDeviceStore = defineStore('devices', () => {
     })
 
     // ✅ Слушатель обновления списка пользователей
-    socket.on('device:users', (usersData) => {
+  socket.on('device:users', (usersData) => {
       setUsers(usersData)
+    })  // ✅ тут была пропущена скобка — уже исправлено
+    
+    // ✅ Слушатели badge'ей
+    socket.on('device:badges', (badges) => {
+        deviceBadges.value = badges || {}
+    })
+
+    socket.on('device:badgeUpdated', (data) => {
+        const device = devices.value.find(d => String(d.id) === String(data.deviceId))
+        if (device) {
+            device.badge = data.badge
+        }
+        if (data.badge) {
+            deviceBadges.value[data.deviceId] = data.badge
+        } else {
+            delete deviceBadges.value[data.deviceId]
+        }
     })
   }
+
 
   const cleanupSocketListeners = () => {
     socket.off('device:list')
@@ -274,6 +314,8 @@ export const useDeviceStore = defineStore('devices', () => {
     socket.off('device:configUpdated')
     socket.off('device:powerStatus')
     socket.off('device:users')
+    socket.off('device:badges')        
+    socket.off('device:badgeUpdated')
   }
 
   // ========== RETURN ==========
@@ -292,6 +334,7 @@ export const useDeviceStore = defineStore('devices', () => {
     routerDevices,
     availableDevices,
     getDeviceSite,
+    deviceBadges,
 
     // Methods: General
     getUserName,
@@ -315,6 +358,7 @@ export const useDeviceStore = defineStore('devices', () => {
     addUser,
     removeUser,
     updateUserName,
-    reloadUsers
+    reloadUsers,
+    setDeviceBadge
   }
 })

@@ -12,7 +12,11 @@ import {
   addUser,
   removeUser,
   updateUserName,
-  reloadUsersConfig 
+  reloadUsersConfig,
+  getDeviceBadge,
+  setDeviceBadge,
+  removeDeviceBadge,
+  getAllBadges
 } from "./devices.js";
 
 import { getDeviceNotes, addDeviceNote, updateDeviceNote, deleteDeviceNote } from './actions/notes.js';
@@ -266,6 +270,7 @@ async function getCachedDevicesStatus() {
 
 async function sendInitData(socket) {
   const startTime = Date.now();
+  const badges = getAllBadges();
   console.log('🚀 Starting sendInitData...');
   try {
     socket.emit('device:users', users);
@@ -273,18 +278,33 @@ async function sendInitData(socket) {
     socket.emit('device:wanTypes', wanTypes);
     socket.emit('DAILY_PASSWORDS', dailyPasswords);
     socket.emit('device:bookings-list', Object.fromEntries(deviceBookings));
-  
+    socket.emit('device:badges', badges);
+
     const devicesWithBookings = devices.map(device => {
-      const booking = deviceBookings.get(device.id);
-      const powerStatus = devicePowerStatus.get(device.id) || 'on';
-      const site = deviceSites.get(device.id) || null;
-      if (booking) {
-        const remainingTime = Math.max(0, booking.expiresAt - Math.floor(Date.now() / 1000));
-        return { ...device, site, booking: { isBooked: true, bookedBy: booking.bookedBy, accessPassword: booking.accessPassword, expiresAt: booking.expiresAt, remainingTime }, powerStatus };
-      }
-      return { ...device, site, booking: { isBooked: false, bookedBy: null, accessPassword: null, expiresAt: null, remainingTime: 0 }, powerStatus };
+        const booking = deviceBookings.get(device.id);
+        const powerStatus = devicePowerStatus.get(device.id) || 'on';
+        const site = deviceSites.get(device.id) || null;
+        const deviceBadge = getDeviceBadge(device.id) || (device.standAlone === 'yes' ? 'Unknown' : null);  // ✅ получаем badge
+        
+        if (booking) {
+            const remainingTime = Math.max(0, booking.expiresAt - Math.floor(Date.now() / 1000));
+            return { 
+                ...device, 
+                site, 
+                badge: deviceBadge,  // ✅ badge
+                booking: { isBooked: true, bookedBy: booking.bookedBy, accessPassword: booking.accessPassword, expiresAt: booking.expiresAt, remainingTime }, 
+                powerStatus 
+            };
+        }
+        return { 
+            ...device, 
+            site, 
+            badge: deviceBadge,  // ✅ badge
+            booking: { isBooked: false, bookedBy: null, accessPassword: null, expiresAt: null, remainingTime: 0 }, 
+            powerStatus 
+        };
     });
-  
+      
     socket.emit('device:list', devicesWithBookings);
     
     // ✅ ОДИН РАЗ отправляем статусы питания для ВСЕХ устройств с rebootPort
@@ -783,6 +803,57 @@ const handleBatchFirmwareCheck = async (socket, data, callback) => {
     callback(result);
   });
 
+    // ✅ Получение всех badge'ей
+  socket.on('badges:getAll', (callback) => {
+      const badges = getAllBadges();
+      callback({ success: true, badges });
+  });
+
+  // ✅ Установка badge для устройства
+  socket.on('badges:set', (data, callback) => {
+      try {
+          const { deviceId, badge } = data;
+          
+          if (!deviceId) {
+              return callback({ success: false, error: 'Device ID is required' });
+          }
+          
+          const result = setDeviceBadge(deviceId, badge);
+          
+          if (result.success) {
+              // Оповещаем всех клиентов
+              io.emit('device:badgeUpdated', {
+                  deviceId,
+                  badge,
+                  timestamp: Date.now()
+              });
+          }
+          
+          callback(result);
+      } catch (error) {
+          callback({ success: false, error: error.message });
+      }
+  });
+
+  // ✅ Удаление badge
+  socket.on('badges:remove', (deviceId, callback) => {
+      try {
+          const result = removeDeviceBadge(deviceId);
+          
+          if (result.success) {
+              io.emit('device:badgeUpdated', {
+                  deviceId,
+                  badge: null,
+                  timestamp: Date.now()
+              });
+          }
+          
+          callback(result);
+      } catch (error) {
+          callback({ success: false, error: error.message });
+      }
+  });
+  
   socket.on('device:reloadConfigs', (callback) => {
     const result = reloadConfigs();
     io.emit('device:list', devices);

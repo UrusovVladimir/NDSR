@@ -558,16 +558,19 @@ const filteredWanTypes = computed(() => {
   return []
 })
 
-// ✅ ИСПРАВЛЕНО: Доступные роутеры - все онлайн роутеры, без проверки бронирования
+// ✅ Доступные роутеры — сортировка по shortName A-Z
 const availableRouters = computed(() => {
   if (modalType.value !== 'mwsConnection') return []
   
-  return deviceStore.devices.filter(dev => 
-    dev.type === 'router' &&
-    dev.statusCode === 200 &&
-    dev.id !== currentDevice.value?.id
-  )
+  return deviceStore.devices
+    .filter(dev => 
+      dev.type === 'router' &&
+      dev.statusCode === 200 &&
+      dev.id !== currentDevice.value?.id
+    )
+    .sort((a, b) => (a.shortName || '').localeCompare(b.shortName || ''))
 })
+
 
 const filteredFaqItems = computed(() => {
   const items = localizedFaqItems[currentLanguage.value] || []

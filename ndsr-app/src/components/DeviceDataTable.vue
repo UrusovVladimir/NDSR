@@ -114,7 +114,29 @@
                   
                   <div class="common-device-hwid">
                     {{ data.hwId }}
-                    <span class="site-badge" v-if="data.site">SITE {{ data.site }}</span>
+                    <span class="site-badge" v-if="data.site">{{ data.site }}</span>
+                    <!-- ✅ Редактируемый Badge — на одной строке с hwId и site -->
+                    <template v-if="data.standAlone === 'yes' || data.badge">
+                      <template v-if="editingBadgeDeviceId === data.id">
+                        <input
+                          v-model="editingBadgeValue"
+                          class="badge-edit-input"
+                          @keyup.enter="saveBadge(data)"
+                          @keyup.escape="editingBadgeDeviceId = null"
+                          @blur="saveBadge(data)"
+                          autofocus
+                        />
+                      </template>
+                      <span 
+                        v-else
+                        class="site-badge badge-editable" 
+                        :class="{ 'badge-unknown': data.badge === 'Unknown' || !data.badge }"
+                        @click.stop="startEditBadge(data)"
+                        v-tooltip="'Click to edit badge'"
+                      >
+                        {{ data.badge || 'Unknown' }}
+                      </span>
+                    </template>
                     <div class="common-device-hwid">Country: {{ data.country }}</div>
                   </div>
 
@@ -272,9 +294,7 @@
         :available-routers="deviceStore.routerDevices"
         @operation-started="handleOperationStarted" @mode-changed="handleModeChanged" />
 
-      <Dialog 
-      v-model:visible="showResetConfirmDialog" 
-      modal :block-scroll="true" header="Reset Configuration" :style="{ width: '450px' }">
+      <Dialog v-model:visible="showResetConfirmDialog" modal :block-scroll="true" header="Reset Configuration" :style="{ width: '450px' }">
         <div class="confirmation-content">
           <i class="pi pi-exclamation-triangle mr-3" style="font-size: 2rem; color: #e74c3c;" />
           <div><h4 class="mb-2">Reset device configuration?</h4><p class="text-color-secondary mb-0">This will erase all settings for <strong>{{ selectedDevice?.hwId }}</strong>.</p></div>
@@ -497,6 +517,8 @@ const deviceStore = useDeviceStore()
 const deviceActionsStore = useDeviceActionsStore()
 const modeStore = useModeStore()
 const consoleStore = useConsoleStore()
+const editingBadgeDeviceId = ref(null)
+const editingBadgeValue = ref('')
 
 const props = defineProps({ wanTypes: { type: Array, default: () => [] } })
 
@@ -597,16 +619,13 @@ const getPowerStatusIcon = (id) => { const _ = deviceActionsStore.powerStatusVer
 const getPowerStatusClass = (deviceId) => { const _ = deviceActionsStore.powerStatusVersion; if (!deviceActionsStore.hasPowerStatus(deviceId)) return 'text-secondary'; return deviceActionsStore.isPoweredOn(deviceId) ? 'text-green-600' : 'text-gray-500' }
 
 const showPowerMenu = (d) => { powerActionDevice.value = d; showPowerMenuDialog.value = true }
-// const selectPowerAction = (a) => { selectedPowerAction.value = a; showPowerMenuDialog.value = false; setTimeout(() => showPowerActionConfirmDialog.value = true, 200) }
 
 const selectPowerAction = (a) => { 
   selectedPowerAction.value = a
-  hidePowerMenuDialog.value = true        // скрываем содержимое, диалог остаётся
-  showPowerActionConfirmDialog.value = true  // открываем второй
+  hidePowerMenuDialog.value = true
+  showPowerActionConfirmDialog.value = true
 }
 
-// const confirmPowerAction = () => { if (!powerActionDevice.value || !selectedPowerAction.value) return; const d = powerActionDevice.value, a = selectedPowerAction.value; if (a === 'reboot') deviceActionsStore.rebootDevice(d); else deviceActionsStore.powerDevice(d, a); showPowerActionConfirmDialog.value = false; setTimeout(() => { powerActionDevice.value = null; selectedPowerAction.value = null }, 300) }
-// const cancelPowerAction = () => { showPowerActionConfirmDialog.value = false; powerActionDevice.value = null; selectedPowerAction.value = null }
 const confirmPowerAction = () => { 
   if (!powerActionDevice.value || !selectedPowerAction.value) return
   const d = powerActionDevice.value, a = selectedPowerAction.value
@@ -614,8 +633,8 @@ const confirmPowerAction = () => {
   else deviceActionsStore.powerDevice(d, a)
   
   showPowerActionConfirmDialog.value = false
-  showPowerMenuDialog.value = false       // теперь закрываем оба
-  hidePowerMenuDialog.value = false       // сбрасываем для следующего раза
+  showPowerMenuDialog.value = false
+  hidePowerMenuDialog.value = false
   
   setTimeout(() => { 
     powerActionDevice.value = null
@@ -625,12 +644,11 @@ const confirmPowerAction = () => {
 
 const cancelPowerAction = () => { 
   showPowerActionConfirmDialog.value = false
-  showPowerMenuDialog.value = false       // закрываем оба
-  hidePowerMenuDialog.value = false       // сбрасываем
+  showPowerMenuDialog.value = false
+  hidePowerMenuDialog.value = false
   powerActionDevice.value = null
   selectedPowerAction.value = null 
 }
-
 
 const getPowerActionLabel = (a) => ({ reboot: 'Reboot Device', on: 'Power On', off: 'Power Off' }[a] || a)
 const getPowerActionIcon = (a) => ({ reboot: 'pi pi-refresh', on: 'pi pi-power-off', off: 'pi pi-power-off' }[a] || 'pi pi-question')
@@ -662,24 +680,12 @@ const handleOpenConsole = async (device) => {
   } catch (e) { toast.add({ severity: 'error', summary: 'Error', detail: e.message, life: 4000 }) }
 }
 
-
 const handleCopyToClipboard = async (text, fieldName = 'Text') => {
   const success = await copyToClipboard(text)
-
   if (success) {
-    toast.add({
-      severity: 'success',
-      summary: 'Copied!',
-      detail: `${fieldName} copied to clipboard`,
-      life: 2000
-    })
+    toast.add({ severity: 'success', summary: 'Copied!', detail: `${fieldName} copied to clipboard`, life: 2000 })
   } else {
-    toast.add({
-      severity: 'error',
-      summary: 'Copy Failed',
-      detail: `Unable to copy ${fieldName}`,
-      life: 3000
-    })
+    toast.add({ severity: 'error', summary: 'Copy Failed', detail: `Unable to copy ${fieldName}`, life: 3000 })
   }
 }
 
@@ -746,17 +752,13 @@ watch(
   () => deviceStore.availableDevices,
   () => {
     if (!isMounted.value) return
-
     clearTimeout(powerStatusTimeout)
-
-    powerStatusTimeout = setTimeout(() => {
-      requestPowerStatuses()
-    }, 300)
+    powerStatusTimeout = setTimeout(() => { requestPowerStatuses() }, 300)
   }
 )
+
 // ========== КЭШ ЗАМЕТОК ДЛЯ ТУЛТИПОВ ==========
 const notesCache = reactive({})
-
 const notesLoaded = ref(new Set())
 
 const getTooltipOptions = (deviceId) => ({
@@ -765,6 +767,7 @@ const getTooltipOptions = (deviceId) => ({
   class: 'notes-tooltip',
   showDelay: 500
 })
+
 const getNotesForTooltip = (deviceId) => {
   const notes = notesCache[String(deviceId)]
   if (!notes || notes.length === 0) return 'No notes'
@@ -773,14 +776,9 @@ const getNotesForTooltip = (deviceId) => {
 
 const loadNotesForTooltip = async (deviceId) => {
   const id = String(deviceId)
-
   if (notesLoaded.value.has(id)) return
-
   notesLoaded.value.add(id)
-
-  socket.emit('notes:get', id, (response) => {
-    notesCache[id] = response?.notes || []
-  })
+  socket.emit('notes:get', id, (response) => { notesCache[id] = response?.notes || [] })
 }
 
 const clearNotesCache = (deviceId) => {
@@ -802,6 +800,31 @@ const handleClickOutside = (event) => {
   }
 }
 
+const startEditBadge = (device) => {
+    editingBadgeDeviceId.value = device.id
+    // ✅ Если badge === 'Unknown' — оставляем поле пустым для ввода нового значения
+    editingBadgeValue.value = (device.badge && device.badge !== 'Unknown') ? device.badge : ''
+    // ✅ Фокус в input после рендера
+    nextTick(() => {
+        const input = document.querySelector(`.badge-edit-input`)
+        if (input) input.focus()
+    })
+}
+
+const saveBadge = async (device) => {
+    if (editingBadgeDeviceId.value !== device.id) return
+    const newBadge = editingBadgeValue.value.trim() || null
+    try {
+        await deviceStore.setDeviceBadge(device.id, newBadge)
+        toast.add({ severity: 'success', summary: 'Badge Updated', life: 2000 })
+    } catch (error) {
+        toast.add({ severity: 'error', summary: 'Error', detail: error.message, life: 3000 })
+    } finally {
+        editingBadgeDeviceId.value = null
+        editingBadgeValue.value = ''
+    }
+}
+
 onMounted(() => {
   isMounted.value = true
   socket.on('device:firmwareUpdated', handleFirmwareUpdated)
@@ -815,13 +838,11 @@ onBeforeUnmount(() => {
   socket.off('device:firmwareUpdated', handleFirmwareUpdated)
   cleanupNotesListeners()
   document.removeEventListener('click', handleClickOutside)
-  if (powerStatusTimeout) {
-  clearTimeout(powerStatusTimeout)
-}
+  if (powerStatusTimeout) { clearTimeout(powerStatusTimeout) }
 })
 </script>
-<style scoped>
 
+<style scoped>
 :deep(.pi-circle-fill.power-on) {
   background: linear-gradient(135deg, #10b981, #059669) !important;
   -webkit-background-clip: text !important;
@@ -836,389 +857,75 @@ onBeforeUnmount(() => {
 }
 
 /* ========== HEADER & SEARCH STYLES ========== */
-.devices-count {
-  font-size: 0.9rem;
-  color: var(--text-color-secondary);
-  font-weight: 500;
-  background: var(--surface-ground);
-  padding: 0.25rem 0.75rem;
-  border-radius: 20px;
-  border: 1px solid var(--surface-200);
-  white-space: nowrap;
-  display: flex;
-  align-items: center;
-  gap: 0.25rem;
-}
-
-.online-icon {
-  color: var(--green-500);
-  font-size: 0.5rem;
-}
-
-.offline-icon {
-  color: var(--red-500);
-  font-size: 0.5rem;
-}
-
-.total-icon {
-  color: var(--blue-500);
-}
-
-.booked-icon {
-  color: var(--orange-500);
-}
-
-.common-section-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 1rem 1.5rem;
-  background: var(--surface-card);
-  border-bottom: 1px solid var(--surface-border);
-  flex-wrap: wrap;
-  gap: 0.75rem;
-}
-
-.common-section-title {
-  margin: 0;
-  font-size: 1.25rem;
-  font-weight: 600;
-  color: var(--text-color);
-  display: flex;
-  align-items: center;
-}
-
-.common-section-actions {
-  display: flex;
-  align-items: center;
-  gap: 1rem;
-  flex-wrap: wrap;
-}
-
-/* ========== SEARCH INPUT STYLES ========== */
-.common-search-wrapper {
-  position: relative;
-  display: flex;
-  align-items: center;
-}
-
-.common-search-input-container {
-  position: relative;
-  display: flex;
-  align-items: center;
-  width: 100%;
-}
-
-.common-search-icon {
-  position: absolute;
-  left: 0.75rem;
-  z-index: 1;
-  color: var(--text-color-secondary);
-}
-
-.common-global-filter {
-  padding-left: 2.5rem;
-  padding-right: 2.5rem;
-  width: 250px;
-  border-radius: 20px;
-  border: 1px solid var(--surface-300);
-  background: var(--surface-ground);
-  transition: all 0.3s ease;
-}
-
-.common-global-filter:focus {
-  width: 300px;
-  border-color: var(--primary-color);
-  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.1);
-  background: var(--surface-card);
-}
-
-.common-search-clear-btn {
-  position: absolute;
-  right: 0.25rem;
-  z-index: 1;
-  border: none;
-  background: transparent;
-  color: var(--text-color-secondary);
-  cursor: pointer;
-  padding: 0.25rem;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: all 0.2s ease;
-}
-
-.common-search-clear-btn:hover {
-  background: var(--surface-200);
-  color: var(--text-color);
-}
+.devices-count { font-size: 0.9rem; color: var(--text-color-secondary); font-weight: 500; background: var(--surface-ground); padding: 0.25rem 0.75rem; border-radius: 20px; border: 1px solid var(--surface-200); white-space: nowrap; display: flex; align-items: center; gap: 0.25rem; }
+.online-icon { color: var(--green-500); font-size: 0.5rem; }
+.offline-icon { color: var(--red-500); font-size: 0.5rem; }
+.total-icon { color: var(--blue-500); }
+.booked-icon { color: var(--orange-500); }
+.common-section-header { display: flex; justify-content: space-between; align-items: center; padding: 1rem 1.5rem; background: var(--surface-card); border-bottom: 1px solid var(--surface-border); flex-wrap: wrap; gap: 0.75rem; }
+.common-section-title { margin: 0; font-size: 1.25rem; font-weight: 600; color: var(--text-color); display: flex; align-items: center; }
+.common-section-actions { display: flex; align-items: center; gap: 1rem; flex-wrap: wrap; }
+.common-search-wrapper { position: relative; display: flex; align-items: center; }
+.common-search-input-container { position: relative; display: flex; align-items: center; width: 100%; }
+.common-search-icon { position: absolute; left: 0.75rem; z-index: 1; color: var(--text-color-secondary); }
+.common-global-filter { padding-left: 2.5rem; padding-right: 2.5rem; width: 250px; border-radius: 20px; border: 1px solid var(--surface-300); background: var(--surface-ground); transition: all 0.3s ease; }
+.common-global-filter:focus { width: 300px; border-color: var(--primary-color); box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.1); background: var(--surface-card); }
+.common-search-clear-btn { position: absolute; right: 0.25rem; z-index: 1; border: none; background: transparent; color: var(--text-color-secondary); cursor: pointer; padding: 0.25rem; border-radius: 50%; display: flex; align-items: center; justify-content: center; transition: all 0.2s ease; }
+.common-search-clear-btn:hover { background: var(--surface-200); color: var(--text-color); }
 
 /* ========== LAYOUT STYLES ========== */
-.devices-management {
-  display: flex;
-  flex-direction: column;
-  gap: 1rem;
-  width: 100%;
-}
-
-.show-booked-section {
-  display: flex;
-  justify-content: center;
-  padding: 0.75rem;
-  background: var(--surface-card);
-  border-radius: 12px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-  margin-bottom: 1rem;
-  width: 100%;
-  border: 1px solid var(--surface-border);
-  transition: all 0.3s ease;
-}
-
-.card {
-  padding: 0;
-  background: var(--surface-card);
-  border-radius: 12px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-  width: 100%;
-  overflow: hidden;
-  margin-top: 0;
-}
-
-.table-header {
-  width: 100%;
-  padding: 0 !important;
-  background: var(--surface-card);
-  border-radius: 12px 12px 0 0;
-}
-
-.booked-by-others {
-  color: var(--orange-500);
-  font-weight: 600;
-}
-
-.empty-state, .loading-state {
-  display: flex;
-  justify-content: center;
-  padding: 2rem;
-  width: 100%;
-}
-
-.empty-text {
-  color: var(--text-color-secondary);
-}
-
-.loading-spinner {
-  width: 40px;
-  height: 40px;
-}
-
-.type-tag {
-  font-size: 0.75rem;
-  font-weight: 600;
-}
+.devices-management { display: flex; flex-direction: column; gap: 1rem; width: 100%; }
+.card { padding: 0; background: var(--surface-card); border-radius: 12px; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1); width: 100%; overflow: hidden; margin-top: 0; }
+.table-header { width: 100%; padding: 0 !important; background: var(--surface-card); border-radius: 12px 12px 0 0; }
+.booked-by-others { color: var(--orange-500); font-weight: 600; }
+.empty-state, .loading-state { display: flex; justify-content: center; padding: 2rem; width: 100%; }
+.empty-text { color: var(--text-color-secondary); }
 
 /* ========== DATATABLE STYLES ========== */
-:deep(.p-datatable .p-datatable-header) {
-  background: var(--surface-card) !important;
-  padding: 0 !important;
-  margin: 0 !important;
-  border-bottom: 1px solid var(--surface-border) !important;
-}
-
-:deep(.p-column-header-content) {
-  justify-content: center !important;
-  text-align: center !important;
-  width: 100% !important;
-}
-
-:deep(.firmware-column) {
-  text-align: center !important;
-  justify-content: center !important;
-  align-items: center !important;
-  min-width: 230px !important;
-}
-
-:deep(.p-datatable-tbody > tr) {
-  transition: background-color 0.2s ease;
-  height: 90px;
-}
-
-:deep(.p-datatable .p-datatable-thead > tr > th) {
-  background: var(--surface-card);
-  font-weight: 600;
-  color: var(--text-color);
-  border-bottom: 1px solid var(--surface-border);
-  padding: 0.75rem 1rem;
-  font-size: 0.875rem;
-  position: sticky;
-  top: 0;
-  z-index: 10;
-}
-
-:deep(.p-datatable) {
-  border: none;
-}
+:deep(.p-datatable .p-datatable-header) { background: var(--surface-card) !important; padding: 0 !important; margin: 0 !important; border-bottom: 1px solid var(--surface-border) !important; }
+:deep(.p-column-header-content) { justify-content: center !important; text-align: center !important; width: 100% !important; }
+:deep(.firmware-column) { text-align: center !important; justify-content: center !important; align-items: center !important; min-width: 230px !important; }
+:deep(.p-datatable-tbody > tr) { transition: background-color 0.2s ease; height: 90px; }
+:deep(.p-datatable .p-datatable-thead > tr > th) { background: var(--surface-card); font-weight: 600; color: var(--text-color); border-bottom: 1px solid var(--surface-border); padding: 0.75rem 1rem; font-size: 0.875rem; position: sticky; top: 0; z-index: 10; }
+:deep(.p-datatable) { border: none; }
 
 /* ========== POWER MENU STYLES ========== */
-.power-option {
-  cursor: pointer;
-  transition: all 0.2s ease;
-  border: 1px solid transparent;
-}
-
-.power-option:hover {
-  background: var(--surface-hover) !important;
-  border-color: var(--primary-300);
-  transform: translateX(5px);
-}
-
-.power-option:active {
-  transform: translateX(2px);
-}
+.power-option { cursor: pointer; transition: all 0.2s ease; border: 1px solid transparent; }
+.power-option:hover { background: var(--surface-hover) !important; border-color: var(--primary-300); transform: translateX(5px); }
+.power-option:active { transform: translateX(2px); }
 
 /* ========== DEVICE DETAILS DIALOG ========== */
-.device-details-horizontal {
-  max-height: 60vh;
-  overflow-y: auto;
-  padding: 0.5rem;
-}
-
-.detail-section {
-  background: #f8f9fa;
-  border-radius: 8px;
-  padding: 1.25rem;
-  margin-bottom: 1rem;
-  border: 1px solid #e9ecef;
-}
-
-.detail-section h4 {
-  margin: 0 0 1rem 0;
-  color: #2c3e50;
-  font-size: 1.1rem;
-  font-weight: 600;
-  border-bottom: 2px solid #3498db;
-  padding-bottom: 0.5rem;
-}
-
-.horizontal-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-  gap: 1rem;
-}
-
-.compact-grid {
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-  gap: 0.75rem;
-}
-
-.field-group {
-  display: flex;
-  flex-direction: column;
-  gap: 0.25rem;
-}
-
-.field-label {
-  font-weight: 600;
-  color: #495057;
-  font-size: 0.85rem;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-}
-
-.field-value-group {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  background: white;
-  padding: 0.5rem 0.75rem;
-  border-radius: 6px;
-  border: 1px solid #e9ecef;
-  min-height: 2.5rem;
-}
-
-.field-value {
-  flex: 1;
-  font-family: 'Courier New', monospace;
-  font-size: 0.9rem;
-  color: #2c3e50;
-  word-break: break-all;
-}
-
-.url-text {
-  color: #0066cc;
-  font-size: 0.85rem;
-}
-
-.copy-btn {
-  color: #6c757d;
-  padding: 0.25rem;
-  min-width: auto;
-  width: 2rem;
-  height: 2rem;
-}
-
-.copy-btn:hover {
-  color: #495057;
-  background-color: #e9ecef;
-}
+.device-details-horizontal { max-height: 60vh; overflow-y: auto; padding: 0.5rem; }
+.detail-section { background: #f8f9fa; border-radius: 8px; padding: 1.25rem; margin-bottom: 1rem; border: 1px solid #e9ecef; }
+.detail-section h4 { margin: 0 0 1rem 0; color: #2c3e50; font-size: 1.1rem; font-weight: 600; border-bottom: 2px solid #3498db; padding-bottom: 0.5rem; }
+.horizontal-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 1rem; }
+.compact-grid { grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 0.75rem; }
+.field-group { display: flex; flex-direction: column; gap: 0.25rem; }
+.field-label { font-weight: 600; color: #495057; font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.5px; }
+.field-value-group { display: flex; align-items: center; gap: 0.5rem; background: white; padding: 0.5rem 0.75rem; border-radius: 6px; border: 1px solid #e9ecef; min-height: 2.5rem; }
+.field-value { flex: 1; font-family: 'Courier New', monospace; font-size: 0.9rem; color: #2c3e50; word-break: break-all; }
+.url-text { color: #0066cc; font-size: 0.85rem; }
+.copy-btn { color: #6c757d; padding: 0.25rem; min-width: auto; width: 2rem; height: 2rem; }
+.copy-btn:hover { color: #495057; background-color: #e9ecef; }
 
 /* ========== MEDIA QUERIES ========== */
 @media (max-width: 768px) {
-  .common-section-header {
-    flex-direction: column;
-    align-items: stretch;
-    padding: 0.75rem 1rem;
-  }
-  
-  .common-section-actions {
-    flex-direction: column;
-    gap: 0.5rem;
-  }
-  
-  .common-global-filter {
-    width: 100%;
-  }
-  
-  .common-global-filter:focus {
-    width: 100%;
-  }
-  
-  .horizontal-grid {
-    grid-template-columns: 1fr;
-    gap: 0.75rem;
-  }
-  
-  .compact-grid {
-    grid-template-columns: repeat(2, 1fr);
-  }
+  .common-section-header { flex-direction: column; align-items: stretch; padding: 0.75rem 1rem; }
+  .common-section-actions { flex-direction: column; gap: 0.5rem; }
+  .common-global-filter { width: 100%; }
+  .common-global-filter:focus { width: 100%; }
+  .horizontal-grid { grid-template-columns: 1fr; gap: 0.75rem; }
+  .compact-grid { grid-template-columns: repeat(2, 1fr); }
 }
-
 @media (max-width: 480px) {
-  .common-section-header {
-    padding: 0.5rem 0.75rem;
-  }
-  
-  .common-section-title {
-    font-size: 1.1rem;
-    justify-content: center;
-    width: 100%;
-  }
-  
-  .compact-grid {
-    grid-template-columns: 1fr;
-  }
-  
-  .field-value-group {
-    padding: 0.5rem;
-  }
+  .common-section-header { padding: 0.5rem 0.75rem; }
+  .common-section-title { font-size: 1.1rem; justify-content: center; width: 100%; }
+  .compact-grid { grid-template-columns: 1fr; }
+  .field-value-group { padding: 0.5rem; }
 }
+@media (max-width: 1200px) { .card { overflow-x: auto; } }
 
-@media (max-width: 1200px) {
-  .card {
-    overflow-x: auto;
-  }
-}
+/* ========== SITE & BADGE STYLES ========== */
 .site-badge {
   display: inline-block;
   font-size: 0.6rem;
@@ -1233,222 +940,82 @@ onBeforeUnmount(() => {
   vertical-align: middle;
 }
 
-/* ========== NOTES STYLES ========== */
-.notes-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 0.75rem;
-}
-
-.notes-header h4 {
-  margin: 0;
-  color: #2c3e50;
-  font-size: 1.1rem;
-  font-weight: 600;
-  border-bottom: 2px solid #3498db;
-  padding-bottom: 0.5rem;
-  flex: 1;
-}
-
-.notes-header .p-button {
-  margin-left: 0.5rem;
-}
-
-.empty-notes {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  padding: 1rem;
-  color: var(--text-color-secondary);
-  font-size: 0.85rem;
-}
-
-.notes-list {
-  display: flex;
-  flex-direction: column;
-  gap: 0.75rem;
-  max-height: 200px;
-  overflow-y: auto;
-}
-
-.note-item {
-  background: white;
-  border: 1px solid #e9ecef;
-  border-radius: 8px;
-  padding: 0.75rem;
-}
-
-.note-header {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  margin-bottom: 0.5rem;
-  font-size: 0.75rem;
-}
-
-.note-author {
-  color: var(--text-color);
-  font-weight: 500;
-  display: flex;
-  align-items: center;
-  gap: 0.25rem;
-}
-
-.note-time {
-  color: var(--text-color-secondary);
-  flex: 1;
-}
-
-.note-actions {
-  display: flex;
-  gap: 0.125rem;
-  opacity: 0;
-  transition: opacity 0.2s;
-}
-
-.note-item:hover .note-actions {
-  opacity: 1;
-}
-
-.note-text {
-  font-size: 0.85rem;
-  color: var(--text-color);
-  line-height: 1.4;
-  white-space: pre-wrap;
-  word-break: break-word;
-}
-
-.note-edited {
-  font-size: 0.65rem;
-  color: var(--text-color-secondary);
-  font-style: italic;
-  margin-top: 0.25rem;
-}
-
-.note-edit {
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
-}
-
-.note-edit-actions {
-  display: flex;
-  gap: 0.5rem;
-  justify-content: flex-end;
-}
-
-.text-red-500 {
-  color: #ef4444 !important;
-}
-
-
-/* Стили для изменения: Start ShortName */
-.editable-name {
+.badge-editable {
   cursor: pointer;
-  position: relative;
-  padding: 2px 6px;
-  border-radius: 4px;
-  transition: all 0.2s ease;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center; 
-  gap: 4px;
+  transition: all 0.2s;
+}
+.badge-editable:hover {
+  opacity: 0.8;
+  transform: scale(1.05);
+}
+
+/* ✅ Badge со значением Unknown — серый, пунктирная рамка */
+.badge-unknown {
+  background: #9ca3af !important;
+  border: 1px dashed #6b7280 !important;
+}
+
+/* ✅ Инпут для редактирования badge */
+.badge-edit-input {
+  display: inline-block;
+  font-size: 0.6rem;
   font-weight: 600;
-  text-align: center;
-  min-width: 50px; 
-}
-
-.editable-name:hover {
-  background-color: var(--surface-hover);
-  color: var(--primary-color);
-}
-
-.edit-name-icon {
-  font-size: 0.7rem;
-  opacity: 0;
-  transition: opacity 0.2s ease;
-  color: var(--primary-color);
-}
-
-.editable-name:hover .edit-name-icon {
-  opacity: 1;
-}
-
-.edit-name-container {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.common-device-name .details-inline {
-  margin-left: 0px;
-  flex-shrink: 0;
-}
-.common-device-name {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-weight: 600;
-  text-align: center;
-  min-height: 24px; 
-}
-.edit-name-input-native {
-  width: 100%;
-  max-width: 180px;
-  font-size: 0.9rem;
-  font-weight: 600;
-  padding: 0.5rem 0.75rem;
-  text-align: center;
-  border: 1px solid var(--surface-300);
-  border-radius: 6px;
+  color: #ffffff;
+  background: #0ea5e9;
+  border: 1px solid #0284c7;
+  border-radius: 10px;
+  padding: 0.05rem 0.4rem;
+  margin-left: 0.5rem;
+  max-width: 100px;
   outline: none;
-  transition: border-color 0.2s;
-  background: var(--surface-card);
-  color: var(--text-color);
+  vertical-align: middle;
 }
 
-.edit-name-input-native:focus {
-  border-color: var(--primary-color);
-  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.1);
-}
-/* End ShortName */
+/* ========== NOTES STYLES ========== */
+.notes-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem; }
+.notes-header h4 { margin: 0; color: #2c3e50; font-size: 1.1rem; font-weight: 600; border-bottom: 2px solid #3498db; padding-bottom: 0.5rem; flex: 1; }
+.notes-header .p-button { margin-left: 0.5rem; }
+.empty-notes { display: flex; align-items: center; gap: 0.5rem; padding: 1rem; color: var(--text-color-secondary); font-size: 0.85rem; }
+.notes-list { display: flex; flex-direction: column; gap: 0.75rem; max-height: 200px; overflow-y: auto; }
+.note-item { background: white; border: 1px solid #e9ecef; border-radius: 8px; padding: 0.75rem; }
+.note-header { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.5rem; font-size: 0.75rem; }
+.note-author { color: var(--text-color); font-weight: 500; display: flex; align-items: center; gap: 0.25rem; }
+.note-time { color: var(--text-color-secondary); flex: 1; }
+.note-actions { display: flex; gap: 0.125rem; opacity: 0; transition: opacity 0.2s; }
+.note-item:hover .note-actions { opacity: 1; }
+.note-text { font-size: 0.85rem; color: var(--text-color); line-height: 1.4; white-space: pre-wrap; word-break: break-word; }
+.note-edited { font-size: 0.65rem; color: var(--text-color-secondary); font-style: italic; margin-top: 0.25rem; }
+.note-edit { display: flex; flex-direction: column; gap: 0.5rem; }
+.note-edit-actions { display: flex; gap: 0.5rem; justify-content: flex-end; }
+.text-red-500 { color: #ef4444 !important; }
 
-/* Стили для тултипа с заметками */
-:deep(.p-tooltip.notes-tooltip) {
-  max-width: 350px !important;
-  padding: 0.75rem !important;
-  background: #1e293b !important;
-  border: 1px solid #334155 !important;
-  border-radius: 8px !important;
-  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.3) !important;
-}
+/* ========== EDITABLE NAME STYLES ========== */
+.editable-name { cursor: pointer; position: relative; padding: 2px 6px; border-radius: 4px; transition: all 0.2s ease; display: inline-flex; align-items: center; justify-content: center; gap: 4px; font-weight: 600; text-align: center; min-width: 50px; }
+.editable-name:hover { background-color: var(--surface-hover); color: var(--primary-color); }
+.edit-name-icon { font-size: 0.7rem; opacity: 0; transition: opacity 0.2s ease; color: var(--primary-color); }
+.editable-name:hover .edit-name-icon { opacity: 1; }
+.edit-name-container { display: flex; align-items: center; justify-content: center; }
+.common-device-name .details-inline { margin-left: 0px; flex-shrink: 0; }
+.common-device-name { display: flex; align-items: center; justify-content: center; font-weight: 600; text-align: center; min-height: 24px; }
+.edit-name-input-native { width: 100%; max-width: 180px; font-size: 0.9rem; font-weight: 600; padding: 0.5rem 0.75rem; text-align: center; border: 1px solid var(--surface-300); border-radius: 6px; outline: none; transition: border-color 0.2s; background: var(--surface-card); color: var(--text-color); }
+.edit-name-input-native:focus { border-color: var(--primary-color); box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.1); }
 
-:deep(.p-tooltip.notes-tooltip .p-tooltip-text) {
-  white-space: pre-line !important;
-  font-size: 0.8rem !important;
-  line-height: 1.5 !important;
-  color: #e2e8f0 !important;
-  max-height: 300px !important;
-  overflow-y: auto !important;
-}
+/* ========== TOOLTIP STYLES ========== */
+:deep(.p-tooltip.notes-tooltip) { max-width: 350px !important; padding: 0.75rem !important; background: #1e293b !important; border: 1px solid #334155 !important; border-radius: 8px !important; box-shadow: 0 10px 25px rgba(0, 0, 0, 0.3) !important; }
+:deep(.p-tooltip.notes-tooltip .p-tooltip-text) { white-space: pre-line !important; font-size: 0.8rem !important; line-height: 1.5 !important; color: #e2e8f0 !important; max-height: 300px !important; overflow-y: auto !important; }
+:global(.p-tooltip.notes-tooltip .p-tooltip-arrow) { border-right-color: #1e293b !important; }
+.notes-table :deep(.p-datatable-tbody > tr.has-notes) { position: relative; }
+.notes-table :deep(.p-datatable-tbody > tr.has-notes)::after { content: '📝'; position: absolute; top: 4px; right: 8px; font-size: 0.7rem; opacity: 0.6; }
 
-:global(.p-tooltip.notes-tooltip .p-tooltip-arrow) {
-  border-right-color: #1e293b !important;
-}
-
-/* Индикатор наличия заметок */
-.notes-table :deep(.p-datatable-tbody > tr.has-notes) {
-  position: relative;
-}
-
-.notes-table :deep(.p-datatable-tbody > tr.has-notes)::after {
-  content: '📝';
-  position: absolute;
-  top: 4px;
-  right: 8px;
-  font-size: 0.7rem;
-  opacity: 0.6;
+.actions-container {
+  display: flex;
+  justify-content: center;
 }
 
+.device-controls {
+  display: flex;
+  align-items: center;
+  gap: 0.1rem;
+  flex-wrap: wrap;
+}
 </style>

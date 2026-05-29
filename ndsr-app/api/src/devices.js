@@ -16,6 +16,7 @@ const STATUS_CHECK_TIMEOUT = process.env.STATUS_CHECK_TIMEOUT * 1000
 let devices = readConfig(process.env.DEVICES_CONFIG_PATH);
 let wanTypes = readConfig(process.env.WAN_TYPES_CONFIG_PATH);
 let users = readConfig(process.env.USER_CONFIG_PATH);
+let badgesConfig = readConfig(process.env.BADGES_CONFIG_PATH);
 
 async function getDevicesStatus(devices) {
     let urls = devices.map(device => device.checkUrl)
@@ -208,6 +209,97 @@ function updateUserName(ip, newName) {
     };
 }
 
+
+
+// ==================== УПРАВЛЕНИЕ BADGE'АМИ ====================
+
+function getDeviceBadge(deviceId) {
+    const entry = badgesConfig.find(b => String(b.id) === String(deviceId));
+    return entry?.badge || null;
+}
+
+function getDefaultBadge(deviceId) {
+    const device = getDeviceById(deviceId);
+    if (!device) return null;
+    
+    // Если устройство standAlone — возвращаем "Unknown"
+    if (device.standAlone === 'yes') {
+        return 'Unknown';
+    }
+    
+    return null;
+}
+
+function setDeviceBadge(deviceId, badge) {
+    const existingIndex = badgesConfig.findIndex(b => String(b.id) === String(deviceId));
+    
+    if (existingIndex !== -1) {
+        // Обновляем существующий
+        badgesConfig[existingIndex].badge = badge;
+    } else {
+        // Добавляем новый
+        badgesConfig.push({
+            id: String(deviceId),
+            badge: badge
+        });
+    }
+    
+    saveConfig(process.env.BADGES_CONFIG_PATH || './config/badges.json', badgesConfig);
+    
+    console.log(`✅ Badge for device ${deviceId} set to: "${badge}"`);
+    
+    return {
+        success: true,
+        deviceId,
+        badge
+    };
+}
+
+function removeDeviceBadge(deviceId) {
+    const index = badgesConfig.findIndex(b => String(b.id) === String(deviceId));
+    
+    if (index === -1) {
+        return { success: false, error: 'Badge not found for this device' };
+    }
+    
+    badgesConfig.splice(index, 1);
+    saveConfig(process.env.BADGES_CONFIG_PATH || './config/badges.json', badgesConfig);
+    
+    console.log(`✅ Badge removed for device ${deviceId}`);
+    
+    return { success: true, deviceId };
+}
+
+function getAllBadges() {
+    // Возвращаем badge'и для всех устройств
+    const result = {};
+    
+    devices.forEach(device => {
+        const savedBadge = getDeviceBadge(device.id);
+        
+        if (savedBadge) {
+            result[device.id] = savedBadge;
+        } else if (device.standAlone === 'yes') {
+            result[device.id] = 'Unknown';
+        }
+    });
+    
+    return result;
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 // ==================== ПЕРЕЧИТЫВАНИЕ КОНФИГОВ ====================
 
 function reloadConfigs() {
@@ -223,6 +315,9 @@ function reloadUsersConfig() {
     console.log(`🔄 Users config reloaded: ${users.length} users`);
     return { success: true, usersCount: users.length };
 }
+
+
+
 
 export {
     // Устройства
@@ -245,5 +340,12 @@ export {
     addUser,
     removeUser,
     updateUserName,
-    reloadUsersConfig
+    reloadUsersConfig,
+
+    // Badge 
+    getDeviceBadge,
+    setDeviceBadge,
+    removeDeviceBadge,
+    getAllBadges,
+    badgesConfig
 }
