@@ -115,7 +115,6 @@
                   <div class="common-device-hwid">
                     {{ data.hwId }}
                     <span class="site-badge" v-if="data.site">{{ data.site }}</span>
-                    <!-- ✅ Редактируемый Badge — на одной строке с hwId и site -->
                     <template v-if="data.standAlone === 'yes' || data.badge">
                       <template v-if="editingBadgeDeviceId === data.id">
                         <input
@@ -230,7 +229,7 @@
                   icon="pi pi-wifi"
                   class="p-button-sm p-button-outlined p-button-success p-button-rounded action-btn"
                   @click="handleOpenModal(data, 'mwsConnection')"
-                  :disabled="!canMwsConnect(data) && data.standAlone === 'yes'"
+                  :disabled="!canMwsConnect(data) || data.standAlone === 'yes'"
                 />
                 
                 <Button

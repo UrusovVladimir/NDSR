@@ -314,7 +314,7 @@
   {
     "id": "2810",
     "hwId": "KN-2810",
-    "type": "AP",
+    "type": "router",
     "country": "EA",
     "ip": "10.10.12.14/24",
     "shortName": "Orbiter Pro",
@@ -330,12 +330,12 @@
     "switchID": "1",
     "switchIDWan": "1",
     "switchPortLan": "13",
+    "switchPortWan": "6",
     "consoleID": "2",
     "macAddress": "50:ff:20:70:9f:6a",
     "servicetag": "811-776-051-303-719",
     "serialNumber": "S2129WF000240",
-    "tftpInterfaceName": "kn28100",
-    "hwType": "yes"
+    "tftpInterfaceName": "kn28100"
   },
   {
     "id": "10111",
@@ -395,7 +395,7 @@
     "type": "AP",
     "country": "EA",
     "ip": "10.10.12.17/24",
-    "shortName": "Site 6 extender 2 / 415-672-388-674-410",
+    "shortName": "Site 6 extender 2",
     "checkUrl": "http://172.16.81.254:1613",
     "URL": "http://172.16.81.254:1613",
     "consolePort": "4016",
@@ -569,7 +569,7 @@
     "tftpInterfaceName": "kn34110",
     "hwType": "yes"
   },
-    {
+  {
     "id": "3310",
     "hwId": "KN-3310",
     "type": "AP",
@@ -582,7 +582,7 @@
     "hwType": "yes",
     "standAlone": "yes"
   },
-    {
+  {
     "id": "3311",
     "hwId": "KN-3311",
     "type": "AP",
@@ -595,7 +595,7 @@
     "hwType": "yes",
     "standAlone": "yes"
   },
-    {
+  {
     "id": "3211",
     "hwId": "KN-3211",
     "type": "AP",
@@ -608,17 +608,18 @@
     "hwType": "yes",
     "standAlone": "yes"
   },
-    {
+  {
     "id": "33111",
     "hwId": "KN-3311",
     "type": "AP",
     "country": "EA",
-    "shortName": "Buddy 5",
+    "shortName": "Site 6 extender 0",
     "checkUrl": "http://172.16.81.254:33111",
     "URL": "http://172.16.81.254:33111",
     "servicetag": "827-473-878-818-206",
     "serialNumber": "S2348RJ008644",
     "hwType": "yes",
-    "standAlone": "yes"
+    "standAlone": "yes",
+    "vlanLocal": "200"
   }
 ]
