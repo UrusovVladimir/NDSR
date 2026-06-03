@@ -9,7 +9,7 @@
         @sort="onSort"
         data-key="id"
         :paginator="true"
-        :rows="25"
+        :rows="100"
         paginator-template="FirstPageLink PrevPageLink PageLinks NextPageLink LastPageLink CurrentPageReport RowsPerPageDropdown"
         current-page-report-template="Showing {first} to {last} of {totalRecords} devices"
         :removable-sort="false"
@@ -76,7 +76,7 @@
             >
               <div class="common-device-info-container">
                 <div class="common-device-avatar" :class="getDeviceAvatarClass(data)">
-                  <i :class="deviceIcon(data.type)" class="common-device-icon"></i>
+                  <i :class="getDeviceModeIcon(data.id)" class="common-device-icon"></i>
                 </div>
       
                 <div class="common-device-info">
@@ -238,9 +238,8 @@
                   icon="pi pi-wrench"
                   class="p-button-sm p-button-outlined p-button-info p-button-rounded action-btn"
                   @click="handleOpenChangeMode(data)"
-                  :disabled="!canChangeMode(data)"
+                  :disabled="!canChangeMode(data) || data.hwSwitchToAP === 'yes'"
                 />
-                
                 <Button
                   v-if="data.dslPort"
                   v-tooltip.bottom="isResettingDsl(data) ? 'Resetting DSL...' : 'Reset DSL Line'"
@@ -579,13 +578,45 @@ const sortedAndFilteredDevices = computed(() => {
   })
 })
 
-const handleOpenChangeMode = (device) => { selectedDevice.value = device; nextTick(() => { if (changeModeModal.value) changeModeModal.value.show(todayPassword.value, 'global') }) }
+const handleOpenChangeMode = (device) => { selectedDevice.value = device;
+   nextTick(() => { if (changeModeModal.value) 
+    changeModeModal.value.show(todayPassword.value, 'global') }) 
+  }
 const clearSearch = () => { globalFilter.value = '' }
 const getNestedValue = (obj, path) => path.split('.').reduce((c, k) => c?.[k] ?? null, obj)
 const onSort = (e) => { sortField.value = e.sortField; sortOrder.value = e.sortOrder }
 
 const deviceIcon = (type) => { const icons = { router: 'bi bi-router', AP: 'bi bi-wifi', switch: 'pi pi-sitemap' }; return icons[type] || 'pi pi-box' }
-const getDeviceAvatarClass = (device) => { if (device.statusCode !== 200) return 'offline'; if (device.type === 'AP') return 'ap'; return 'online' }
+const getDeviceAvatarClass = (device) => {
+  const modeInfo = modeStore.getDeviceModeInfo(device.id)
+  const mode = modeInfo?.mode
+  
+  if (device.statusCode !== 200) return 'offline'
+  if (mode === 'extender' || mode === 'extender_connect') return 'ap'
+  if (device.type === 'AP') return 'ap'
+  return 'online'
+}
+const getDeviceModeIcon = (deviceId) => {
+  if (!isMounted.value) return deviceIcon(getDeviceById(deviceId)?.type || 'router')
+  
+  const info = modeStore.getDeviceModeInfo(deviceId)
+  const mode = info?.mode
+  
+  if (mode === 'extender' || mode === 'extender_connect') {
+    return 'bi bi-wifi'
+  }
+  
+  if (mode === 'router') {
+    return 'bi bi-router'
+  }
+  
+  const device = deviceStore.devices?.find(d => d.id === deviceId) || getDeviceById(deviceId)
+  return deviceIcon(device?.type || 'router')
+}
+
+const getDeviceById = (deviceId) => {
+  return deviceStore.devices?.find(d => d.id === deviceId) || null
+}
 
 const getDisplayMode = (deviceId) => {
   if (!isMounted.value) return 'Loading...'

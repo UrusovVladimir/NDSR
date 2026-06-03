@@ -770,12 +770,12 @@ const closeModal = () => {
   useDevicePassword.value = true
   authError.value = false
   
-  console.log('🔒 Modal closed, device data cleared:', { deviceId, deviceHwId })
+  // console.log('🔒 Modal closed, device data cleared:', { deviceId, deviceHwId })
 }
 
 const saveChanges = async (action = 'connect') => {
   try {
-    console.log('💾 Saving MWS changes for device:', currentDevice.value?.id, 'action:', action)
+    // console.log('💾 Saving MWS changes for device:', currentDevice.value?.id, 'action:', action)
     
     if (!currentDevice.value?.id) {
       toast.add({ severity: 'error', summary: 'Error', detail: 'No device selected', life: 3000 })
@@ -806,7 +806,7 @@ const saveChanges = async (action = 'connect') => {
         useDevicePassword: useDevicePassword.value,
         callback: (success, message) => {
           if (success) {
-            console.log('✅ MWS AP operation completed:', message)
+            // console.log('✅ MWS AP operation completed:', message)
             toast.add({ severity: 'success', summary: 'Success', detail: message, life: 3000 })
             
             if (action === 'disconnect') {
@@ -866,7 +866,7 @@ const saveChanges = async (action = 'connect') => {
       mode: mode,
       callback: (success, message) => {
         if (success) {
-          console.log('✅ MWS operation completed:', message)
+          // console.log('✅ MWS operation completed:', message)
           toast.add({ severity: 'success', summary: 'Success', detail: message, life: 3000 })
           
           if (action === 'disconnect') {
@@ -907,7 +907,7 @@ const saveWanChanges = () => {
       progressMessage.value = ''
       
       if (success) {
-        console.log('✅ WAN type saved successfully:', message)
+        // console.log('✅ WAN type saved successfully:', message)
         toast.add({
           severity: 'success',
           summary: 'Success',
