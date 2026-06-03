@@ -2114,8 +2114,10 @@ const handleBatchFirmwareCheck = async (socket, data, callback) => {
       
       if (mode === 'extender_disconnect') {
         finalMode = 'router';
-      }
-       else {
+      } else if (mode === 'extender_connect') {
+        finalMode = 'extender_connect';
+        finalRouterId = routerId;
+      } else {
         finalMode = mode;
       }
       
@@ -2131,7 +2133,7 @@ const handleBatchFirmwareCheck = async (socket, data, callback) => {
         deviceId,
         mode: finalMode,
         routerId: finalRouterId,
-        action: action, // Передаем action в ответе
+        action: action,
         success: true,
         message: result.message,
         source: 'mode_change'

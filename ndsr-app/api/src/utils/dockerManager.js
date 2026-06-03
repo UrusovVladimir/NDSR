@@ -363,6 +363,49 @@ export class DockerManager {
         }
     }
 
+    async getExtenderIpFromArp(routerId, extenderMac, routerPassword = null) {
+    try {
+        console.log(`🔍 Поиск IP через ARP таблицу для MAC: ${extenderMac}`);
+        
+        const router = getParamRouter(routerId);
+        if (!router) {
+            throw new Error(`Роутер ${routerId} не найден`);
+        }
+
+        const arpTable = await makeAuthenticatedRequest(
+            router.URL,
+            'admin',
+            routerPassword,
+            '/rci/show/ip/arp',
+            'GET'
+        );
+
+        console.log('📊 ARP таблица получена, записей:', arpTable?.ip?.length || 0);
+
+        if (!arpTable || !arpTable.ip || !Array.isArray(arpTable.ip)) {
+            throw new Error('Некорректный ответ от роутера при запросе ARP таблицы');
+        }
+
+        const normalizedTargetMac = extenderMac.toLowerCase().replace(/:/g, '');
+
+        const arpEntry = arpTable.ip.find(entry => 
+            entry.mac && entry.mac.toLowerCase().replace(/:/g, '') === normalizedTargetMac
+        );
+
+        if (arpEntry && arpEntry.ip && arpEntry.ip !== '0.0.0.0') {
+            console.log(`✅ Найден IP через ARP таблицу: ${arpEntry.ip}`);
+            return arpEntry.ip;
+        }
+
+        throw new Error('Extender не найден в ARP таблице');
+
+    } catch (error) {
+        console.log(`⚠️ Не удалось получить IP через ARP: ${error.message}`);
+        throw error;
+    }
+    }
+
+
     async getExtenderIpCombined(routerId, extenderMac, routerPassword = null, device = null) {
         try {
             console.log(`🔍 Комбинированный поиск IP для MAC: ${extenderMac} через роутер ${routerId}`);
