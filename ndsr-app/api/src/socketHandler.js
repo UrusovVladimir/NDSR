@@ -4,8 +4,20 @@ import {
   getDeviceStatusCode,
   wanTypes,
   users,
-  getParamRouter
-  
+  getParamRouter,
+  reloadConfigs,
+  getUserByIp,
+  addUser,
+  removeUser,
+  updateUserName,
+  removeDevice,
+  addDevice,
+  updateDeviceShortName,
+  getDeviceBadge,
+  setDeviceBadge,
+  removeDeviceBadge,
+  getAllBadges,
+  reloadUsersConfig
 } from "./devices.js";
 import MWSConnectionManager from "./actions/mwsConnectionManager.js";
 import { changeWanType } from "./actions/changeWanType.js";
@@ -42,6 +54,7 @@ let chatHistory = []
 let onlineUsers = new Set()
 let deviceStatusCache = new Map()
 const consoleUrlCache = new Map();
+let deviceSites = new Map();
 
 // ✅ ГЛОБАЛЬНАЯ СИСТЕМА УПРАВЛЕНИЯ НАГРУЗКОЙ
 let activeStatusRequests = 0;
@@ -494,10 +507,10 @@ async function sendInitData(socket) {
                 (async () => {
                     try {
                         const status = await getPortPowerStatus(device.id);
-                        devicePowerStatus.set(device.id, status);
+                        devicePowerStatus.set(device.id, status.power);
                         socket.emit('device:powerStatus', {
                             deviceId: device.id,
-                            status: status,
+                            status: status.power,
                             timestamp: Date.now(),
                             isInitial: true
                         });
@@ -695,8 +708,8 @@ async function initializePowerStatus() {
       if (device.rebootPort) {
         try {
           const status = await getPortPowerStatus(device.id);
-          devicePowerStatus.set(device.id, status);
-          console.log(`📡 Power status for ${device.id}: ${status}`);
+          devicePowerStatus.set(device.id, status.power);
+          console.log(`📡 Power status for ${device.id}: ${status.power}`);
         } catch (error) {
           console.error(`❌ Failed to get power status for ${device.id}:`, error.message);
           devicePowerStatus.set(device.id, 'on'); // По умолчанию
@@ -1008,18 +1021,18 @@ function setupEvents(socket, io) {
           console.log(`🔍 Getting power status for device ${deviceId}`);
           
           const status = await getPortPowerStatus(deviceId);
-          devicePowerStatus.set(deviceId, status);
+          devicePowerStatus.set(deviceId, status.power);
           
           // Отправляем статус всем клиентам
           io.emit('device:powerStatus', {
               deviceId: deviceId,
-              status: status,
+              status: status.power,
               timestamp: Date.now(),
               changed: true
           });
           
           if (callback) {
-              callback({ success: true, status: status });
+              callback({ success: true, status: status.power });
           }
       } catch (error) {
           console.error(`❌ Failed to get power status for ${deviceId}:`, error);
@@ -1150,13 +1163,13 @@ function setupEvents(socket, io) {
           try {
             console.log(`[BOOK] Fetching power status for ${deviceId} in background...`);
             const powerStatus = await getPortPowerStatus(deviceId);
-            devicePowerStatus.set(deviceId, powerStatus);
-            console.log(`[BOOK] Power status for ${deviceId}: ${powerStatus}`);
+            devicePowerStatus.set(deviceId, powerStatus.power);
+            console.log(`[BOOK] Power status for ${deviceId}: ${powerStatus.power}`);
             
             // ✅ Отправляем ТОЛЬКО обновление статуса (не бронирования)
             socket.emit('device:powerStatus', {
               deviceId: deviceId,
-              status: powerStatus,
+              status: powerStatus.power,
               timestamp: Date.now(),
               changed: false
             });
@@ -1857,8 +1870,8 @@ function setupEvents(socket, io) {
       let newStatus = action;
       try {
         const actualStatus = await getPortPowerStatus(deviceId);
-        if (actualStatus) {
-          newStatus = actualStatus;
+        if (actualStatus.power) {
+          newStatus = actualStatus.power;
         }
       } catch (error) {
         console.error(`[POWER] Failed to verify power status:`, error.message);
@@ -2622,6 +2635,299 @@ socket.on('device:changeMode', async (data, callback) => {
         success: true,
         modeInfo: modeInfo || null
     });
+  });
+
+  socket.on('device:reloadConfigs', async (callback) => {
+    try {
+      console.log('🔄 Starting full config reload...');
+      
+      // 1. Вызываем reloadConfigs из devices.js
+      const result = reloadConfigs();
+      
+      if (!result.success) {
+        throw new Error('Config reload failed');
+      }
+      
+      // 2. Получаем актуальные ID устройств после перезагрузки
+      const currentDeviceIds = new Set(devices.map(d => String(d.id)));
+      
+      // 3. Очищаем ВСЕ кэши и состояния, которые зависят от конфигурации
+      const cachesToClean = [
+        { name: 'deviceStatusCache', cache: deviceStatusCache },
+        { name: 'devicePowerStatus', cache: devicePowerStatus },
+        { name: 'currentModes', cache: currentModes },
+        { name: 'deviceBookings', cache: deviceBookings },
+        { name: 'consoleUrlCache', cache: consoleUrlCache },
+        { name: 'currentFirmwareVersion', cache: currentFirmwareVersion },
+        { name: 'currentWanTypes', cache: currentWanTypes }
+      ];
+      
+      cachesToClean.forEach(({ name, cache }) => {
+        let cleanedCount = 0;
+        if (cache instanceof Map) {
+          for (const [key] of cache) {
+            if (!currentDeviceIds.has(String(key))) {
+              cache.delete(key);
+              cleanedCount++;
+            }
+          }
+        } else if (typeof cache === 'object' && cache !== null) {
+          // Для объектов типа currentWanTypes
+          Object.keys(cache).forEach(key => {
+            if (!currentDeviceIds.has(String(key))) {
+              delete cache[key];
+              cleanedCount++;
+            }
+          });
+        }
+        console.log(`🧹 Cleaned ${cleanedCount} entries from ${name}`);
+      });
+      
+      // 4. Сбрасываем флаги инициализации
+      statusCacheInitialized = false;
+      lastGlobalStatusUpdate = 0;
+      
+      // 5. Отправляем обновленный список устройств ВСЕМ клиентам
+      const devicesWithBookings = devices.map(device => {
+        const booking = deviceBookings.get(device.id);
+        const powerStatus = devicePowerStatus.get(device.id) || 'unknown';
+        
+        const deviceWithBooking = {
+          ...device,
+          powerStatus: powerStatus
+        };
+        
+        if (booking) {
+          const remainingTime = Math.max(0, booking.expiresAt - Math.floor(Date.now() / 1000));
+          deviceWithBooking.booking = {
+            isBooked: true,
+            bookedBy: booking.bookedBy,
+            accessPassword: booking.accessPassword,
+            expiresAt: booking.expiresAt,
+            remainingTime: remainingTime
+          };
+        } else {
+          deviceWithBooking.booking = {
+            isBooked: false,
+            bookedBy: null,
+            accessPassword: null,
+            expiresAt: null,
+            remainingTime: 0
+          };
+        }
+        
+        return deviceWithBooking;
+      });
+      
+      // Отправляем обновленный список устройств
+      io.emit('device:list', devicesWithBookings);
+      
+      // Отправляем обновленных пользователей
+      io.emit('device:users', users);
+      
+      // Отправляем актуальные WAN типы
+      io.emit('device:wanTypes', wanTypes);
+      
+      // Отправляем обновленные бронирования
+      io.emit('device:bookings-list', Object.fromEntries(deviceBookings));
+      
+      console.log(`✅ Configs reloaded. Devices: ${devices.length}, Users: ${users.length}`);
+      
+      // 6. Отправляем ответ клиенту
+      if (callback) {
+        callback({ 
+          success: true, 
+          devicesCount: devices.length,
+          usersCount: users.length,
+          message: 'Configuration reloaded successfully'
+        });
+      }
+      
+      // 7. Асинхронно переинициализируем статусы
+      setTimeout(async () => {
+        try {
+          console.log('🔄 Starting background reinitialization after config reload...');
+          
+          // Переинициализируем кэш статусов
+          initializeStatusCache();
+          
+          // Запускаем полную проверку статусов
+          const statuses = await getAllDevicesStatus();
+          
+          // Отправляем начальные статусы всем клиентам
+          io.emit('device:statuses:initial', statuses);
+          
+          // Переинициализируем статусы питания
+          for (const device of devices) {
+            if (device.rebootPort) {
+              try {
+                const powerStatus = await getPortPowerStatus(device.id);
+                devicePowerStatus.set(device.id, powerStatus.power);
+                
+                io.emit('device:powerStatus', {
+                  deviceId: device.id,
+                  status: powerStatus.power,
+                  timestamp: Date.now(),
+                  isInitial: true
+                });
+                
+                console.log(`📡 Power status for ${device.id}: ${powerStatus.power}`);
+              } catch (error) {
+                console.error(`Failed to get power status for ${device.id}:`, error);
+                devicePowerStatus.set(device.id, 'unknown');
+                
+                io.emit('device:powerStatus', {
+                  deviceId: device.id,
+                  status: 'unknown',
+                  timestamp: Date.now(),
+                  isInitial: true
+                });
+              }
+            }
+          }
+          
+          // Обновляем флаги
+          statusCacheInitialized = true;
+          lastGlobalStatusUpdate = Date.now();
+          
+          // Синхронизируем MWS статусы
+          currentModes.forEach((modeInfo, deviceId) => {
+            if (modeInfo && modeInfo.mode === 'extender_connect' && modeInfo.routerId) {
+              io.emit('device:mwsStatusUpdated', {
+                deviceId: deviceId,
+                routerId: modeInfo.routerId,
+                status: 'connected',
+                timestamp: modeInfo.timestamp || Date.now()
+              });
+            }
+          });
+          
+          console.log('✅ Background reinitialization completed after config reload');
+          
+        } catch (error) {
+          console.error('❌ Failed to reinitialize after config reload:', error);
+        }
+      }, 1000);
+      
+    } catch (error) {
+      console.error('❌ Config reload failed:', error);
+      if (callback) {
+        callback({ 
+          success: false, 
+          error: error.message 
+        });
+      }
+    }
+  });
+  // Добавление/удаление устройств
+  socket.on('device:add', (deviceData, callback) => {
+    try {
+      const result = addDevice(deviceData);
+      if (result.success) {
+        io.emit('device:list', devices);
+      }
+      callback(result);
+    } catch (error) {
+      callback({ success: false, error: error.message });
+    }
+  });
+
+  socket.on('device:remove', (deviceId, callback) => {
+    try {
+      const result = removeDevice(deviceId);
+      if (result.success) {
+        deviceStatusCache.delete(deviceId);
+        devicePowerStatus.delete(deviceId);
+        currentModes.delete(deviceId);
+        deviceBookings.delete(deviceId);
+        io.emit('device:list', devices);
+      }
+      callback(result);
+    } catch (error) {
+      callback({ success: false, error: error.message });
+    }
+  });
+
+// Управление пользователями
+  socket.on('user:add', (userData, callback) => {
+    try {
+      const result = addUser(userData);
+      if (result.success) {
+        io.emit('device:users', users);
+      }
+      callback(result);
+    } catch (error) {
+      callback({ success: false, error: error.message });
+    }
+  });
+
+  socket.on('user:remove', (ip, callback) => {
+    try {
+      const result = removeUser(ip);
+      if (result.success) {
+        io.emit('device:users', users);
+      }
+      callback(result);
+    } catch (error) {
+      callback({ success: false, error: error.message });
+    }
+  });
+
+// Обновление имени пользователя
+  socket.on('user:updateName', (data, callback) => {
+    try {
+      console.log('✏️ Updating user name:', data);
+      
+      const result = updateUserName(data.ip, data.newName);
+      
+      if (result.success) {
+        // Отправляем обновленный список всем клиентам
+        io.emit('device:users', users);
+      }
+      
+      callback(result);
+    } catch (error) {
+      console.error('❌ Error updating user name:', error);
+      callback({ 
+        success: false, 
+        error: error.message 
+      });
+    }
+  });
+
+// Получение пользователя по IP
+  socket.on('user:getByIp', (ip, callback) => {
+    try {
+      const user = getUserByIp(ip);
+      callback({ 
+        success: true, 
+        user: user || null 
+      });
+    } catch (error) {
+      callback({ 
+        success: false, 
+        error: error.message 
+      });
+    }
+  });
+
+  // Перезагрузка конфигурации пользователей
+  socket.on('user:reload', (callback) => {
+    try {
+      const result = reloadUsersConfig();
+      
+      if (result.success) {
+        // Отправляем обновленный список всем клиентам
+        io.emit('device:users', users);
+      }
+      
+      callback(result);
+    } catch (error) {
+      callback({ 
+        success: false, 
+        error: error.message 
+      });
+    }
   });
 }
 const initDockerManagerOnStart = async () => {

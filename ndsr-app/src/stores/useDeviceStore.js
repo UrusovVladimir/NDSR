@@ -200,6 +200,195 @@ export const useDeviceStore = defineStore('devices', () => {
       })
     })
   }
+const reloadConfigs = () => {
+  return new Promise((resolve, reject) => {
+    socket.emit('device:reloadConfigs', (response) => {
+      if (response?.success) {
+        // ✅ После успешной перезагрузки конфигов на сервере,
+        // запрашиваем свежий список устройств
+        socket.emit('device:getInitData', (initResponse) => {
+          if (initResponse?.success) {
+            // Список устройств придет через событие 'device:list'
+            // Но мы также можем сразу запросить его
+            console.log('✅ Configs reloaded, waiting for device list update...');
+            
+            // Дополнительно запрашиваем обновление статусов
+            socket.emit('device:forceStatusCheckAll', {}, (statusResponse) => {
+              console.log('📊 Status check completed after config reload');
+            });
+            
+            resolve({
+              ...response,
+              message: 'Configuration reloaded and device list updated'
+            });
+          } else {
+            // Даже если initData не удался, резолвим, т.к. конфиги перезагружены
+            resolve(response);
+          }
+        });
+      } else {
+        reject(new Error(response?.error || 'Failed to reload configs'));
+      }
+    });
+  });
+};
+
+// Добавьте эти методы в store:
+
+// ==================== МЕТОДЫ ДЛЯ ПОЛЬЗОВАТЕЛЕЙ ====================
+
+// Получение всех пользователей (из существующего события device:users)
+const fetchUsers = () => {
+  return new Promise((resolve) => {
+    // Пользователи уже должны быть в store после sendInitData
+    // Но можно запросить принудительно
+    socket.emit('device:getInitData', (response) => {
+      if (response?.success) {
+        // После этого придет событие device:users
+        resolve({ success: true, users: users.value });
+      } else {
+        resolve({ success: true, users: users.value });
+      }
+    });
+  });
+};
+
+// Добавление пользователя (используем существующее событие user:add)
+const addNewUser = (userData) => {
+  return new Promise((resolve, reject) => {
+    socket.emit('user:add', userData, (response) => {
+      if (response?.success) {
+        // Обновляем список пользователей в store
+        if (response.user) {
+          const newUsers = [...users.value, response.user];
+          setUsers(newUsers);
+        }
+        resolve(response);
+      } else {
+        reject(new Error(response?.error || 'Failed to add user'));
+      }
+    });
+  });
+};
+
+// Удаление пользователя (используем существующее событие user:remove)
+const deleteUser = (ip) => {
+  return new Promise((resolve, reject) => {
+    socket.emit('user:remove', ip, (response) => {
+      if (response?.success) {
+        // Удаляем пользователя из локального состояния
+        const newUsers = users.value.filter(u => u.ip !== ip);
+        setUsers(newUsers);
+        resolve(response);
+      } else {
+        reject(new Error(response?.error || 'Failed to remove user'));
+      }
+    });
+  });
+};
+
+// Обновление имени пользователя
+const editUserName = (ip, newName) => {
+  return new Promise((resolve, reject) => {
+    socket.emit('user:updateName', { ip, newName }, (response) => {
+      if (response?.success) {
+        // Обновляем имя в локальном состоянии
+        const userIndex = users.value.findIndex(u => u.ip === ip);
+        if (userIndex !== -1) {
+          users.value[userIndex].name = newName;
+        }
+        resolve(response);
+      } else {
+        reject(new Error(response?.error || 'Failed to update user name'));
+      }
+    });
+  });
+};
+
+// Получение пользователя по IP
+const getUserByIpAddress = (ip) => {
+  return new Promise((resolve) => {
+    socket.emit('user:getByIp', ip, (response) => {
+      if (response?.success) {
+        resolve(response.user);
+      } else {
+        resolve(null);
+      }
+    });
+  });
+};
+
+// Перезагрузка конфигурации пользователей
+const reloadUsersConfig = () => {
+  return new Promise((resolve, reject) => {
+    socket.emit('user:reload', (response) => {
+      if (response?.success) {
+        resolve({
+          ...response,
+          usersCount: users.value.length
+        });
+      } else {
+        reject(new Error(response?.error || 'Failed to reload users'));
+      }
+    });
+  });
+};
+
+// ==================== МЕТОДЫ ДЛЯ УСТРОЙСТВ ====================
+
+// Добавление устройства
+const addDevice = (deviceData) => {
+  return new Promise((resolve, reject) => {
+    socket.emit('device:add', deviceData, (response) => {
+      if (response?.success) {
+        // Добавляем устройство в локальный массив
+        devices.value.push(response.device || deviceData);
+        resolve(response);
+      } else {
+        reject(new Error(response?.error || 'Failed to add device'));
+      }
+    });
+  });
+};
+
+// Удаление устройства
+const removeDevice = (deviceId) => {
+  return new Promise((resolve, reject) => {
+    socket.emit('device:remove', String(deviceId), (response) => {
+      if (response?.success) {
+        // Удаляем устройство из локального массива
+        const index = devices.value.findIndex(d => String(d.id) === String(deviceId));
+        if (index !== -1) {
+          devices.value.splice(index, 1);
+        }
+        resolve(response);
+      } else {
+        reject(new Error(response?.error || 'Failed to remove device'));
+      }
+    });
+  });
+};
+
+// Обновление имени устройства
+const updateDeviceName = (deviceId, newShortName) => {
+  return new Promise((resolve, reject) => {
+    socket.emit('device:updateShortName', { 
+      deviceId: String(deviceId), 
+      newShortName 
+    }, (response) => {
+      if (response?.success) {
+        // Обновляем имя в локальном массиве
+        const device = devices.value.find(d => String(d.id) === String(deviceId));
+        if (device) {
+          device.shortName = newShortName;
+        }
+        resolve(response);
+      } else {
+        reject(new Error(response?.error || 'Failed to update device name'));
+      }
+    });
+  });
+};
 
   // Socket listeners
   const initializeSocketListeners = () => {
@@ -312,6 +501,16 @@ export const useDeviceStore = defineStore('devices', () => {
     releaseMultipleDevices,
     initializeSocketListeners,
     cleanupSocketListeners,
-    getDeviceWanType
+    getDeviceWanType,
+    reloadConfigs,
+    fetchUsers,
+    addNewUser,
+    deleteUser,
+    getUserByIpAddress,
+    reloadUsersConfig,
+    editUserName,
+    addDevice,
+    removeDevice,
+    updateDeviceName, 
   }
 })

@@ -4,7 +4,6 @@
       <h3>System Menu</h3>
     </div>
     
-    <!-- Statistics -->
     <div class="device-stats p-3 surface-ground border-round mb-3">
       <div class="stat-item">
         <i class="pi pi-check-circle text-green-500"></i>
@@ -15,152 +14,301 @@
         <span>Offline: {{ offlineCount }}</span>
       </div>
       <div class="stat-item">
-        <i class="pi pi-server text-blue-500"></i>
+        <i class="bi bi-calculator-fill text-blue-500"></i>
         <span>Total: {{ totalDevices }}</span>
       </div>
     </div>
 
-    <!-- Navigation Menu с Dropdown -->
     <div class="sidebar-menu">
       <div class="nav-section">
-        <div 
-          class="nav-item dropdown-trigger"
-          :class="{ 'dropdown-open': isToolsOpen }"
-          @click="toggleToolsDropdown"
-        >
-          <i class="pi pi-wrench"></i>
+        <div class="nav-item dropdown-trigger" :class="{ 'dropdown-open': isToolsOpen }" @click="toggleToolsDropdown">
+          <i class="bi bi-globe"></i>
           <span>Network Tools</span>
           <i class="pi pi-chevron-down dropdown-arrow" :class="{ 'rotated': isToolsOpen }"></i>
         </div>
-        
         <Transition name="dropdown">
           <div v-if="isToolsOpen" class="dropdown-content">
-            <!-- Первый сервер -->
             <div class="dropdown-item server-info">
               <i class="pi pi-sitemap text-blue-500"></i>
               <div class="server-details">
                 <span class="server-label">Iperf Server (Internal)</span>
                 <span class="server-address">{{ iperfServer }}</span>
               </div>
-              <Button 
-                icon="pi pi-copy" 
-                class="p-button-text p-button-sm"
-                @click="copyServerAddress(iperfServer)"
-                v-tooltip="'Copy to clipboard'"
-              />
+              <Button icon="pi pi-copy" class="p-button-text p-button-sm" @click="copyServerAddress(iperfServer)" v-tooltip="'Copy to clipboard'" />
             </div>
-            
-            <!-- Второй сервер -->
             <div class="dropdown-item server-info">
               <i class="pi pi-sitemap text-green-500"></i>
               <div class="server-details">
                 <span class="server-label">Iperf Server (Public)</span>
                 <span class="server-address">{{ iperfServerPublic }}</span>
               </div>
-              <Button 
-                icon="pi pi-copy" 
-                class="p-button-text p-button-sm"
-                @click="copyServerAddress(iperfServerPublic)"
-                v-tooltip="'Copy to clipboard'"
-              />
+              <Button icon="pi pi-copy" class="p-button-text p-button-sm" @click="copyServerAddress(iperfServerPublic)" v-tooltip="'Copy to clipboard'" />
             </div>
           </div>
         </Transition>
       </div>
 
-      <!-- Остальные пункты меню -->
-      <Button 
-        label="FAQ & Help" 
-        icon="pi pi-question-circle" 
-        class="p-button-text p-button-secondary w-full justify-start menu-button"
-        @click="$emit('open-faq')"
-      />
-      <!-- <Button 
-        label="System Settings" 
-        icon="pi pi-cog" 
-        class="p-button-text p-button-secondary w-full justify-start menu-button"
-        @click="$emit('open-settings')"
-      /> -->
+      <div class="nav-section">
+        <div class="nav-item dropdown-trigger" :class="{ 'dropdown-open': isDeviceMgmtOpen }" @click="toggleDeviceMgmtDropdown">
+          <i class="pi pi-wrench"></i>
+          <span>Device Management</span>
+          <i class="pi pi-chevron-down dropdown-arrow" :class="{ 'rotated': isDeviceMgmtOpen }"></i>
+        </div>
+        <Transition name="dropdown">
+          <div v-if="isDeviceMgmtOpen" class="dropdown-content">
+            <div class="dropdown-item tool-item" @click="handleReloadConfigs" :class="{ 'disabled-item': isReloading }">
+              <i class="pi pi-refresh text-blue-500" :class="{ 'pi-spin': isReloading }"></i>
+              <div class="tool-details">
+                <span class="tool-label">Reload Configs</span>
+                <span class="tool-desc">Reload devices from JSON files</span>
+              </div>
+            </div>
+            <div class="dropdown-item tool-item" @click="openAddDeviceForm">
+              <i class="pi pi-plus text-green-500"></i>
+              <div class="tool-details">
+                <span class="tool-label">Add Device</span>
+                <span class="tool-desc">Add a new device to config</span>
+              </div>
+            </div>
+            <div class="dropdown-item tool-item" @click="toggleRemoveDeviceDropdown">
+              <i class="pi pi-trash text-red-500"></i>
+              <div class="tool-details">
+                <span class="tool-label">Remove Devices</span>
+                <span class="tool-desc">{{ selectedDeviceIds.length > 0 ? `${selectedDeviceIds.length} selected` : 'Select devices to remove' }}</span>
+              </div>
+              <i class="pi pi-chevron-right ml-auto" :class="{ 'rotated': isRemoveDeviceOpen }"></i>
+            </div>
+            <Transition name="dropdown">
+              <div v-if="isRemoveDeviceOpen" class="device-remove-list">
+                <div class="dropdown-item bulk-actions" v-if="selectedDeviceIds.length > 0">
+                  <Button label="Remove Selected" icon="pi pi-trash" class="p-button-sm p-button-danger w-full" @click="confirmRemoveSelected" />
+                </div>
+                <div v-for="device in devices" :key="device.id"
+                  class="dropdown-item device-remove-item"
+                  :class="{ 'device-selected': selectedDeviceIds.includes(device.id) }"
+                  @click="toggleDeviceSelection(device.id)">
+                  <Checkbox :modelValue="selectedDeviceIds.includes(device.id)" :binary="true" class="mr-2" />
+                  <i class="pi pi-circle-fill" :class="device.statusCode === 200 ? 'text-green-500' : 'text-red-500'" style="font-size: 0.5rem"></i>
+                  <div class="tool-details">
+                    <span class="tool-label">{{ device.shortName }}</span>
+                    <span class="tool-desc">{{ device.hwId }}</span>
+                  </div>
+                </div>
+                <div v-if="devices.length === 0" class="dropdown-item text-color-secondary">
+                  <i class="pi pi-info-circle"></i>
+                  <span>No devices available</span>
+                </div>
+              </div>
+            </Transition>
+            
+            <!-- Управление пользователями -->
+            <div class="dropdown-divider"></div>
+            <div class="dropdown-item tool-item" @click="openAddUserForm">
+              <i class="pi pi-user-plus text-green-500"></i>
+              <div class="tool-details">
+                <span class="tool-label">Add User</span>
+                <span class="tool-desc">Register a new user</span>
+              </div>
+            </div>
+          <div 
+            class="dropdown-item tool-item" 
+            @click="handleReloadUsers" 
+            :class="{ 'disabled-item': isReloadingUsers }"
+          >
+            <i 
+              class="pi pi-sync text-blue-500" 
+              :class="{ 'pi-spin': isReloadingUsers }"
+            ></i>
+            <div class="tool-details">
+              <span class="tool-label">
+                {{ isReloadingUsers ? 'Reloading...' : 'Reload Users' }}
+              </span>
+              <span class="tool-desc">
+                {{ isReloadingUsers ? 'Updating user list' : 'Reload users from JSON' }}
+              </span>
+            </div>
+          </div>
+          </div>
+        </Transition>
+      </div>
+
+      <Button label="FAQ & Help" icon="pi pi-question-circle" class="p-button-text p-button-secondary w-full justify-start menu-button" @click="$emit('open-faq')" />
     </div>
+
+
   </div>
 </template>
 
+
 <script setup>
-import { ref } from 'vue'
+import { ref, inject, watch } from 'vue'
 import Button from 'primevue/button'
+import Checkbox from 'primevue/checkbox'
 import { useToast } from 'primevue/usetoast'
+import { useDeviceStore } from '@/stores/useDeviceStore'
+
+const emit = defineEmits([
+  'open-faq', 
+  'show-remove-confirm', 
+  'show-add-device', 
+  'show-add-user', 
+  'reload-users'
+])
 
 const toast = useToast()
+const deviceStore = useDeviceStore()
+
 const iperfServer = import.meta.env.VITE_IPERF_SERVER
 const iperfServerPublic = import.meta.env.VITE_IPERF_SERVER_PUBLIC
 const isToolsOpen = ref(false)
+const isDeviceMgmtOpen = ref(false)
+const isRemoveDeviceOpen = ref(false)
+const selectedDeviceIds = ref([])
+const isReloading = ref(false)
+const isReloadingUsers = ref(false) // ✅ Добавлено для индикации
+const devices = ref([])
+const closeSidebar = inject('closeSidebar', () => {})
 
-const networkTools = ref([
-  { id: 'ping', label: 'Ping Tool', icon: 'pi pi-wifi' },
-  { id: 'speedtest', label: 'Speed Test', icon: 'pi pi-chart-line' },
-  { id: 'traceroute', label: 'Traceroute', icon: 'pi pi-map-marker' },
-  { id: 'portscan', label: 'Port Scanner', icon: 'pi pi-search' },
-  { id: 'bandwidth', label: 'Bandwidth Monitor', icon: 'pi pi-chart-bar' }
-])
+// ✅ Автоматически обновляем список устройств при изменении в store
+watch(() => deviceStore.devices, (newDevices) => {
+  devices.value = [...newDevices]
+}, { deep: true })
 
-const toggleToolsDropdown = () => {
-  isToolsOpen.value = !isToolsOpen.value
+// Инициализация
+devices.value = [...deviceStore.devices]
+
+const openAddUserForm = () => {
+  emit('show-add-user')
+  closeSidebar() 
 }
 
-const selectTool = (tool) => {
-  console.log('Selected tool:', tool)
-  toast.add({
-    severity: 'info',
-    summary: 'Tool Selected',
-    detail: `Opening ${tool.label}`,
-    life: 3000
-  })
-  
-  // Закрываем dropdown после выбора
-  isToolsOpen.value = false
-  
-  // Эмитим событие для родительского компонента
-  emit('select-tool', tool)
-}
-
-const copyServerAddress = (server) => {
+// ✅ Обновленная функция перезагрузки пользователей
+const handleReloadUsers = async () => {
+  isReloadingUsers.value = true
   try {
-    // Создаем временный input элемент
-    const input = document.createElement('input')
-    input.value = server
-    document.body.appendChild(input)
-    input.select()
-    input.setSelectionRange(0, 99999) // Для мобильных устройств
-    
-    // Копируем
-    const successful = document.execCommand('copy')
-    document.body.removeChild(input)
-    
-    if (successful) {
-      toast.add({
-        severity: 'success',
-        summary: 'Copied!',
-        detail: 'Server address copied to clipboard',
-        life: 2000
-      })
-    } else {
-      showManualCopy()
-    }
-    
-  } catch (err) {
-    console.error('Copy failed:', err)
-    showManualCopy()
+    await deviceStore.reloadUsersConfig()
+    toast.add({ 
+      severity: 'success', 
+      summary: 'Users Reloaded', 
+      detail: `Loaded ${deviceStore.users.length} users`, 
+      life: 3000 
+    })
+  } catch (error) {
+    console.error('❌ Failed to reload users:', error)
+    // Fallback: используем emit если метод store не сработал
+    emit('reload-users')
+  } finally {
+    isReloadingUsers.value = false
+  }
+  closeSidebar() 
+}
+
+const toggleToolsDropdown = () => { 
+  isToolsOpen.value = !isToolsOpen.value 
+}
+
+const toggleDeviceMgmtDropdown = () => {
+  isDeviceMgmtOpen.value = !isDeviceMgmtOpen.value
+  if (isDeviceMgmtOpen.value) { 
+    devices.value = [...deviceStore.devices] 
   }
 }
 
-defineProps({
-  onlineCount: Number,
-  offlineCount: Number,
-  totalDevices: Number
-})
+const toggleRemoveDeviceDropdown = () => { 
+  isRemoveDeviceOpen.value = !isRemoveDeviceOpen.value 
+  // Сбрасываем выбранные устройства при закрытии
+  if (!isRemoveDeviceOpen.value) {
+    selectedDeviceIds.value = []
+  }
+}
 
-const emit = defineEmits(['open-faq', 'open-settings', 'select-tool'])
+const toggleDeviceSelection = (deviceId) => {
+  const index = selectedDeviceIds.value.indexOf(deviceId)
+  if (index === -1) { 
+    selectedDeviceIds.value.push(deviceId) 
+  } else { 
+    selectedDeviceIds.value.splice(index, 1) 
+  }
+}
+
+const confirmRemoveSelected = () => {
+  if (selectedDeviceIds.value.length === 0) {
+    toast.add({ 
+      severity: 'warn', 
+      summary: 'No Selection', 
+      detail: 'Please select devices to remove', 
+      life: 3000 
+    })
+    return
+  }
+  const selectedDevices = devices.value.filter(d => 
+    selectedDeviceIds.value.includes(d.id)
+  )
+  emit('show-remove-confirm', selectedDevices)
+  // Закрываем список после подтверждения
+  isRemoveDeviceOpen.value = false
+}
+
+const openAddDeviceForm = () => {
+  emit('show-add-device')
+}
+
+const handleReloadConfigs = async () => {
+  isReloading.value = true
+  try {
+    await deviceStore.reloadConfigs()
+    devices.value = [...deviceStore.devices]
+    selectedDeviceIds.value = []
+    isRemoveDeviceOpen.value = false // ✅ Закрываем список удаления
+    
+    toast.add({ 
+      severity: 'success', 
+      summary: 'Configs Reloaded', 
+      detail: `Loaded ${deviceStore.devices.length} devices`, 
+      life: 3000 
+    })
+  } catch (error) {
+    console.error('❌ Failed to reload configs:', error)
+    toast.add({ 
+      severity: 'error', 
+      summary: 'Error', 
+      detail: error.message || 'Failed to reload configs', 
+      life: 5000 
+    })
+  } finally {
+    isReloading.value = false
+  }
+}
+
+const copyServerAddress = (server) => {
+  try { 
+    navigator.clipboard.writeText(server)
+    toast.add({ 
+      severity: 'success', 
+      summary: 'Copied!', 
+      detail: 'Server address copied to clipboard', 
+      life: 2000 
+    }) 
+  } catch (err) { 
+    console.error('Copy failed:', err) 
+    toast.add({ 
+      severity: 'error', 
+      summary: 'Error', 
+      detail: 'Failed to copy to clipboard', 
+      life: 2000 
+    })
+  }
+}
+
+defineProps({ 
+  onlineCount: Number, 
+  offlineCount: Number, 
+  totalDevices: Number 
+})
 </script>
+
+
+
 
 <style scoped>
 .sidebar-content {
@@ -311,5 +459,138 @@ const emit = defineEmits(['open-faq', 'open-settings', 'select-tool'])
 
 :deep(.p-button) {
   margin: 0.125rem 0;
+}
+
+.tool-details {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+}
+
+.tool-label {
+  font-size: 0.875rem;
+  color: var(--text-color);
+  font-weight: 500;
+}
+
+.tool-desc {
+  font-size: 0.75rem;
+  color: var(--text-color-secondary);
+}
+
+.disabled-item {
+  opacity: 0.5;
+  pointer-events: none;
+}
+
+.device-remove-list {
+  background: var(--surface-card);
+  border-top: 1px solid var(--surface-border);
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.device-remove-item {
+  padding-left: 2rem;
+  border-bottom: 1px solid var(--surface-border);
+}
+
+.device-remove-item:last-child {
+  border-bottom: none;
+}
+
+.confirmation-content {
+  display: flex;
+  align-items: flex-start;
+  padding: 0.5rem 0;
+}
+
+.rotated {
+  transform: rotate(90deg);
+}
+.device-remove-list {
+  background: var(--surface-card);
+  border-top: 1px solid var(--surface-border);
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.device-remove-item {
+  padding-left: 1rem;
+  border-bottom: 1px solid var(--surface-border);
+  cursor: pointer;
+}
+
+.device-remove-item:hover {
+  background-color: var(--surface-hover);
+}
+
+.device-remove-item.device-selected {
+  background-color: var(--primary-50);
+}
+
+.bulk-actions {
+  padding: 0.5rem 1rem;
+  border-bottom: 1px solid var(--surface-border);
+  background: var(--surface-ground);
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+
+/* Список устройств в диалоге */
+.device-list {
+  max-height: 150px;
+  overflow-y: auto;
+  background: var(--surface-50);
+  border-radius: 4px;
+  padding: 0.5rem 0.5rem 0.5rem 1.5rem;
+  border: 1px solid var(--surface-200);
+}
+
+.device-list li {
+  padding: 0.25rem 0;
+  border-bottom: 1px solid var(--surface-100);
+  font-size: 0.85rem;
+}
+
+.device-list li:last-child {
+  border-bottom: none;
+}
+.add-device-form {
+  max-height: 60vh;
+  overflow-y: auto;
+}
+
+.form-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.75rem;
+}
+
+.form-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.form-field label {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--text-color-secondary);
+}
+
+@media (max-width: 768px) {
+  .form-grid {
+    grid-template-columns: 1fr;
+  }
+}
+@keyframes pi-spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+.pi-spin {
+  animation: pi-spin 1s linear infinite;
 }
 </style>

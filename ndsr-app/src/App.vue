@@ -9,14 +9,120 @@
       :filtered-devices="[]"
     />
     <Sidebar v-model:visible="isSidebarOpen" position="left" :style="{ width: '400px' }">
-      <SidebarContent 
-        :online-count="deviceStore.onlineCount"
-        :offline-count="deviceStore.offlineCount" 
-        :total-devices="deviceStore.totalDevices"
-        @open-faq="openFaqModal"
-      />
+    <SidebarContent 
+      :online-count="deviceStore.onlineCount"
+      :offline-count="deviceStore.offlineCount" 
+      :total-devices="deviceStore.totalDevices"
+      @open-faq="openFaqModal"
+      @show-remove-confirm="showRemoveDialog"
+      @show-add-device="openAddDeviceDialog"
+      @show-add-user="openAddUserDialog"
+      @reload-users="handleReloadUsers"
+    />
     </Sidebar>
 
+    <Dialog 
+  v-model:visible="showAddUserDialog" 
+  header="Add New User" 
+  :modal="true"
+  :blockScroll="true" 
+  :style="{ width: '450px' }"
+>
+  <div class="add-user-form">
+    <div class="form-field mb-3">
+      <label class="block mb-1 font-semibold">IP Address *</label>
+      <InputText 
+        v-model="newUser.ip" 
+        placeholder="10.9.1.100" 
+        class="w-full"
+        :class="{ 'p-invalid': ipError }"
+        @input="ipError = false"
+      />
+      <small v-if="ipError" class="p-error">Please enter a valid IP address</small>
+    </div>
+    <div class="form-field mb-3">
+      <label class="block mb-1 font-semibold">Name *</label>
+      <InputText 
+        v-model="newUser.name" 
+        placeholder="Ivanov.I" 
+        class="w-full"
+        :class="{ 'p-invalid': nameError }"
+        @input="nameError = false"
+      />
+      <small v-if="nameError" class="p-error">Name is required</small>
+    </div>
+    <small class="text-color-secondary mt-2 block">* Required fields</small>
+  </div>
+  <template #footer>
+    <Button 
+      label="Cancel" 
+      icon="pi pi-times" 
+      class="p-button-text" 
+      @click="showAddUserDialog = false" 
+    />
+    <Button 
+      label="Add User" 
+      icon="pi pi-user-plus" 
+      class="p-button-success" 
+      @click="addUser" 
+      :disabled="!newUser.ip || !newUser.name"
+      :loading="isAddingUser"
+    />
+  </template>
+    </Dialog>
+
+    <Dialog v-model:visible="showRemoveConfirm" modal header="Confirm Device Removal" :style="{ width: '450px' }">
+      <div style="display: flex; align-items: flex-start; padding: 0.5rem 0;">
+        <i class="pi pi-exclamation-triangle mr-3" style="font-size: 2rem; color: #e74c3c;" />
+        <div>
+          <h4 class="mb-2">Remove {{ devicesToRemove.length }} device{{ devicesToRemove.length > 1 ? 's' : '' }}?</h4>
+          <p class="text-color-secondary mb-0">This will permanently remove:</p>
+          <ul style="max-height: 150px; overflow-y: auto; margin-top: 0.5rem;">
+            <li v-for="device in devicesToRemove" :key="device.id">
+              <strong>{{ device.hwId }}</strong> - {{ device.shortName }}
+            </li>
+          </ul>
+        </div>
+      </div>
+      <template #footer>
+        <Button label="Back to menu" icon="pi pi-times" class="p-button-text" @click="cancelRemove" />
+        <Button label="Remove" icon="pi pi-trash" class="p-button-danger" @click="executeRemove" :loading="isRemoving" />
+      </template>
+    </Dialog>
+    <Dialog v-model:visible="showAddDeviceForm" modal header="Add New Device" :style="{ width: '700px' }">
+  <div class="add-device-form">
+    <div class="form-grid">
+      <div class="form-field"><label>ID *</label><InputText v-model="newDevice.id" class="w-full" /></div>
+      <div class="form-field"><label>HW ID *</label><InputText v-model="newDevice.hwId" class="w-full" /></div>
+      <div class="form-field"><label>Short Name</label><InputText v-model="newDevice.shortName" class="w-full" /></div>
+      <div class="form-field"><label>Type</label><InputText v-model="newDevice.type" class="w-full" /></div>
+      <div class="form-field"><label>Country</label><InputText v-model="newDevice.country" class="w-full" /></div>
+      <div class="form-field"><label>IP</label><InputText v-model="newDevice.ip" class="w-full" /></div>
+      <div class="form-field"><label>Check URL</label><InputText v-model="newDevice.checkUrl" class="w-full" /></div>
+      <div class="form-field"><label>URL</label><InputText v-model="newDevice.URL" class="w-full" /></div>
+      <div class="form-field"><label>Console Port</label><InputText v-model="newDevice.consolePort" class="w-full" /></div>
+      <div class="form-field"><label>Reset Port</label><InputText v-model="newDevice.resetPort" class="w-full" /></div>
+      <div class="form-field"><label>Reboot Port</label><InputText v-model="newDevice.rebootPort" class="w-full" /></div>
+      <div class="form-field"><label>SSH Container</label><InputText v-model="newDevice.sshContainer" class="w-full" /></div>
+      <div class="form-field"><label>VNC URL</label><InputText v-model="newDevice.vncUrl" class="w-full" /></div>
+      <div class="form-field"><label>Jerome ID</label><InputText v-model="newDevice.jeromeID" class="w-full" /></div>
+      <div class="form-field"><label>Jerome Class</label><InputText v-model="newDevice.jeromeClass" class="w-full" /></div>
+      <div class="form-field"><label>VLAN Local</label><InputText v-model="newDevice.vlanLocal" class="w-full" /></div>
+      <div class="form-field"><label>Switch ID</label><InputText v-model="newDevice.switchID" class="w-full" /></div>
+      <div class="form-field"><label>Switch Port WAN</label><InputText v-model="newDevice.switchPortWan" class="w-full" /></div>
+      <div class="form-field"><label>Switch Port LAN</label><InputText v-model="newDevice.switchPortLan" class="w-full" /></div>
+      <div class="form-field"><label>Console ID</label><InputText v-model="newDevice.consoleID" class="w-full" /></div>
+      <div class="form-field"><label>MAC Address</label><InputText v-model="newDevice.macAddress" class="w-full" /></div>
+      <div class="form-field"><label>Servicetag</label><InputText v-model="newDevice.servicetag" class="w-full" /></div>
+      <div class="form-field"><label>Serial Number</label><InputText v-model="newDevice.serialNumber" class="w-full" /></div>
+      <div class="form-field"><label>TFTP Interface</label><InputText v-model="newDevice.tftpInterfaceName" class="w-full" /></div>
+    </div>
+  </div>
+  <template #footer>
+    <Button label="Cancel" icon="pi pi-times" class="p-button-text" @click="cancelAddDevice" />
+    <Button label="Add Device" icon="pi pi-plus" class="p-button-success" @click="addNewDevice" :loading="isAddingDevice" />
+  </template>
+    </Dialog>
     <div class="main-content">
       <AppHeader
         :is-sidebar-open="isSidebarOpen"
@@ -26,7 +132,7 @@
         :cron-enabled="cronStore.cronEnabled"
         :search-query="searchQuery"
         @toggle-sidebar="toggleSidebar"
-        @toggle-day="toggleDay"
+        @change-password="showChangePasswordDialog = true"
         @toggle-cron="toggleCron"
         @update-search="searchQuery = $event"
         @copy-password="copyToClipboard"
@@ -41,6 +147,28 @@
     </div>
 
     <ChatWidget ref="chatComponent" :users="users" />
+    <Dialog v-model:visible="showChangePasswordDialog" modal header="Change Device Password" :style="{ width: '450px' }">
+        <div style="display: flex; align-items: flex-start; padding: 0.5rem 0;">
+          <i class="pi pi-exclamation-triangle mr-3" style="font-size: 2rem; color: #f39c12;" />
+          <div>
+            <h4 class="mb-2">Generate new password?</h4>
+            <p class="text-color-secondary mb-0">
+              This will change the password for <strong>all devices</strong>.
+            </p>
+            <p class="text-color-secondary mt-2">
+              Current password: <strong>{{ passwordOfDays[0].password }}</strong>
+            </p>
+            <p class="text-color-secondary mt-2">
+              <i class="pi pi-info-circle mr-1"></i>
+              After generating a new password, you must manually apply it to each device for access.
+            </p>
+          </div>
+        </div>
+        <template #footer>
+          <Button label="Cancel" icon="pi pi-times" class="p-button-text" @click="showChangePasswordDialog = false" />
+          <Button label="Generate New Password" icon="pi pi-key" class="p-button-warning" @click="changePassword" :loading="isChangingPassword" />
+        </template>
+    </Dialog>
   </div>
 </template>
 
@@ -60,13 +188,224 @@ import SidebarContent from '@/components/SidebarContent.vue'
 import ChatWidget from '@/components/chat/ChatWidget.vue'
 import GlobalProgressDialog from '@/components/GlobalProgressDialog.vue' 
 import PrimeDeviceModal from './components/PrimeDeviceModal.vue'
-
-// ✅ Убедитесь, что все импорты корректны
-// Удаляем импорт FileManager из App.vue, так как он используется только в AppHeader
-
-// Socket
+import InputText from 'primevue/inputtext'
 import { socket } from '@/socket'
+import Dialog from 'primevue/dialog'
+import Button from 'primevue/button'
 
+const ipError = ref(false)
+const nameError = ref(false)
+const isAddingUser = ref(false)
+// Удаляем импорт FileManager из App.vue, так как он используется только в AppHeader
+const showChangePasswordDialog = ref(false)
+const isChangingPassword = ref(false)
+const changePassword = () => {
+  isChangingPassword.value = true
+  socket.emit('password:generate', (response) => {
+    isChangingPassword.value = false
+    showChangePasswordDialog.value = false
+    if (response?.success) {
+      toast.add({ severity: 'success', summary: 'Password Changed', detail: 'New password generated', life: 3000 })
+    } else {
+      toast.add({ severity: 'error', summary: 'Error', detail: response?.error || 'Failed', life: 5000 })
+    }
+  })
+}
+const showAddUserDialog = ref(false)
+const newUser = ref({ ip: '', name: '' })
+
+const openAddUserDialog = () => {
+  newUser.value = { ip: '', name: '' }
+  showAddUserDialog.value = true
+}
+const validateIP = (ip) => {
+  const ipRegex = /^(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$/
+  return ipRegex.test(ip)
+}
+const addUser = () => {
+  ipError.value = false
+  nameError.value = false
+  
+  // Валидация
+  if (!newUser.value.ip || !newUser.value.ip.trim()) {
+    ipError.value = true
+    return
+  }
+  
+  if (!validateIP(newUser.value.ip.trim())) {
+    ipError.value = true
+    return
+  }
+  
+  if (!newUser.value.name || !newUser.value.name.trim()) {
+    nameError.value = true
+    return
+  }
+  
+  isAddingUser.value = true
+  
+  socket.emit('user:add', {
+    ip: newUser.value.ip.trim(),
+    name: newUser.value.name.trim()
+  }, (response) => {
+    isAddingUser.value = false
+    if (response?.success) {
+      toast.add({ 
+        severity: 'success', 
+        summary: 'User Added', 
+        detail: `${newUser.value.name} added successfully`, 
+        life: 3000 
+      })
+      showAddUserDialog.value = false
+    } else {
+      toast.add({ 
+        severity: 'error', 
+        summary: 'Error', 
+        detail: response?.error || 'Failed to add user', 
+        life: 5000 
+      })
+    }
+  })
+}
+
+const handleReloadUsers = () => {
+  socket.emit('user:reload', (response) => {
+    if (response?.success) {
+      toast.add({ 
+        severity: 'success', 
+        summary: 'Users Reloaded', 
+        detail: `${response.usersCount || 'All'} users loaded`, 
+        life: 3000 
+      })
+    } else {
+      toast.add({ 
+        severity: 'error', 
+        summary: 'Error', 
+        detail: response?.error || 'Failed to reload users', 
+        life: 5000 
+      })
+    }
+  })
+}
+const showRemoveConfirm = ref(false)
+const devicesToRemove = ref([])
+const isRemoving = ref(false)
+const showAddDeviceForm = ref(false)
+const isAddingDevice = ref(false)
+const newDevice = ref({
+  id: '', hwId: '', type: '', country: '', ip: '',
+  shortName: '', checkUrl: '', URL: '', consolePort: '',
+  resetPort: '', rebootPort: '', sshContainer: '', vncUrl: '',
+  jeromeID: '', jeromeClass: '', vlanLocal: '', switchID: '', switchIDWan: '',
+  switchPortWan: '', switchPortLan: '', consoleID: '',
+  macAddress: '', servicetag: '', serialNumber: '', tftpInterfaceName: ''
+})
+const openAddDeviceDialog = () => {
+  newDevice.value = {
+    id: '',
+    type: '', country: '', ip: '',
+    shortName: '', checkUrl: '', URL: '', consolePort: '',
+    resetPort: '', rebootPort: '', sshContainer: '', vncUrl: '',
+    jeromeID: '', jeromeClass: '', vlanLocal: '', switchID: '', switchIDWan: '',
+    switchPortWan: '', switchPortLan: '', consoleID: '',
+    macAddress: '', servicetag: '', serialNumber: '', tftpInterfaceName: '', hwId: ''
+  }
+  isSidebarOpen.value = false
+  showAddDeviceForm.value = true
+}
+
+const cancelAddDevice = () => {
+  showAddDeviceForm.value = false
+  isSidebarOpen.value = true
+}
+
+const addNewDevice = async () => {
+  // Валидация
+  if (!newDevice.value.id || !newDevice.value.hwId) {
+    toast.add({ 
+      severity: 'warn', 
+      summary: 'Required Fields', 
+      detail: 'ID and HW ID are required', 
+      life: 3000 
+    })
+    return
+  }
+  
+  isAddingDevice.value = true
+  
+  try {
+    // ✅ Используем метод store
+    await deviceStore.addDevice({ ...newDevice.value })
+    
+    toast.add({ 
+      severity: 'success', 
+      summary: 'Device Added', 
+      detail: `${newDevice.value.hwId} added successfully`, 
+      life: 3000 
+    })
+    
+    showAddDeviceForm.value = false
+    
+    // Перезагружаем конфиги для синхронизации
+    await deviceStore.reloadConfigs()
+    
+  } catch (error) {
+    console.error('❌ Failed to add device:', error)
+    toast.add({ 
+      severity: 'error', 
+      summary: 'Error', 
+      detail: error.message || 'Failed to add device', 
+      life: 5000 
+    })
+  } finally {
+    isAddingDevice.value = false
+  }
+}
+
+const showRemoveDialog = (devices) => {
+  devicesToRemove.value = devices
+  isSidebarOpen.value = false  // Закрываем сайдбар
+  showRemoveConfirm.value = true
+}
+const cancelRemove = () => {
+  showRemoveConfirm.value = false
+  isSidebarOpen.value = true  
+}
+const executeRemove = async () => {
+  if (devicesToRemove.value.length === 0) return
+  
+  isRemoving.value = true
+  
+  try {
+    // Удаляем устройства последовательно
+    for (const device of devicesToRemove.value) {
+      await deviceStore.removeDevice(device.id)
+    }
+    
+    toast.add({ 
+      severity: 'success', 
+      summary: 'Devices Removed', 
+      detail: `Successfully removed ${devicesToRemove.value.length} device(s)`, 
+      life: 3000 
+    })
+    
+    showRemoveConfirm.value = false
+    
+    // Перезагружаем конфиги для синхронизации
+    await deviceStore.reloadConfigs()
+    
+  } catch (error) {
+    console.error('❌ Failed to remove devices:', error)
+    toast.add({ 
+      severity: 'error', 
+      summary: 'Error', 
+      detail: error.message || 'Failed to remove devices', 
+      life: 5000 
+    })
+  } finally {
+    isRemoving.value = false
+  }
+}
 const unsubscribeCallbacks = ref([])
 const toast = useToast()
 
@@ -206,7 +545,6 @@ watch(
   (newModes) => {
     const deviceCount = Object.keys(newModes).length;
     if (deviceCount > 0) {
-      // Логирование
     }
   },
   { deep: true, flush: 'post' }
@@ -218,10 +556,8 @@ let timer
 onMounted(() => {
   console.log('📱 App mounted - starting initialization');
   
-  // Инициализация
   initializeApp();
 
-  // Socket слушатели
   if (socket) {
     socket.on('DAILY_PASSWORDS', (data) => {
       if (data && data.today && data.yesterday) {
@@ -250,9 +586,6 @@ onMounted(() => {
     });
   }
 
-  // Слушатель событий бронирования
-  window.addEventListener('device-booked', handleDeviceBooked);
-  
   // Инициализация слушателей в store
   if (deviceStore && deviceStore.initializeSocketListeners) {
     deviceStore.initializeSocketListeners();
@@ -316,6 +649,7 @@ onUnmounted(() => {
   
   console.log('✅ App.vue cleanup completed')
 })
+
 </script>
 
 <style>
@@ -374,4 +708,11 @@ onUnmounted(() => {
     max-width: 300px;
   }
 }
+.add-device-form { max-height: 60vh; overflow-y: auto; }
+.form-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 0.75rem; }
+.form-field { display: flex; flex-direction: column; gap: 0.25rem; }
+.form-field label { font-size: 0.75rem; font-weight: 600; color: var(--text-color-secondary); }
+
+@media (max-width: 900px) { .form-grid { grid-template-columns: 1fr 1fr; } }
+@media (max-width: 600px) { .form-grid { grid-template-columns: 1fr; } }
 </style>
