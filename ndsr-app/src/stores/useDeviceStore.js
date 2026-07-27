@@ -59,10 +59,10 @@ export const useDeviceStore = defineStore('devices', () => {
     return user?.name || `User ${userIp}`
   }
   
-    const getDeviceWanType = (deviceId) => {
-      const device = devices.value.find(d => d.id === deviceId)
-      return device?.wanType || null
-    }
+  const getDeviceWanType = (deviceId) => {
+    const device = devices.value.find(d => d.id === deviceId)
+    return device?.currentWanType || device?.wanType || null
+  }
   // ✅ ДОБАВЛЕНА ФУНКЦИЯ для получения по ID (если нужно)
   const getUserById = (userId) => {
     if (!userId || !users.value.length) return null
@@ -435,6 +435,14 @@ const updateDeviceName = (deviceId, newShortName) => {
         // console.log(`✅ Updated ${data.successful.length} devices in store`);
       }
     });
+
+      socket.on('device:wanTypeUpdated', (data) => {
+        const device = devices.value.find(d => d.id === data.deviceId)
+        if (device) {
+          device.currentWanType = data.type
+        }
+    })
+      
   } 
 
   const cleanupSocketListeners = () => {
@@ -444,6 +452,7 @@ const updateDeviceName = (deviceId, newShortName) => {
     socket.off('device:status')
     socket.off('device:statuses:initial')
     socket.off('device:batchBookingUpdated')
+    socket.off('device:wanTypeUpdated')
   }
 
   // UI actions

@@ -2,6 +2,7 @@
   <div class="devices-management">
     <BookedDevicesTable 
       :loading="deviceStore.loading"
+      :wan-types="wanTypes"
       @open-modal="handleOpenModal"
       @open-console="handleOpenConsole"
       @open-change-mode="handleOpenChangeMode"

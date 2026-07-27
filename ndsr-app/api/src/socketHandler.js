@@ -1124,27 +1124,53 @@ function setupEvents(socket, io) {
       const expiresAt = Math.floor(Date.now() / 1000) + duration;
       const remainingTime = duration;
       
-      // ✅ СНАЧАЛА БРОНИРУЕМ - МГНОВЕННО
+      // Бронируем
       deviceBookings.set(deviceId, {
         bookedBy: bookedBy,
         expiresAt,
         accessPassword: dailyPasswords.today.value
       });
       
-      // ✅ Получаем статус из кэша (если есть)
-      const cachedPowerStatus = devicePowerStatus.get(deviceId);
+      // Получаем статус из кэша
+      let cachedPowerStatus = devicePowerStatus.get(deviceId);
       
-      // ✅ ОТВЕЧАЕМ СРАЗУ с тем статусом, который есть в кэше
+      // Если статус есть и валидный - отвечаем сразу
+      if (cachedPowerStatus && cachedPowerStatus !== 'unknown') {
+        const response = { 
+          success: true, 
+          expiresAt, 
+          accessPassword: dailyPasswords.today.value,
+          powerStatus: cachedPowerStatus
+        };
+        
+        callback?.(response);
+        
+        io.emit('device:bookingUpdated', {
+          deviceId: deviceId,
+          booking: {
+            isBooked: true,
+            bookedBy: bookedBy,
+            accessPassword: dailyPasswords.today.value,
+            expiresAt: expiresAt,
+            remainingTime: remainingTime
+          },
+          powerStatus: cachedPowerStatus
+        });
+        
+        return;
+      }
+      
+      // Если статуса нет - НЕ ждем, отвечаем сразу с 'unknown'
+      // и запускаем получение в фоне с уведомлением клиента
       const response = { 
         success: true, 
         expiresAt, 
         accessPassword: dailyPasswords.today.value,
-        powerStatus: cachedPowerStatus || 'unknown'
+        powerStatus: 'unknown'
       };
       
       callback?.(response);
       
-      // ✅ ОТПРАВЛЯЕМ ОБНОВЛЕНИЕ БРОНИРОВАНИЯ ВСЕМ (с текущим статусом)
       io.emit('device:bookingUpdated', {
         deviceId: deviceId,
         booking: {
@@ -1154,33 +1180,26 @@ function setupEvents(socket, io) {
           expiresAt: expiresAt,
           remainingTime: remainingTime
         },
-        powerStatus: cachedPowerStatus || 'unknown'
+        powerStatus: 'unknown'
       });
       
-      // ✅ АСИНХРОННО ПОЛУЧАЕМ СТАТУС В ФОНЕ, ЕСЛИ ЕГО НЕТ В КЭШЕ
-      if (!cachedPowerStatus) {
-        (async () => {
-          try {
-            console.log(`[BOOK] Fetching power status for ${deviceId} in background...`);
-            const powerStatus = await getPortPowerStatus(deviceId);
-            devicePowerStatus.set(deviceId, powerStatus.power);
-            console.log(`[BOOK] Power status for ${deviceId}: ${powerStatus.power}`);
-            
-            // ✅ Отправляем ТОЛЬКО обновление статуса (не бронирования)
-            socket.emit('device:powerStatus', {
-              deviceId: deviceId,
-              status: powerStatus.power,
-              timestamp: Date.now(),
-              changed: false
-            });
-            
-          } catch (error) {
-            console.error(`[BOOK] Failed to get power status for ${deviceId}:`, error.message);
-          }
-        })();
-      } else {
-        console.log(`[BOOK] Using cached power status for ${deviceId}: ${cachedPowerStatus}`);
-      }
+      // Фоновое получение статуса
+      getPortPowerStatus(deviceId)
+        .then(powerStatusResult => {
+          const status = powerStatusResult.power || powerStatusResult;
+          devicePowerStatus.set(deviceId, status);
+          
+          // Отправляем обновление клиенту
+          io.emit('device:powerStatus', {
+            deviceId: deviceId,
+            status: status,
+            timestamp: Date.now(),
+            changed: true
+          });
+        })
+        .catch(error => {
+          console.error(`[BOOK] Background power status failed:`, error.message);
+        });
       
     } catch (error) {
       callback?.({ success: false, error: error.message });

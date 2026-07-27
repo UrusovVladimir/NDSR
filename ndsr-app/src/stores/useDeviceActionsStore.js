@@ -73,6 +73,12 @@ export const useDeviceActionsStore = defineStore('deviceActions', () => {
     return powerStatuses.value.has(deviceId)
   }
 
+  const isLoadingPowerStatus = (deviceId) => {
+    const status = powerStatuses.value.get(deviceId)
+    // Статус загружается, если его нет или он 'unknown'
+    return !status || status === 'unknown'
+  }
+
   // ✅ Геттеры для TFTP интерфейсов
   const getTftpInterfaceIp = async (deviceId, tftpInterfaceName) => {
     return new Promise((resolve, reject) => {
@@ -713,6 +719,7 @@ export const useDeviceActionsStore = defineStore('deviceActions', () => {
     silentPowerDevice,
     cleanupPowerListeners,
     initializePowerListeners,
-    requestPowerStatus
+    requestPowerStatus,
+    isLoadingPowerStatus
   }
 })

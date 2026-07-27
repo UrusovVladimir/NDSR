@@ -1047,25 +1047,39 @@ const getPowerActionSeverity = (action) => {
     }
     return severities[action] || 'secondary'
 }
-
-// ✅ Обновленные методы получения статуса (будут пересчитываться при изменении powerStatusVersion)
+// Замените эти методы:
 const getPowerStatusText = (deviceId) => {
-    // Добавляем зависимость от версии для реактивности
-    const _ = deviceActionsStore.powerStatusVersion
-    if (!deviceActionsStore.hasPowerStatus(deviceId)) return 'Loading...'
-    return deviceActionsStore.isPoweredOn(deviceId) ? 'On' : 'Off'
+  const _ = deviceActionsStore.powerStatusVersion
+  
+  if (deviceActionsStore.isLoadingPowerStatus(deviceId)) {
+    return 'Checking...'
+  }
+  
+  return deviceActionsStore.isPoweredOn(deviceId) ? 'On' : 'Off'
 }
 
 const getPowerStatusIcon = (deviceId) => {
-    const _ = deviceActionsStore.powerStatusVersion
-    if (!deviceActionsStore.hasPowerStatus(deviceId)) return 'pi pi-spinner pi-spin'
-    return deviceActionsStore.isPoweredOn(deviceId) ? 'pi pi-circle-fill power-on' : 'pi pi-circle-fill power-off'
+  const _ = deviceActionsStore.powerStatusVersion
+  
+  if (deviceActionsStore.isLoadingPowerStatus(deviceId)) {
+    return 'pi pi-spinner pi-spin'
+  }
+  
+  return deviceActionsStore.isPoweredOn(deviceId) 
+    ? 'pi pi-circle-fill power-on' 
+    : 'pi pi-circle-fill power-off'
 }
 
 const getPowerStatusClass = (deviceId) => {
-    const _ = deviceActionsStore.powerStatusVersion
-    if (!deviceActionsStore.hasPowerStatus(deviceId)) return 'text-secondary'
-    return deviceActionsStore.isPoweredOn(deviceId) ? 'text-green-600' : 'text-gray-500'
+  const _ = deviceActionsStore.powerStatusVersion
+  
+  if (deviceActionsStore.isLoadingPowerStatus(deviceId)) {
+    return 'text-warning'
+  }
+  
+  return deviceActionsStore.isPoweredOn(deviceId) 
+    ? 'text-green-600' 
+    : 'text-gray-500'
 }
 
 const canPowerManage = (device) => {
@@ -1652,30 +1666,27 @@ watch(
     { deep: true, flush: 'post' }
 )
 
-watch(() => deviceStore.bookedDevices, () => {
-    if (isMounted.value) safeUpdateTable()
-}, { deep: true })
-// В releaseBooking и других методах, но проще всего добавить watch на bookedDevices
+
 watch(() => deviceStore.bookedDevices.length, (newLength, oldLength) => {
-    if (newLength > oldLength && newLength > 0 && isMounted.value) {
-        // Запрашиваем статусы для новых устройств
-        deviceStore.bookedDevices.forEach(async (device) => {
-            if (device.rebootPort && !deviceActionsStore.hasPowerStatus(device.id)) {
-                try {
-                    await deviceActionsStore.requestPowerStatus(device.id);
-                    // console.log(`✅ Power status requested for ${device.hwId}`);
-                } catch (error) {
-                    // console.error(`Failed to get power status for ${device.hwId}:`, error);
-                }
-            }
-        });
-        
-        setTimeout(() => {
-            checkAllFirmwares();
-            safeUpdateTable();
-        }, 3000);
-    }
-});
+  if (newLength > oldLength && newLength > 0 && isMounted.value) {
+    // Запрашиваем статусы для новых устройств
+    deviceStore.bookedDevices.forEach(async (device) => {
+      if (device.rebootPort) {
+        try {
+          // ✅ Явно запрашиваем статус
+          await deviceActionsStore.requestPowerStatus(device.id)
+        } catch (error) {
+          // Статус может не определиться - это нормально
+        }
+      }
+    })
+    
+    setTimeout(() => {
+      checkAllFirmwares()
+      safeUpdateTable()
+    }, 3000)
+  }
+})
 // onMounted(() => {
 //     startTimer()
 //     isMounted.value = true
