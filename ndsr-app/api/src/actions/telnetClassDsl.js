@@ -36,23 +36,44 @@ class TelnetConnection {
         }
     }
 
-    async executeCommand(cmd, arg, prompt) {
-        if (!this.connection) {
-            throw new Error("Соединение не установлено!!Аварийный выход");
+    async executeCommand(command, params = null, promptRegex) {
+        // ✅ ПРОВЕРЯЕМ СОЕДИНЕНИЕ ПЕРЕД ВЫПОЛНЕНИЕМ
+        if (!this.connection || !this.connection.isConnected) {
+            console.error(`❌ Telnet connection is not established. Reconnecting...`);
+            await this.connect();
         }
-
-        const command = arg ? `${cmd} ${arg}` : cmd;
+        
+        let fullCommand = command;
+        if (params !== null && params !== undefined) {
+            fullCommand = `${command} ${params}`;
+        }
+        
+        console.log(`📤 Executing command: ${fullCommand}`);
+        
         try {
-            const res = await this.connection.exec(command, { shellPrompt: prompt });
-            console.log(command, res);
-            return res;
+            const result = await this.connection.exec(fullCommand, {
+                shellPrompt: promptRegex,
+                timeout: 15000,
+                execCommand: false
+            });
+            return result;
         } catch (error) {
-            console.error("Ошибка выполнения команды:", error);
+            console.error(`❌ Error executing command: ${fullCommand}`, error.message);
             throw error;
         }
     }
-}
 
+    async reconnect() {
+        if (this.connection) {
+            try {
+                await this.connection.end();
+            } catch (e) {
+                // ignore
+            }
+        }
+        await this.connect();
+    }
+}
 export{
     TelnetConnection
 }

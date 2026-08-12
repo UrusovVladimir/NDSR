@@ -288,6 +288,27 @@ function getAllBadges() {
 }
 
 
+// ==================== УПРАВЛЕНИЕ ПАРОЛЕМ УСТРОЙСТВА ====================
+
+function getDevicePassword(deviceId) {
+    const device = getDeviceById(deviceId);
+    if (!device) return null;
+    return device.devicePassword || null;
+}
+
+function setDevicePassword(deviceId, password) {
+    const device = getDeviceById(deviceId);
+    if (!device) {
+        return { success: false, error: 'Device not found' };
+    }
+    
+    device.devicePassword = password;
+    saveConfig(process.env.DEVICES_CONFIG_PATH, devices);
+    
+    console.log(`✅ Password set for device ${deviceId}`);
+    return { success: true, deviceId, password };
+}
+
 
 // ==================== ПЕРЕЧИТЫВАНИЕ КОНФИГОВ ====================
 
@@ -336,5 +357,10 @@ export {
     setDeviceBadge,
     removeDeviceBadge,
     getAllBadges,
-    badgesConfig
+    badgesConfig,
+    saveConfig,
+
+    //Password
+    getDevicePassword,
+    setDevicePassword
 }

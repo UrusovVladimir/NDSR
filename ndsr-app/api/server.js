@@ -47,6 +47,7 @@ const storage = multer.diskStorage({
     }
 });
 
+// ✅ Измените fileFilter для поддержки .bin и .txt
 const upload = multer({
     storage,
     limits: { 
@@ -54,12 +55,13 @@ const upload = multer({
         files: 50
     },
     fileFilter: (req, file, cb) => {
-        const allowedTypes = ['.bin'];
+        // ✅ Разрешаем .bin и .txt файлы
+        const allowedTypes = ['.bin', '.txt'];
         const ext = path.extname(file.originalname).toLowerCase();
         if (allowedTypes.includes(ext)) {
             cb(null, true);
         } else {
-            cb(new Error('Invalid file type. Allowed: .bin'));
+            cb(new Error(`Invalid file type "${ext}". Allowed: ${allowedTypes.join(', ')}`));
         }
     }
 });

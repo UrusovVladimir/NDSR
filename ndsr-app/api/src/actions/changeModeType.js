@@ -915,21 +915,50 @@ export const disconnectAndChangeToRouter = async (deviceId, routerId, password, 
         // ✅ ОТПРАВЛЯЕМ СТАТУС "В ПРОЦЕССЕ"
         broadcastDeviceStatus(io, deviceId, 100);
 
-        // ✅ ИСПОЛЬЗУЕМ ПОЛНОЕ ОТКЛЮЧЕНИЕ ИЗ DISCONNECT MANAGER
+        // ✅ ШАГ 1: ОТКЛЮЧАЕМ WAN (включая Dual WAN)
+        console.log(`🔧 Отключаем WAN для устройства ${deviceId}...`);
+        
+        // Проверяем, является ли текущий WAN Dual WAN
+        const isDualWan = device.currentWanType && 
+                         typeof device.currentWanType === 'object' && 
+                         device.currentWanType.type === 'dual_wan';
+        
+        if (isDualWan) {
+            console.log(`🔧 Обнаружен Dual WAN, отключаем оба порта...`);
+            // Отключаем оба WAN порта
+            try {
+                // Используем changeWanType с null для полного отключения
+                const { changeWanType } = await import("./changeWanType.js");
+                await changeWanType(deviceId, null, universalPromptRegex);
+                console.log(`✅ Dual WAN отключен для устройства ${deviceId}`);
+            } catch (wanError) {
+                console.warn(`⚠️ Ошибка при отключении Dual WAN: ${wanError.message}`);
+                // Продолжаем выполнение, даже если не удалось отключить WAN
+            }
+        } else {
+            console.log(`🔧 Обычный WAN, отключаем...`);
+            try {
+                const { changeWanType } = await import("./changeWanType.js");
+                await changeWanType(deviceId, null, universalPromptRegex);
+                console.log(`✅ WAN отключен для устройства ${deviceId}`);
+            } catch (wanError) {
+                console.warn(`⚠️ Ошибка при отключении WAN: ${wanError.message}`);
+            }
+        }
+
+        // ✅ ШАГ 2: ИСПОЛЬЗУЕМ ПОЛНОЕ ОТКЛЮЧЕНИЕ ИЗ DISCONNECT MANAGER
         console.log(`🔧 Запускаем полное отключение через DisconnectManager...`);
         await DisconnectManager.fullDisconnect(deviceId, routerId, password, url);
 
-        // ✅ ВАЖНОЕ ИСПРАВЛЕНИЕ: ДАЕМ ВРЕМЯ НА ПЕРЕЗАГРУЗКУ ПЕРЕД ПРОВЕРКОЙ
+        // ✅ ШАГ 3: ДАЕМ ВРЕМЯ НА ПЕРЕЗАГРУЗКУ
         console.log(`⏳ Даем время на перезагрузку устройства (30 секунд)...`);
         await new Promise(resolve => setTimeout(resolve, 30000));
 
-        // ✅ ЖДЕМ ПОЛНОЙ ЗАГРУЗКИ УСТРОЙСТВА В РЕЖИМЕ ROUTER
+        // ✅ ШАГ 4: ЖДЕМ ПОЛНОЙ ЗАГРУЗКИ УСТРОЙСТВА В РЕЖИМЕ ROUTER
         console.log(`⏳ Ожидание полной загрузки устройства в режиме router...`);
         
-        // ✅ ИСПРАВЛЕНИЕ: для проверки используем device.checkUrl
         const checkUrl = device.checkUrl;
         
-        // ✅ УПРОЩЕННАЯ ПРОВЕРКА: делаем быструю проверку вместо долгого ожидания
         let deviceOnline = false;
         for (let attempt = 1; attempt <= 10; attempt++) {
           try {
@@ -947,7 +976,7 @@ export const disconnectAndChangeToRouter = async (deviceId, routerId, password, 
           }
         }
 
-        // ✅ ОТПРАВЛЯЕМ ФИНАЛЬНЫЙ СТАТУС
+        // ✅ ШАГ 5: ОТПРАВЛЯЕМ ФИНАЛЬНЫЙ СТАТУС
         try {
             const finalDeviceStatus = deviceOnline ? 200 : 0;
             console.log(`🎯 Финальный статус устройства: ${finalDeviceStatus}`);
@@ -964,6 +993,7 @@ export const disconnectAndChangeToRouter = async (deviceId, routerId, password, 
             broadcastDeviceStatus(io, deviceId, 0);
         }
 
+        // ✅ ОТПРАВЛЯЕМ ОБНОВЛЕНИЕ РЕЖИМА
         if (io) {
             io.emit('device:modeUpdated', {
                 deviceId: deviceId,
@@ -976,13 +1006,15 @@ export const disconnectAndChangeToRouter = async (deviceId, routerId, password, 
 
         return { 
             success: true, 
-            message: `Устройство отключено от роутера и переведено в режим router`,
+            message: `Устройство отключено от роутера и переведено в режим router. WAN отключен${isDualWan ? ' (оба порта)' : ''}.`,
             previousMode: 'extender',
             newMode: 'router',
             mwsConnected: false,
             modeChanged: true,
             rebooted: true,
-            deviceOnline: deviceOnline
+            deviceOnline: deviceOnline,
+            wanDisabled: true,
+            dualWanDisabled: isDualWan
         };
 
     } catch (error) {
@@ -1008,6 +1040,8 @@ export const disconnectAndChangeToRouter = async (deviceId, routerId, password, 
         };
     }
 };
+
+
 export {
   waitForDeviceBoot
 };

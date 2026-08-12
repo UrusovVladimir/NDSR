@@ -7,9 +7,9 @@
     :style="getModalStyle"
     :breakpoints="{ '960px': '85vw', '641px': '95vw' }"
     :contentStyle="{ padding: mobileView ? '1rem' : '1.5rem' }"
-    :closable="!isLoading && !operationInProgress"
-    :closeOnEscape="!isLoading && !operationInProgress"
-    :dismissableMask="!isLoading && !operationInProgress"
+    :closable="!isLoading && !operationInProgress && !showDualWanConfirm"
+    :closeOnEscape="!isLoading && !operationInProgress && !showDualWanConfirm"
+    :dismissableMask="!isLoading && !operationInProgress && !showDualWanConfirm"
     class="optimized-modal mws-connection-modal"
   >
     <div v-if="isLoading || operationInProgress" class="operation-progress">
@@ -30,24 +30,87 @@
 
     <!-- WAN Types Modal -->
     <div v-if="modalType === 'wanTypes'" class="modal-content">
+      <!-- Основной выбор WAN типа -->
       <div class="options-grid" :class="{ 'opacity-50 pointer-events-none': isWanOperationInProgress }">
         <div 
           v-for="wan in filteredWanTypes" 
-          :key="wan.vlanId" 
+          :key="wan.vlanId || wan.type" 
           class="option-item"
-          :class="{ 'option-selected': modalValue === wan.vlanId }"
-          @click="!isWanOperationInProgress && (modalValue = wan.vlanId)"
+          :class="{ 
+            'option-selected': modalValue === (wan.vlanId || wan._id),
+            'option-dual-wan-selected': wan.type === 'Dual WAN' && isDualWanSelected
+          }"
+          @click="!isWanOperationInProgress && selectWanType(wan)"
         >
           <RadioButton 
             v-model="modalValue" 
-            :value="wan.vlanId" 
-            :inputId="'wan_' + wan.vlanId"
+            :value="wan.vlanId || wan._id" 
+            :inputId="'wan_' + (wan.vlanId || wan._id)"
             :disabled="isLoading || operationInProgress"
           />
-          <label :for="'wan_' + wan.vlanId" class="option-label">{{ wan.type }}</label>
+          <label :for="'wan_' + (wan.vlanId || wan._id)" class="option-label">{{ wan.type }}</label>
         </div>
       </div>
       
+      <!-- Dual WAN Configuration -->
+      <div v-if="isDualWanSelected" class="dual-wan-configuration mt-4">
+        <Divider />
+        <h5 class="section-title">Dual WAN Configuration</h5>
+        
+        <!-- WAN 1 -->
+        <div class="wan-config-section">
+          <div class="wan-config-header">
+            <i class="pi pi-network mr-2 text-primary"></i>
+            <strong>WAN 1</strong>
+            <Tag value="Primary (Port 0)" severity="info" size="small" />
+          </div>
+          <div class="wan-select m-1">
+            <Dropdown
+              v-model="dualWanConfig.wan1"
+              :options="wan1Options"
+              optionLabel="type"
+              optionValue="vlanId"
+              placeholder="Select WAN 1 type"
+              class="w-full"
+              :disabled="isLoading || operationInProgress"
+              :loading="isLoading"
+            />
+          </div>
+        </div>
+        
+        <!-- WAN 2 -->
+        <div class="wan-config-section">
+          <div class="wan-config-header">
+            <i class="pi pi-network mr-2 text-warning"></i>
+            <strong>WAN 2</strong>
+            <Tag value="Secondary (Port 1)" severity="warning" size="small" />
+          </div>
+          <div class="wan-select m-1">
+            <Dropdown
+              v-model="dualWanConfig.wan2"
+              :options="wan2Options"
+              optionLabel="type"
+              optionValue="vlanId"
+              placeholder="Select WAN 2 type"
+              class="w-full"
+              :disabled="isLoading || operationInProgress"
+              :loading="isLoading"
+            />
+          </div>
+        </div>
+        
+        <Message severity="info" class="dual-wan-info mt-2">
+          <div class="message-content">
+            <div>
+              <div><strong>Dual WAN Configuration</strong></div>
+              <div>Select WAN types for primary and secondary connections</div>
+              <small class="text-color-secondary">Both WAN connections will be active simultaneously.</small>
+            </div>
+          </div>
+        </Message>
+      </div>
+      
+      <!-- PPPoE Credentials -->
       <Message v-if="showPPPoECredentials" severity="info" class="info-message">
         <div class="message-content">
           <i class="pi pi-info-circle"></i>
@@ -59,6 +122,7 @@
         </div>
       </Message>
       
+      <!-- Reset Hint -->
       <Message v-if="showResetHint" severity="info" class="info-message">
         <div class="message-content">
           <div>
@@ -350,7 +414,7 @@
           <Button 
             :label="mobileView ? 'Apply' : 'Apply changes'" 
             icon="pi pi-check" 
-            @click="saveWanChanges" 
+            @click="handleApplyClick" 
             :loading="isLoading"
             class="apply-btn" 
             size="small"
@@ -387,6 +451,148 @@
       </div>
     </template>
   </Dialog>
+
+  <!-- Диалог подтверждения для Dual WAN -->
+  <Dialog 
+  v-model:visible="showDualWanConfirm" 
+  modal 
+  :blockScroll="false"
+  :header="isDualWanSelected ? '⚠️ Dual WAN Configuration Warning' : '⚠️ IPoE Public Configuration Warning'"
+  :style="{ width: '600px', maxWidth: '90vw' }"
+  :closable="false"
+  class="dual-wan-confirm-dialog"
+>
+  <div class="confirmation-content">
+    <i class="pi pi-exclamation-triangle" style="font-size: 2rem; color: #f39c12; margin-right: 1rem;" />
+    <div>
+      <h4 class="mb-2">
+        {{ isDualWanSelected ? 'Important: Configure Secondary WAN Interface' : 'Important: Configure WAN Interface with Static IP' }}
+      </h4>
+      <p class="text-color-secondary mb-2">
+        {{ isDualWanSelected 
+          ? 'Before applying Dual WAN configuration, you need to configure the second WAN interface on the router.'
+          : 'Before applying IPoE Public configuration, you need to configure the WAN interface with static IP settings.' }}
+      </p>
+        <div class="dual-wan-warning-info p-3 surface-ground border-round">
+          <div class="flex align-items-center gap-2 mb-2">
+            <i class="pi pi-info-circle text-primary"></i>
+            <strong>What you need to do:</strong>
+          </div>
+          <ol class="warning-list mt-1 mb-0">
+            <li>Open the router's web interface</li>
+            <li>Go to <strong>Internet → Ethernet Cable</strong> section</li>
+                <template v-if="isDualWanWithPublicIP">
+                    <li>Configure the second WAN interface with the static settings:</li>
+                </template>
+                <template v-else>
+                    <li>Configure the second WAN interface</li>
+                </template>
+          </ol>
+          
+          <!-- Сетевые настройки с кнопками копирования -->
+          <div v-if="shouldShowIPSettings" class="dual-wan-settings mt-2">
+            <div class="setting-row">
+              <span class="setting-label">IP address:</span>
+              <div class="setting-value-group">
+                <span class="setting-value">212.100.156.75</span>
+                <Button 
+                  icon="pi pi-copy" 
+                  class="p-button-sm p-button-text p-button-rounded copy-btn-small"
+                  v-tooltip.top="'Copy IP address'"
+                  @click="copyToClipboard('212.100.156.75', 'IP address')"
+                />
+              </div>
+            </div>
+            <div class="setting-row">
+              <span class="setting-label">MASK:</span>
+              <div class="setting-value-group">
+                <span class="setting-value">255.255.255.248</span>
+                <Button 
+                  icon="pi pi-copy" 
+                  class="p-button-sm p-button-text p-button-rounded copy-btn-small"
+                  v-tooltip.top="'Copy MASK'"
+                  @click="copyToClipboard('255.255.255.248', 'MASK')"
+                />
+              </div>
+            </div>
+            <div class="setting-row">
+              <span class="setting-label">GW:</span>
+              <div class="setting-value-group">
+                <span class="setting-value">212.100.156.73</span>
+                <Button 
+                  icon="pi pi-copy" 
+                  class="p-button-sm p-button-text p-button-rounded copy-btn-small"
+                  v-tooltip.top="'Copy GW'"
+                  @click="copyToClipboard('212.100.156.73', 'GW')"
+                />
+              </div>
+            </div>
+            <div class="setting-row">
+              <span class="setting-label">DNS:</span>
+              <div class="setting-value-group">
+                <span class="setting-value">87.245.145.6, 87.245.190.122</span>
+                <Button 
+                  icon="pi pi-copy" 
+                  class="p-button-sm p-button-text p-button-rounded copy-btn-small"
+                  v-tooltip.top="'Copy DNS'"
+                  @click="copyToClipboard('87.245.145.6, 87.245.190.122', 'DNS')"
+                />
+              </div>
+            </div>
+            <div class="setting-row copy-all-row">
+              <Button 
+                icon="pi pi-copy" 
+                label="Copy All Settings"
+                class="p-button-sm p-button-text p-button-primary"
+                @click="copyAllSettings"
+              />
+            </div>
+          </div>
+          
+          <ol class="warning-list mt-2 mb-0" start="4">
+            <li>Save the configuration</li>
+            <li>Then apply this Dual WAN configuration</li>
+          </ol>
+        </div>
+        
+        <!-- Кнопки действий (центрированные, в ряд) -->
+        <div class="mt-3 flex justify-content-center gap-2 flex-wrap">
+          <Button 
+            label="Open Router Interface" 
+            icon="bi bi-layout-sidebar"
+            class="p-button-sm p-button-outlined p-button-primary"
+            @click="openRouterInterface"
+          />
+          <Button 
+            label="Skip Wizard - set password" 
+            icon="bi bi-magic"
+            class="p-button-sm p-button-outlined p-button-warning"
+            @click="handleInitializationFromConfirm"
+          />
+        </div>
+        
+        <p class="text-color-secondary mt-2 mb-0 text-sm text-center">
+          <i class="pi pi-exclamation-circle text-warning mr-1"></i>
+          If you don't configure the second WAN interface first, the connection may not work properly.
+        </p>
+      </div>
+    </div>
+    <template #footer>
+      <Button 
+        label="Cancel" 
+        icon="pi pi-times" 
+        class="p-button-text" 
+        @click="showDualWanConfirm = false"
+      />
+      <Button 
+        label="Apply Anyway" 
+        icon="pi pi-check" 
+        class="p-button-warning" 
+        @click="confirmDualWanApply"
+        :loading="isLoading"
+      />
+    </template>
+  </Dialog>
 </template>
 
 <script setup>
@@ -403,12 +609,16 @@ import Message from 'primevue/message'
 import Tag from 'primevue/tag'
 import Password from 'primevue/password'
 import ProgressBar from 'primevue/progressbar'
+import Dropdown from 'primevue/dropdown'
+import Divider from 'primevue/divider'
 import { useDeviceStore } from '@/stores/useDeviceStore'
 import { useModeStore } from '@/stores/useModeStore'
+import { useDeviceActionsStore } from '@/stores/useDeviceActionsStore'
 
 const toast = useToast()
 const deviceStore = useDeviceStore()
 const modeStore = useModeStore()
+const deviceActionsStore = useDeviceActionsStore()
 
 const props = defineProps({
   device: {
@@ -423,10 +633,38 @@ const props = defineProps({
     type: Array,
     default: () => [],
   },
-  currentWanType: String,
+  currentWanType: {
+    type: [String, Object],
+    default: null
+  },
 })
 
 const emit = defineEmits(['save', 'operationStarted', 'operationProgress'])
+
+
+// Проверяем, выбран ли IPoE Public напрямую (не через Dual WAN)
+const isPublicIPSelected = computed(() => {
+  // Проверяем прямой выбор IPoE Public
+  return modalValue.value === '67' || modalValue.value === 'public_ip'
+})
+
+// Проверяем, является ли Dual WAN с Public IP
+const isDualWanWithPublicIP = computed(() => {
+  if (!isDualWanSelected.value) return false
+  
+  // Находим типы WAN по vlanId
+  const wan1Type = availableWanTypesForDual.value.find(w => w.vlanId === dualWanConfig.value.wan1)
+  const wan2Type = availableWanTypesForDual.value.find(w => w.vlanId === dualWanConfig.value.wan2)
+  
+  // Проверяем, является ли один из выбранных типов "IPoE Public" (vlanId = "67")
+  return wan1Type?.type === 'IPoE Public' || wan2Type?.type === 'IPoE Public'
+})
+
+
+// Общий computed: нужно ли показывать настройки IP
+const shouldShowIPSettings = computed(() => {
+  return isPublicIPSelected.value || isDualWanWithPublicIP.value
+})
 
 // Основные состояния
 const visible = ref(false)
@@ -443,6 +681,10 @@ const currentLanguage = ref('en')
 const currentConnection = ref(null)
 const connectionLoading = ref(false)
 
+// Состояние для диалога подтверждения Dual WAN
+const showDualWanConfirm = ref(false)
+const pendingDualWanConfig = ref(null)
+
 // Состояния для прогресс-модалки (нужны для слушателей)
 const progress = ref(0)
 const currentStepId = ref('')
@@ -454,6 +696,15 @@ const manualRouterPassword = ref('')
 const devicePassword = ref('')
 const passwordSource = ref('global')
 const authError = ref(false)
+
+// Dual WAN состояния
+const dualWanConfig = ref({
+  wan1: null,
+  wan2: null
+})
+
+// Флаг для отслеживания, было ли изменено состояние вручную
+const isManualSelection = ref(false)
 
 // Таймеры
 const operationTimeout = ref(null)
@@ -560,6 +811,21 @@ const routerPasswordToUse = computed(() => {
   }
 })
 
+const saveDevicePassword = (password) => {
+    return new Promise((resolve, reject) => {
+        socket.emit('device:setPassword', {
+            deviceId: currentDevice.value.id,
+            password: password
+        }, (response) => {
+            if (response?.success) {
+                resolve(response);
+            } else {
+                reject(new Error(response?.error || 'Failed to save password'));
+            }
+        });
+    });
+};
+
 const modalTitle = computed(() => {
   if (!currentDevice.value) return 'FAQ'
   
@@ -574,11 +840,29 @@ const modalTitle = computed(() => {
 
 const filteredWanTypes = computed(() => {
   if (modalType.value === 'wanTypes') {
-    return props.wanTypes.filter(wan => 
-      wan.vlanId !== undefined && 
-      wan.vlanId !== null && 
-      wan.type?.trim() !== ""
-    )
+    return props.wanTypes.filter(wan => {
+      // Для Dual WAN пропускаем всегда (даже если нет vlanId)
+      if (wan.type === 'Dual WAN') return true
+      // Для остальных проверяем vlanId
+      return wan.vlanId !== undefined && 
+             wan.vlanId !== null && 
+             wan.type?.trim() !== ""
+    }).map(wan => {
+      // Для Dual WAN добавляем специальный идентификатор
+      if (wan.type === 'Dual WAN') {
+        return {
+          ...wan,
+          _id: 'dual_wan_special'  // Специальный ID для RadioButton
+        }
+      }
+      else if (wan.type === 'IPoE Public') {
+        return {
+          ...wan,
+          _id: 'public_ip'
+        }
+      }
+      return wan
+    })
   }
   return []
 })
@@ -586,7 +870,6 @@ const filteredWanTypes = computed(() => {
 const availableRouters = computed(() => {
   if (modalType.value !== 'mwsConnection') return []
   
-  // ✅ ИСПОЛЬЗУЕМ deviceStore.devices вместо props.filteredDevices
   return deviceStore.devices.filter(dev => 
     dev.type === 'router' &&
     dev.statusCode === 200 &&
@@ -625,9 +908,40 @@ const getModalStyle = computed(() => {
   return widthSettings[modalType.value] || { width: '550px', maxWidth: '550px' }
 })
 
-// ✅ НОВОЕ computed для WAN операции
 const isWanOperationInProgress = computed(() => {
   return operationInProgress.value && operationType.value === 'wan'
+})
+
+// Computed для Dual WAN
+const isDualWanSelected = computed(() => {
+  // Проверяем, что значение соответствует специальному ID или является объектом
+  return modalValue.value === 'dual_wan_special' || 
+         (modalValue.value && typeof modalValue.value === 'object' && modalValue.value.type === 'dual_wan')
+})
+
+
+const availableWanTypesForDual = computed(() => {
+  // Все типы WAN кроме Dual WAN
+  return props.wanTypes.filter(wan => 
+    wan.type !== 'Dual WAN' && 
+    wan.vlanId !== undefined && 
+    wan.vlanId !== null && 
+    wan.type?.trim() !== ""
+  )
+})
+
+// Опции для WAN 1 (исключаем выбранный в WAN 2)
+const wan1Options = computed(() => {
+  return availableWanTypesForDual.value.filter(wan => 
+    wan.vlanId !== dualWanConfig.value.wan2
+  )
+})
+
+// Опции для WAN 2 (исключаем выбранный в WAN 1)
+const wan2Options = computed(() => {
+  return availableWanTypesForDual.value.filter(wan => 
+    wan.vlanId !== dualWanConfig.value.wan1
+  )
 })
 
 // Методы
@@ -798,23 +1112,84 @@ const selectRouter = (routerId) => {
   modalValue.value = routerId
 }
 
-const show = async (type, password = '', source = 'global') => {
-  modalType.value = type
-  faqSearchQuery.value = ''
-  visible.value = true
-  currentDevice.value = props.device
+const selectWanType = (wan) => {
+  if (isWanOperationInProgress.value) return
   
-  devicePassword.value = password
-  passwordSource.value = source
-  useDevicePassword.value = true
-  manualRouterPassword.value = ''
-  authError.value = false
+  // Устанавливаем флаг ручного выбора
+  isManualSelection.value = true
+  
+  // Проверяем, является ли это Dual WAN
+  const isDualWan = wan.type === 'Dual WAN'
+  
+  if (isDualWan) {
+    // Используем специальный идентификатор для RadioButton
+    modalValue.value = wan._id || 'dual_wan_special'
+    // Инициализируем конфигурацию с первыми доступными типами
+    if (availableWanTypesForDual.value.length >= 2) {
+      dualWanConfig.value.wan1 = availableWanTypesForDual.value[0].vlanId
+      dualWanConfig.value.wan2 = availableWanTypesForDual.value[1].vlanId
+    }
+  } else {
+    modalValue.value = wan.vlanId
+    // Сбрасываем Dual WAN конфигурацию
+    dualWanConfig.value = { wan1: null, wan2: null }
+  }
+  
+  // Сбрасываем флаг после обновления
+  setTimeout(() => {
+    isManualSelection.value = false
+  }, 100)
+}
+
+const show = async (type, password = '', source = 'global') => {
+    modalType.value = type
+    faqSearchQuery.value = ''
+    visible.value = true
+    currentDevice.value = props.device
+  
+  // ✅ Если пароль не передан, пробуем получить из бронирования устройства
+    // ✅ Если пароль не передан, пробуем получить сохраненный
+    if (!password && props.device?.id) {
+        try {
+            const response = await new Promise((resolve) => {
+                socket.emit('device:getPassword', props.device.id, (response) => {
+                    resolve(response)
+                })
+                setTimeout(() => resolve({ success: false, password: null }), 5000)
+            })
+            
+            if (response?.success && response.password) {
+                password = response.password
+                source = 'saved'
+            }
+        } catch (error) {
+            console.error('❌ Failed to load saved password:', error)
+        }
+    }
+    
+    // Если все еще нет пароля, пробуем из бронирования
+    if (!password && props.device?.booking?.isBooked && 
+        props.device?.booking?.bookedBy === deviceStore.currentUserId &&
+        props.device?.booking?.accessPassword) {
+        password = props.device.booking.accessPassword
+        source = 'booking'
+    }
+    
+    devicePassword.value = password
+    passwordSource.value = source
+    useDevicePassword.value = true
+    manualRouterPassword.value = ''
+    authError.value = false
   
   isLoading.value = false
   operationInProgress.value = false
   operationType.value = ''
   progressMessage.value = ''
-  
+  dualWanConfig.value = { wan1: null, wan2: null }
+  isManualSelection.value = false
+  showDualWanConfirm.value = false
+  pendingDualWanConfig.value = null
+
   if (type === 'mwsConnection' && props.device) {
     if (!props.device.id) {
       console.error('❌ No device ID provided for MWS connection')
@@ -831,7 +1206,31 @@ const show = async (type, password = '', source = 'global') => {
       modalValue.value = null
     }
   } else if (type === 'wanTypes') {
-    modalValue.value = props.currentWanType === 'ISP not configured' ? null : props.currentWanType
+    // Проверяем текущий тип WAN
+    const currentWan = props.currentWanType
+    
+    // Если это объект Dual WAN
+    if (currentWan && typeof currentWan === 'object' && currentWan.type === 'dual_wan') {
+      modalValue.value = 'dual_wan_special'
+      dualWanConfig.value.wan1 = currentWan.wan1 || null
+      dualWanConfig.value.wan2 = currentWan.wan2 || null
+      
+      // Убедимся, что выбранные значения существуют
+      const availableIds = availableWanTypesForDual.value.map(w => w.vlanId)
+      if (!availableIds.includes(dualWanConfig.value.wan1) && availableIds.length > 0) {
+        dualWanConfig.value.wan1 = availableIds[0]
+      }
+      if (!availableIds.includes(dualWanConfig.value.wan2) && availableIds.length > 1) {
+        dualWanConfig.value.wan2 = availableIds[1]
+      }
+    } 
+    // Если это строка (обычный WAN)
+    else if (currentWan && typeof currentWan === 'string') {
+      modalValue.value = currentWan === 'ISP not configured' ? null : currentWan
+    } 
+    else {
+      modalValue.value = null
+    }
   }
   
   setupModeChangeListeners()
@@ -865,14 +1264,14 @@ const closeModal = () => {
   manualRouterPassword.value = ''
   useDevicePassword.value = true
   authError.value = false
-  
-  console.log('🔒 Modal closed, device data cleared:', { deviceId, deviceHwId })
+  dualWanConfig.value = { wan1: null, wan2: null }
+  isManualSelection.value = false
+  showDualWanConfirm.value = false
+  pendingDualWanConfig.value = null
 }
 
 const saveChanges = async (action = 'connect') => {
   try {
-    console.log('💾 Saving MWS changes for device:', currentDevice.value?.id, 'action:', action)
-    
     if (!currentDevice.value?.id) {
       toast.add({ severity: 'error', summary: 'Error', detail: 'No device selected', life: 3000 })
       return
@@ -887,14 +1286,6 @@ const saveChanges = async (action = 'connect') => {
     
     if (currentDevice.value.hwType === 'yes') {
       // Для AP устройств используем device:mwsConnected
-      const mwsData = {
-        deviceId: deviceId,
-        routerId: modalValue.value,
-        action: action,
-        routerPassword: routerPasswordToUse.value,
-        useDevicePassword: useDevicePassword.value
-      };
-      
       const saveData = {
         value: modalValue.value,
         type: 'mwsApConnection',  
@@ -903,7 +1294,6 @@ const saveChanges = async (action = 'connect') => {
         useDevicePassword: useDevicePassword.value,
         callback: (success, message) => {
           if (success) {
-            console.log('✅ MWS AP operation completed:', message)
             toast.add({ severity: 'success', summary: 'Success', detail: message, life: 3000 })
             
             if (action === 'disconnect') {
@@ -936,78 +1326,218 @@ const saveChanges = async (action = 'connect') => {
       return;
     }
     
-      let mode
-      if (action === 'disconnect') {
-        mode = 'extender_disconnect'
-      } else {
-        mode = currentConnection.value ? 'extender_connect' : 'extender'
+    let mode
+    if (action === 'disconnect') {
+      mode = 'extender_disconnect'
+    } else {
+      mode = currentConnection.value ? 'extender_connect' : 'extender'
+    }
+
+    emit('operationStarted', {
+      deviceId: deviceId,
+      operationType: 'modeChange',
+      operationData: {
+        oldMode: currentConnection.value ? 'extender_connect' : 'router',
+        newMode: mode,
+        routerId: modalValue.value,
+        action: action
       }
+    });
 
-      console.log('📤 Emitting operationStarted for regular device:', {
-        deviceId: deviceId,
-        operationType: 'modeChange',
-        operationData: {
-          oldMode: currentConnection.value ? 'extender_connect' : 'router',
-          newMode: mode,
-          routerId: modalValue.value,
-          action: action
-        }
-      });
-
-      // ✅ ВАЖНО: ЭМИТИМ СОБЫТИЕ ДЛЯ ОТКРЫТИЯ ПРОГРЕСС-МОДАЛКИ
-      emit('operationStarted', {
-        deviceId: deviceId,
-        operationType: 'modeChange',  // Используем modeChange для обычных устройств
-        operationData: {
-          oldMode: currentConnection.value ? 'extender_connect' : 'router',
-          newMode: mode,
-          routerId: modalValue.value,
-          action: action
-        }
-      });
-
-      const saveData = {
-        value: modalValue.value,
-        type: 'mwsConnection',
-        action: action,
-        routerPassword: routerPasswordToUse.value,
-        useDevicePassword: useDevicePassword.value,
-        mode: mode,
-        callback: (success, message) => {
-          if (success) {
-            console.log('✅ MWS operation completed:', message)
-            toast.add({ severity: 'success', summary: 'Success', detail: message, life: 3000 })
-            
-            if (action === 'disconnect') {
-              currentConnection.value = null
-            } else {
-              setTimeout(() => {
-                fetchCurrentConnection(deviceId);
-              }, 5000);
-            }
+    const saveData = {
+      value: modalValue.value,
+      type: 'mwsConnection',
+      action: action,
+      routerPassword: routerPasswordToUse.value,
+      useDevicePassword: useDevicePassword.value,
+      mode: mode,
+      callback: (success, message) => {
+        if (success) {
+          toast.add({ severity: 'success', summary: 'Success', detail: message, life: 3000 })
+          
+          if (action === 'disconnect') {
+            currentConnection.value = null
           } else {
-            console.error('❌ MWS operation failed:', message)
-            toast.add({ severity: 'error', summary: 'Error', detail: message, life: 5000 })
+            setTimeout(() => {
+              fetchCurrentConnection(deviceId);
+            }, 5000);
           }
+        } else {
+          console.error('❌ MWS operation failed:', message)
+          toast.add({ severity: 'error', summary: 'Error', detail: message, life: 5000 })
         }
       }
+    }
 
-      emit('save', saveData);    
-    
+    emit('save', saveData);    
     
   } catch (error) {
     console.error('❌ Save changes error:', error)
     toast.add({ severity: 'error', summary: 'Error', detail: error.message, life: 5000 })
   }
 }
+
+// Обработка клика по Apply
+const handleApplyClick = () => {
+  // Если выбран Dual WAN или IPoE Public - показываем предупреждение
+  if (isDualWanSelected.value || isPublicIPSelected.value) {
+    // Сохраняем текущую конфигурацию
+    pendingDualWanConfig.value = {
+      value: modalValue.value,
+      wan1: dualWanConfig.value.wan1,
+      wan2: dualWanConfig.value.wan2,
+      isPublicIP: isPublicIPSelected.value && !isDualWanSelected.value
+    }
+    showDualWanConfirm.value = true
+  } else {
+    // Для обычного WAN - сразу применяем
+    saveWanChanges()
+  }
+}
+
+// Подтверждение применения Dual WAN
+const confirmDualWanApply = () => {
+  showDualWanConfirm.value = false
+  // Применяем сохраненную конфигурацию
+  saveWanChanges()
+}
+
+// Открытие интерфейса роутера
+const openRouterInterface = () => {
+  if (currentDevice.value && currentDevice.value.URL) {
+    window.open(currentDevice.value.URL, '_blank')
+    toast.add({
+      severity: 'info',
+      summary: 'Device Interface',
+      detail: `Opening ${currentDevice.value.hwId} interface`,
+      life: 2000
+    })
+  } else {
+    toast.add({
+      severity: 'warn',
+      summary: 'Not Available',
+      detail: 'Router interface URL is not available for this device',
+      life: 3000
+    })
+  }
+}
+
+const handleInitializationFromConfirm = async () => {
+    if (!currentDevice.value) {
+        toast.add({
+            severity: 'warn',
+            summary: 'No Device',
+            detail: 'No device selected',
+            life: 3000
+        })
+        return
+    }
+  
+  // Закрываем диалог подтверждения
+  // showDualWanConfirm.value = false
+  
+  // ✅ Используем пароль из devicePassword.value (который пришел из бронирования)
+const password = devicePassword.value
+    
+    if (!password) {
+        toast.add({
+            severity: 'warn',
+            summary: 'No Password',
+            detail: 'Device password is not available',
+            life: 3000
+        })
+        return
+    }
+    
+    try {
+        // ✅ Сначала сохраняем пароль в конфиг
+        await saveDevicePassword(password)
+        
+        // Копируем пароль в буфер обмена
+        copyToClipboard(password, 'Device Password')
+        
+        // Используем существующий метод из store для инициализации
+         deviceActionsStore.initializationDevice(currentDevice.value, password)
+        
+        toast.add({
+            severity: 'info',
+            summary: 'Initialization Started',
+            detail: `Initializing ${currentDevice.value.hwId}... Password saved and copied to clipboard`,
+            life: 3000
+        })
+    } catch (error) {
+        console.error('❌ Failed to save password:', error)
+        toast.add({
+            severity: 'error',
+            summary: 'Error',
+            detail: 'Failed to save device password',
+            life: 3000
+        })
+    }
+};
+
 const saveWanChanges = () => {
+  // Валидация для Dual WAN
+  if (isDualWanSelected.value) {
+    if (!dualWanConfig.value.wan1 || !dualWanConfig.value.wan2) {
+      toast.add({
+        severity: 'warn',
+        summary: 'Warning',
+        detail: 'Please select both WAN 1 and WAN 2 types',
+        life: 3000
+      })
+      return
+    }
+    
+    if (dualWanConfig.value.wan1 === dualWanConfig.value.wan2) {
+      toast.add({
+        severity: 'warn',
+        summary: 'Warning',
+        detail: 'WAN 1 and WAN 2 must be different',
+        life: 3000
+      })
+      return
+    }
+    
+    const availableIds = availableWanTypesForDual.value.map(w => w.vlanId)
+    if (!availableIds.includes(dualWanConfig.value.wan1)) {
+      toast.add({
+        severity: 'warn',
+        summary: 'Warning',
+        detail: 'Selected WAN 1 type is not available',
+        life: 3000
+      })
+      return
+    }
+    if (!availableIds.includes(dualWanConfig.value.wan2)) {
+      toast.add({
+        severity: 'warn',
+        summary: 'Warning',
+        detail: 'Selected WAN 2 type is not available',
+        life: 3000
+      })
+      return
+    }
+  }
+  
   isLoading.value = true
   operationInProgress.value = true
   operationType.value = 'wan'
   progressMessage.value = 'Configuring switch...'
   
+  let valueToSave = modalValue.value
+  
+  // Если выбран Dual WAN, передаем объект с конфигурацией
+  if (isDualWanSelected.value) {
+    valueToSave = {
+      type: 'dual_wan',
+      wan1: dualWanConfig.value.wan1,
+      wan2: dualWanConfig.value.wan2
+    }
+  }
+  
   const saveData = {
-    value: modalValue.value,
+    value: valueToSave,
     type: 'wanTypes',
     callback: (success, message) => {
       isLoading.value = false
@@ -1016,7 +1546,6 @@ const saveWanChanges = () => {
       progressMessage.value = ''
       
       if (success) {
-        console.log('✅ WAN type saved successfully:', message)
         toast.add({
           severity: 'success',
           summary: 'Success',
@@ -1037,12 +1566,97 @@ const saveWanChanges = () => {
   }
   
   emit('save', saveData)
-  
 }
 
-watch(modalValue, (newVal) => {
+// Функция копирования в буфер обмена
+const copyToClipboard = async (text, fieldName = 'Text') => {
+  if (!text) return
+  
+  try {
+    await navigator.clipboard.writeText(text)
+    // toast.add({
+    //   severity: 'success',
+    //   summary: 'Copied!',
+    //   detail: `${fieldName} copied to clipboard`,
+    //   life: 2000
+    // })
+  } catch (err) {
+    const textArea = document.createElement('textarea')
+    textArea.value = text
+    document.body.appendChild(textArea)
+    textArea.select()
+    document.execCommand('copy')
+    document.body.removeChild(textArea)
+    
+    toast.add({
+      severity: 'success',
+      summary: 'Copied!',
+      detail: `${fieldName} copied to clipboard`,
+      life: 2000
+    })
+  }
+}
+
+// Функция копирования всех сетевых настроек
+const copyAllSettings = async () => {
+  const settings = `IP address: 212.100.156.75
+MASK: 255.255.255.248
+GW: 212.100.156.73
+DNS: 87.245.145.6, 87.245.190.122`
+  
+  await copyToClipboard(settings, 'All network settings')
+}
+
+// Watch для автоматической очистки при выборе одинаковых типов
+watch(() => dualWanConfig.value.wan1, (newVal) => {
+  if (newVal && dualWanConfig.value.wan2 === newVal) {
+    dualWanConfig.value.wan2 = null
+    toast.add({
+      severity: 'info',
+      summary: 'Info',
+      detail: 'WAN 1 and WAN 2 cannot be the same. WAN 2 has been cleared.',
+      life: 3000
+    })
+  }
+})
+
+watch(() => dualWanConfig.value.wan2, (newVal) => {
+  if (newVal && dualWanConfig.value.wan1 === newVal) {
+    dualWanConfig.value.wan1 = null
+    toast.add({
+      severity: 'info',
+      summary: 'Info',
+      detail: 'WAN 1 and WAN 2 cannot be the same. WAN 1 has been cleared.',
+      life: 3000
+    })
+  }
+})
+
+// Watch для modalValue
+watch(modalValue, (newVal, oldVal) => {
   showPPPoECredentials.value = newVal === '747'
   showResetHint.value = newVal === null
+  
+  if (!isManualSelection.value) {
+    const wasDualWan = oldVal === 'dual_wan_special' || (oldVal && typeof oldVal === 'object' && oldVal.type === 'dual_wan')
+    const isDualWan = newVal === 'dual_wan_special' || (newVal && typeof newVal === 'object' && newVal.type === 'dual_wan')
+    
+    if (wasDualWan && !isDualWan) {
+      if (dualWanConfig.value.wan1 || dualWanConfig.value.wan2) {
+        toast.add({
+          severity: 'info',
+          summary: 'Info',
+          detail: 'Switching from Dual WAN will reset the configuration',
+          life: 3000
+        })
+      }
+      dualWanConfig.value = { wan1: null, wan2: null }
+    }
+    
+    if (!isDualWan) {
+      dualWanConfig.value = { wan1: null, wan2: null }
+    }
+  }
 })
 
 // Очистка при размонтировании
@@ -1053,7 +1667,7 @@ onUnmounted(() => {
 defineExpose({ 
   show,
   updateProgress: (newProgress, step, details) => {
-    console.log('Progress update:', newProgress, step, details)
+    // console.log('Progress update:', newProgress, step, details)
   }
 })
 </script>
@@ -1076,7 +1690,6 @@ defineExpose({
   border: 1px solid var(--surface-200);
 }
 
-/* ✅ НОВЫЕ СТИЛИ ДЛЯ WAN ПРОГРЕССА */
 .wan-operation-progress {
   margin-bottom: 1.5rem;
   padding: 1rem;
@@ -1131,6 +1744,129 @@ defineExpose({
   flex-shrink: 0;
 }
 
+/* ===== СТИЛИ ДЛЯ ДИАЛОГА ПОДТВЕРЖДЕНИЯ DUAL WAN ===== */
+.dual-wan-confirm-dialog :deep(.p-dialog) {
+  width: 600px !important;
+  max-width: 90vw !important;
+}
+
+.confirmation-content {
+  display: flex;
+  align-items: flex-start;
+  padding: 0.5rem 0;
+}
+
+.confirmation-content i {
+  flex-shrink: 0;
+}
+
+.dual-wan-warning-info {
+  background: var(--surface-50);
+  border-radius: 6px;
+  padding: 0.75rem;
+  border-left: 3px solid var(--warning-500);
+}
+
+.warning-list {
+  padding-left: 1.25rem;
+  margin: 0;
+}
+
+.warning-list li {
+  margin-bottom: 0.25rem;
+  font-size: 0.9rem;
+  color: var(--text-color-secondary);
+}
+
+.warning-list li:last-child {
+  margin-bottom: 0;
+}
+
+/* Стили для сетевых настроек в диалоге */
+.dual-wan-settings {
+  background: var(--surface-card);
+  border-radius: 4px;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--surface-200);
+}
+
+.setting-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.2rem 0;
+  font-size: 0.85rem;
+  border-bottom: 1px solid var(--surface-100);
+}
+
+.setting-row:last-child {
+  border-bottom: none;
+}
+
+.setting-row .setting-label {
+  color: var(--text-color-secondary);
+  font-weight: 500;
+  min-width: 70px;
+  flex-shrink: 0;
+}
+
+.setting-row .setting-value-group {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  flex: 1;
+  justify-content: flex-end;
+}
+
+.setting-row .setting-value {
+  font-family: 'Courier New', monospace;
+  font-size: 0.85rem;
+  color: var(--text-color);
+}
+
+.copy-btn-small {
+  width: 1.4rem !important;
+  height: 1.4rem !important;
+  min-width: auto !important;
+  padding: 0 !important;
+  color: var(--text-color-secondary);
+  border: none !important;
+  background: transparent !important;
+}
+
+.copy-btn-small:hover {
+  color: var(--primary-color);
+  background: var(--primary-50) !important;
+}
+
+.copy-btn-small .p-button-label {
+  display: none !important;
+}
+
+.copy-btn-small .p-button-icon {
+  font-size: 0.7rem !important;
+}
+
+.copy-all-row {
+  border-top: 1px solid var(--surface-200);
+  padding-top: 0.3rem;
+  margin-top: 0.2rem;
+  justify-content: center;
+}
+
+/* Стили для кнопок в диалоге */
+.flex.justify-content-center.gap-2 {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.flex.justify-content-center.gap-2 .p-button {
+  min-width: 180px;
+}
+
 /* ===== WAN TYPES СТИЛИ ===== */
 .options-grid {
   display: flex;
@@ -1161,10 +1897,70 @@ defineExpose({
   border-color: var(--primary-color);
 }
 
+.option-dual-wan-selected {
+  background: var(--purple-50);
+  border-color: var(--purple-500);
+}
+
+.option-dual-wan-selected .option-label {
+  color: var(--purple-700);
+}
+
 .option-label {
   cursor: pointer;
   flex: 1;
   margin: 0;
+}
+
+/* ===== DUAL WAN СТИЛИ ===== */
+.dual-wan-configuration {
+  background: var(--surface-50);
+  border-radius: 8px;
+  padding: 1rem;
+  border: 1px solid var(--surface-200);
+  margin-top: 1rem;
+}
+
+.dual-wan-configuration .section-title {
+  font-size: 0.95rem;
+  margin-bottom: 1rem;
+  color: var(--text-color);
+}
+
+.wan-config-section {
+  margin-bottom: 1rem;
+}
+
+.wan-config-section:last-child {
+  margin-bottom: 0;
+}
+
+.wan-config-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+  font-size: 0.9rem;
+}
+
+.wan-config-header i {
+  font-size: 1rem;
+}
+
+.wan-select {
+  width: 100%;
+}
+
+.wan-select :deep(.p-dropdown) {
+  width: 100%;
+}
+
+.dual-wan-info {
+  margin-top: 0.5rem;
+}
+
+.dual-wan-info :deep(.p-message) {
+  padding: 0.75rem;
 }
 
 /* ===== MWS CONNECTION СТИЛИ ===== */
@@ -1172,14 +1968,6 @@ defineExpose({
   display: flex;
   flex-direction: column;
   gap: 1.5rem;
-}
-
-.message-content {
-  display: flex;
-  align-items: flex-start;
-  gap: 0.75rem;
-  padding: 0.5rem 0;
-  margin: 0;
 }
 
 .connection-info {
@@ -1308,7 +2096,6 @@ defineExpose({
   min-height: 100%;
 }
 
-/* Выравнивание текста и иконок */
 .password-label .flex.align-items-center {
   display: flex;
   align-items: center;
@@ -1565,6 +2352,16 @@ defineExpose({
   min-width: 100px;
 }
 
+/* Утилиты */
+.no-routers-message,
+.no-connection-section {
+  margin-top: 1rem;
+}
+
+.info-message {
+  margin-top: 1rem;
+}
+
 /* ===== АДАПТИВНОСТЬ ===== */
 @media (max-width: 768px) {
   .modal-content {
@@ -1654,6 +2451,52 @@ defineExpose({
   .connection-actions .p-button {
     flex: 1;
   }
+  
+  .dual-wan-configuration {
+    padding: 0.75rem;
+  }
+  
+  .wan-config-header {
+    font-size: 0.85rem;
+  }
+  
+  .dual-wan-confirm-dialog :deep(.p-dialog) {
+    width: 95vw !important;
+    max-width: 95vw !important;
+  }
+  
+  .flex.justify-content-center.gap-2 {
+    flex-direction: column;
+    width: 100%;
+  }
+  
+  .flex.justify-content-center.gap-2 .p-button {
+    width: 100%;
+    min-width: unset;
+  }
+  
+  .setting-row {
+    font-size: 0.8rem;
+    padding: 0.3rem 0;
+  }
+  
+  .setting-row .setting-label {
+    min-width: 60px;
+    font-size: 0.8rem;
+  }
+  
+  .setting-row .setting-value {
+    font-size: 0.8rem;
+  }
+  
+  .copy-btn-small {
+    width: 1.2rem !important;
+    height: 1.2rem !important;
+  }
+  
+  .copy-btn-small .p-button-icon {
+    font-size: 0.6rem !important;
+  }
 }
 
 @media (max-width: 480px) {
@@ -1671,6 +2514,41 @@ defineExpose({
 
   .option-item {
     padding: 0.5rem;
+  }
+  
+  .dual-wan-confirm-dialog :deep(.p-dialog) {
+    width: 98vw !important;
+    max-width: 98vw !important;
+  }
+  
+  .setting-row {
+    flex-wrap: wrap;
+    gap: 0.2rem;
+    padding: 0.3rem 0;
+  }
+  
+  .setting-row .setting-label {
+    min-width: 100%;
+    font-size: 0.75rem;
+  }
+  
+  .setting-row .setting-value-group {
+    width: 100%;
+    justify-content: space-between;
+  }
+  
+  .setting-row .setting-value {
+    font-size: 0.75rem;
+    flex: 1;
+  }
+  
+  .copy-btn-small {
+    width: 1.1rem !important;
+    height: 1.1rem !important;
+  }
+  
+  .copy-btn-small .p-button-icon {
+    font-size: 0.55rem !important;
   }
 }
 
@@ -1708,15 +2586,5 @@ defineExpose({
 .options-grid::-webkit-scrollbar-thumb:hover,
 .faq-list::-webkit-scrollbar-thumb:hover {
   background: var(--surface-400);
-}
-
-/* Утилиты */
-.no-routers-message,
-.no-connection-section {
-  margin-top: 1rem;
-}
-
-.info-message {
-  margin-top: 1rem;
 }
 </style>

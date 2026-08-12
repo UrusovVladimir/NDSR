@@ -2,7 +2,7 @@
   <Dialog
     v-model:visible="visible"
     :modal="true"
-    header="File Manager"
+    header="Device Firmware Manager"
     :style="{ width: '550px', maxWidth: '95vw' }"
     :breakpoints="{ '960px': '85vw', '641px': '95vw' }"
     :contentStyle="{ padding: '1.5rem' }"
@@ -29,7 +29,7 @@
             ref="fileInputRef"
             type="file"
             multiple
-            accept=".bin"
+            accept=".bin,.txt"
             style="display: none"
             @change="onFileInputChange"
           />
@@ -238,7 +238,7 @@
         />
         <Button
           v-if="selectedFile"
-          label="Apply to Device"
+          label="Update Firmware"
           icon="pi pi-check"
           @click="applyToDevice"
           :loading="applying"
@@ -334,7 +334,7 @@ const addFiles = (newFiles) => {
   for (const file of newFiles) {
     if (file.size > MAX_FILE_SIZE) {
       oversizedFiles.push(file.name)
-    } else if (file.name.toLowerCase().endsWith('.bin')) {
+    } else if (file.name.toLowerCase().endsWith('.bin') || file.name.toLowerCase().endsWith('.txt')) {
       validFiles.push(file)
     } else {
       toast.add({
@@ -635,9 +635,13 @@ const closeModal = () => {
 }
 
 const getFileIcon = (fileName) => {
-  if (!fileName) return 'pi pi-file'
-  const ext = fileName.split('.').pop().toLowerCase()
-  return ext === 'bin' ? 'pi pi-microchip' : 'pi pi-file'
+    if (!fileName) return 'pi pi-file'
+    const ext = fileName.split('.').pop().toLowerCase()
+    const icons = {
+        'bin': 'pi pi-microchip',
+        'txt': 'pi pi-file-edit'
+    }
+    return icons[ext] || 'pi pi-file'
 }
 
 const formatFileSize = (bytes) => {

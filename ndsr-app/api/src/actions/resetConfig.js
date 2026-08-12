@@ -1,11 +1,11 @@
-// actions/resetConfig.js
 import net from 'net';
 import { Telnet } from "telnet-client";
 import { getCronStatus, deviceBookings, currentWanTypes } from '../socketHandler.js';
-import { getDeviceById, devices } from "../devices.js";
+import { getDeviceById, devices,saveConfig } from "../devices.js";
 import cron from "node-cron";
 import { changeWanType } from './changeWanType.js';
 import { getManagmentID } from "./getManagmentID.js";
+
 
 function isDeviceBookedNow(deviceId) {
   if (!deviceBookings.has(deviceId)) return false;
@@ -255,6 +255,13 @@ export async function resetConfig(deviceId, maxRetries = 3) {
     throw new Error(`Device ${deviceId} not found`);
   }
 
+  // ✅ Удаляем сохраненный пароль перед сбросом
+  if (device.devicePassword) {
+    console.log(`🧹 Removing saved password for device ${deviceId}`);
+    delete device.devicePassword;
+    saveConfig(process.env.DEVICES_CONFIG_PATH, devices);
+  }
+
   const jeromeClass = device.jeromeClass || 'old';
   
   console.log(`🔄 Resetting device ${deviceId} (${device.hwId})`);
@@ -267,7 +274,6 @@ export async function resetConfig(deviceId, maxRetries = 3) {
     return await oldReset(deviceId, maxRetries);
   }
 }
-
 // ==================== CRON ЗАДАЧИ ====================
 
 // CRON на сброс всех устройств в 4:00

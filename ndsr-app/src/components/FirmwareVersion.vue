@@ -162,11 +162,17 @@ const getRefreshTooltip = computed(() => {
 })
 
 const getDevicePassword = () => {
+  // 1. Сначала сохраненный пароль из конфига
+  if (props.device.devicePassword) {
+    return props.device.devicePassword
+  }
+  // 2. Пароль из бронирования
   if (props.device.booking?.isBooked && 
       props.device.booking?.bookedBy === props.currentUserId &&
       props.device.booking?.accessPassword) {
     return props.device.booking.accessPassword
   }
+  // 3. Daily password
   return props.todayPassword
 }
 

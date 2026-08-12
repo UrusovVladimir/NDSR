@@ -17,7 +17,10 @@ import {
   setDeviceBadge,
   removeDeviceBadge,
   getAllBadges,
-  reloadUsersConfig
+  reloadUsersConfig,
+  saveConfig,
+  getDevicePassword,
+  setDevicePassword
 } from "./devices.js";
 import MWSConnectionManager from "./actions/mwsConnectionManager.js";
 import { changeWanType } from "./actions/changeWanType.js";
@@ -458,17 +461,34 @@ async function sendInitData(socket) {
   console.log('🚀 Starting sendInitData...');
   
   try {
-    // ✅ Сначала отправляем статические данные мгновенно
+    // ✅ СОБИРАЕМ WAN ТИПЫ
+    const wanTypesData = {};
+    devices.forEach(device => {
+        const wanInfo = currentWanTypes[device.id] || {};
+        if (wanInfo.type) {
+            wanTypesData[device.id] = wanInfo.type;
+        } else if (device.currentWanType) {
+            wanTypesData[device.id] = device.currentWanType;
+            // Сохраняем в currentWanTypes для кэша
+            currentWanTypes[device.id] = {
+                type: device.currentWanType,
+                isDualWan: typeof device.currentWanType === 'object' && 
+                         device.currentWanType.type === 'dual_wan'
+            };
+        }
+    });
+    
+    // ✅ Отправляем статические данные
     socket.emit('device:users', users);
     socket.emit('cron:status', isCronEnabled);
     socket.emit('device:wanTypes', wanTypes);
     socket.emit('DAILY_PASSWORDS', dailyPasswords);
     socket.emit('device:bookings-list', Object.fromEntries(deviceBookings));
-  
-    // ✅ Подготавливаем устройства с бронированиями
+    socket.emit('device:wanTypes:all', wanTypesData); // ✅ Отправляем все WAN типы
+
     const devicesWithBookings = devices.map(device => {
       const booking = deviceBookings.get(device.id);
-      const powerStatus = devicePowerStatus.get(device.id) || 'on'; // По умолчанию 'on'
+      const powerStatus = devicePowerStatus.get(device.id) || 'on';
       
       if (booking) {
         const remainingTime = Math.max(0, booking.expiresAt - Math.floor(Date.now() / 1000));
@@ -481,7 +501,7 @@ async function sendInitData(socket) {
             expiresAt: booking.expiresAt,
             remainingTime: remainingTime
           },
-          powerStatus: powerStatus // Добавляем статус питания
+          powerStatus: powerStatus
         };
       }
       return {
@@ -493,7 +513,7 @@ async function sendInitData(socket) {
           expiresAt: null,
           remainingTime: 0
         },
-        powerStatus: powerStatus // Добавляем статус питания
+        powerStatus: powerStatus
       };
     });
   
@@ -866,14 +886,30 @@ const handleBatchFirmwareCheck = async (socket, data, callback) => {
           };
         }
 
-        let password = passwords[deviceId];
+        // ✅ ПРАВИЛЬНЫЙ ПРИОРИТЕТ ПАРОЛЕЙ:
+        let password = passwords[deviceId];  // 1. Переданный пароль из параметров
+        
         if (!password) {
+          // 2. Сохраненный пароль из конфига устройства (devicePassword)
+          password = getDevicePassword(deviceId);
+          if (password) {
+            console.log(`🔑 Using saved device password for ${deviceId}`);
+          }
+        }
+        
+        if (!password) {
+          // 3. Пароль из бронирования (если устройство забронировано пользователем)
           const booking = deviceBookings.get(deviceId);
           if (booking && booking.bookedBy === userId) {
             password = booking.accessPassword;
-          } else {
-            password = dailyPasswords.today.value;
+            console.log(`🔑 Using booking password for ${deviceId}`);
           }
+        }
+        
+        if (!password) {
+          // 4. Daily password (fallback)
+          password = dailyPasswords.today.value;
+          console.log(`🔑 Using daily password for ${deviceId}`);
         }
 
         if (!password) {
@@ -883,7 +919,15 @@ const handleBatchFirmwareCheck = async (socket, data, callback) => {
             error: 'No password available' 
           };
         }
-
+        // В handleBatchFirmwareCheck, замените отладочный вывод на:
+        console.log(`🔑 Password debug for device ${deviceId}:`, {
+            fromParams: passwords[deviceId] ? '***' : 'none',
+            fromParamsLength: passwords[deviceId]?.length,
+            fromDeviceConfig: getDevicePassword(deviceId) ? `*** (len: ${getDevicePassword(deviceId).length})` : 'none',
+            fromBooking: deviceBookings.get(deviceId)?.accessPassword ? `*** (len: ${deviceBookings.get(deviceId).accessPassword.length})` : 'none',
+            fromDaily: dailyPasswords.today.value ? `*** (len: ${dailyPasswords.today.value.length})` : 'none',
+            finalPassword: password ? `*** (len: ${password.length})` : 'NONE'
+        });
         // ✅ ДЛЯ АВТОРИЗАЦИИ ИСПОЛЬЗУЕМ СЦЕНАРИЙ 'auth'
         const authUrl = getDeviceUrl(deviceId, 'auth');
         const versionData = await keeneticAuth(
@@ -1040,6 +1084,40 @@ function setupEvents(socket, io) {
               callback({ success: false, error: error.message });
           }
       }
+  });
+  socket.on('device:getAllWanTypes', (callback) => {
+    try {
+      console.log('📡 Запрос всех WAN типов');
+      
+      const types = {};
+      devices.forEach(device => {
+        // Проверяем currentWanTypes
+        if (currentWanTypes[device.id]?.type) {
+          types[device.id] = currentWanTypes[device.id].type;
+        } 
+        // Если нет - проверяем устройство
+        else if (device.currentWanType) {
+          types[device.id] = device.currentWanType;
+          // Сохраняем в currentWanTypes для кэша
+          currentWanTypes[device.id] = {
+            type: device.currentWanType,
+            isDualWan: typeof device.currentWanType === 'object' && 
+                      device.currentWanType.type === 'dual_wan'
+          };
+        }
+      });
+      
+      console.log(`✅ Отправлено ${Object.keys(types).length} WAN типов`);
+      
+      if (typeof callback === 'function') {
+        callback({ success: true, types });
+      }
+    } catch (error) {
+      console.error('❌ Error getting all WAN types:', error);
+      if (typeof callback === 'function') {
+        callback({ success: false, error: error.message });
+      }
+    }
   });
   socket.on('cron:toggle', (newStatus, callback) => {
     console.log("Статус крона:",newStatus)
@@ -1607,7 +1685,7 @@ function setupEvents(socket, io) {
         callback({ status: 'error', error: error.message });
         }
         }
-        });
+  });
 
 
   socket.on('tftp:getInterfaceIp', async (data, callback) => {
@@ -1649,7 +1727,8 @@ function setupEvents(socket, io) {
               deviceId: data?.deviceId
           });
       }
-        });
+  });
+  
   socket.on('device:forceStatusCheck', (deviceId, callback) => {
     console.log(`🔍 Force status check requested for ${deviceId}`);
     
@@ -1767,40 +1846,242 @@ function setupEvents(socket, io) {
     handleBatchFirmwareCheck(socket, data, callback);
   });
 
-  socket.on('device:wanTypes:save', (deviceId, vlanId, callback) => {
-    changeWanType(deviceId, vlanId,universalPromptRegex).then(() => {
-      const wanTypeObj = wanTypes.find(item => String(item.vlanId) === String(vlanId));
-      
-      let displayType;
-      if (vlanId === null || vlanId === undefined) {
-        displayType = 'ISP not configured';
-      } else {
-        displayType = wanTypeObj?.type || null;
+  socket.on('device:wanTypes:save', async (deviceId, wanData, callback) => {
+      try {
+          console.log(`📡 Получен запрос на настройку WAN для устройства ${deviceId}:`, wanData);
+          
+          // Проверяем, является ли это Dual WAN
+          const isDualWan = wanData && typeof wanData === 'object' && wanData.type === 'dual_wan'
+          
+          if (isDualWan) {
+              // Проверяем наличие switchPortWanSecondary
+              const device = getDeviceById(deviceId);
+              if (!device.switchPortWanSecondary) {
+                  return callback({ 
+                      status: 'error', 
+                      message: 'Device does not support Dual WAN (no secondary WAN port)' 
+                  });
+              }
+              
+              // Проверяем, что WAN1 и WAN2 разные
+              if (wanData.wan1 === wanData.wan2) {
+                  return callback({ 
+                      status: 'error', 
+                      message: 'WAN 1 and WAN 2 must be different' 
+                  });
+              }
+              
+              // Проверяем, что оба VLAN существуют
+              const wanTypesList = wanTypes;
+              const wan1Exists = wanTypesList.some(w => String(w.vlanId) === String(wanData.wan1));
+              const wan2Exists = wanTypesList.some(w => String(w.vlanId) === String(wanData.wan2));
+              
+              if (!wan1Exists || !wan2Exists) {
+                  return callback({ 
+                      status: 'error', 
+                      message: 'One or both WAN types are invalid' 
+                  });
+              }
+          }
+          
+          // Вызываем функцию настройки
+          await changeWanType(deviceId, wanData, universalPromptRegex);
+          
+          // ✅ СОХРАНЯЕМ В ОБА МЕСТА
+          const device = getDeviceById(deviceId);
+          if (device) {
+              // Сохраняем в устройство
+              device.currentWanType = wanData;
+              saveConfig(process.env.DEVICES_CONFIG_PATH, devices);
+              
+              // ✅ СОХРАНЯЕМ В currentWanTypes ДЛЯ СОВМЕСТИМОСТИ
+              currentWanTypes[deviceId] = {
+                  type: wanData,
+                  isDualWan: isDualWan,
+                  updatedAt: Date.now()
+              };
+              
+              console.log(`✅ WAN тип сохранен для устройства ${deviceId}:`, wanData);
+          }
+          
+          // Отправляем событие об обновлении WAN типа
+          io.emit('device:wanTypeUpdated', {
+              deviceId: deviceId,
+              type: wanData
+          });
+          
+          callback({ 
+              status: 'ok', 
+              message: isDualWan ? 'Dual WAN configured successfully' : 'WAN type updated successfully' 
+          });
+          
+      } catch (error) {
+          console.error('❌ Ошибка настройки WAN:', error);
+          callback({ 
+              status: 'error', 
+              message: error.message || 'Failed to configure WAN' 
+          });
       }
-      
-      currentWanTypes[deviceId] = {
-        vlanId,
-        type: displayType,
-      };
-  
-      io.emit('device:wanTypeUpdated', {
-        deviceId,
-        type: displayType,
-      });
-  
-      callback({ status: 'ok' });
-    }).catch(error => {
-      callback({ status: 'error', message: error.message });
-    });
   });
-  
+
   socket.on('device:getCurrentWan', (deviceId, callback) => {
-    const wanInfo = currentWanTypes[deviceId] || {};
-    callback({ 
-      type: wanInfo.type === null ? 'ISP not configured' : wanInfo.type 
-    });
+      try {
+          console.log(`📡 Запрос текущего WAN типа для устройства ${deviceId}`);
+          
+          // Сначала проверяем currentWanTypes
+          let wanInfo = currentWanTypes[deviceId] || {};
+          
+          // Если в currentWanTypes пусто - проверяем устройство
+          if (!wanInfo.type) {
+              const device = getDeviceById(deviceId);
+              if (device && device.currentWanType) {
+                  wanInfo = {
+                      type: device.currentWanType,
+                      isDualWan: typeof device.currentWanType === 'object' && 
+                                device.currentWanType.type === 'dual_wan'
+                  };
+                  // Сохраняем в currentWanTypes для кэша
+                  currentWanTypes[deviceId] = wanInfo;
+              }
+          }
+          
+          // Проверяем, является ли это Dual WAN
+          const isDualWan = wanInfo.type && 
+                          typeof wanInfo.type === 'object' && 
+                          wanInfo.type.type === 'dual_wan';
+          
+          if (isDualWan) {
+              // Для Dual WAN возвращаем объект с типами WAN1 и WAN2
+              const device = getDeviceById(deviceId);
+              const hasSecondaryPort = device?.switchPortWanSecondary !== undefined && 
+                                      device?.switchPortWanSecondary !== null &&
+                                      device?.switchPortWanSecondary !== '';
+              
+              if (hasSecondaryPort) {
+                  callback({
+                      type: wanInfo.type,
+                      isDualWan: true,
+                      wan1: wanInfo.type.wan1,
+                      wan2: wanInfo.type.wan2,
+                      displayName: `Dual WAN (${wanInfo.type.wan1} + ${wanInfo.type.wan2})`
+                  });
+              } else {
+                  // Если нет secondary порта, но есть Dual WAN - возвращаем как обычный
+                  callback({
+                      type: null,
+                      isDualWan: false,
+                      displayName: 'ISP not configured'
+                  });
+              }
+          } else {
+              // Обычный WAN
+              const typeValue = wanInfo.type === null ? null : wanInfo.type;
+              callback({
+                  type: typeValue,
+                  isDualWan: false,
+                  displayName: typeValue === null ? 'ISP not configured' : 
+                            (wanTypes.find(w => String(w.vlanId) === String(typeValue))?.type || typeValue)
+              });
+          }
+          
+      } catch (error) {
+          console.error('❌ Ошибка получения WAN типа:', error);
+          callback({ 
+              type: null,
+              isDualWan: false,
+              displayName: 'ISP not configured',
+              error: error.message 
+          });
+      }
+  });
+
+  socket.on('device:getCurrentWanType', (deviceId, callback) => {
+      try {
+          console.log(`📡 Запрос полной информации о WAN для устройства ${deviceId}`);
+          
+          const device = getDeviceById(deviceId);
+          if (!device) {
+              return callback({ 
+                  success: false, 
+                  error: 'Device not found' 
+              });
+          }
+          
+          // Получаем из currentWanTypes или из устройства
+          let wanInfo = currentWanTypes[deviceId] || {};
+          if (!wanInfo.type && device.currentWanType) {
+              wanInfo = {
+                  type: device.currentWanType,
+                  isDualWan: typeof device.currentWanType === 'object' && 
+                            device.currentWanType.type === 'dual_wan'
+              };
+              currentWanTypes[deviceId] = wanInfo;
+          }
+          
+          const isDualWan = wanInfo.type && 
+                          typeof wanInfo.type === 'object' && 
+                          wanInfo.type.type === 'dual_wan';
+          
+          const hasSecondaryPort = device.switchPortWanSecondary !== undefined && 
+                                  device.switchPortWanSecondary !== null &&
+                                  device.switchPortWanSecondary !== '';
+          
+          // Собираем полную информацию
+          const result = {
+              success: true,
+              deviceId: deviceId,
+              hasSecondaryPort: hasSecondaryPort,
+              supportsDualWan: hasSecondaryPort,
+              isDualWan: isDualWan && hasSecondaryPort,
+              wanType: wanInfo.type || null,
+              displayName: 'ISP not configured'
+          };
+          
+          if (isDualWan && hasSecondaryPort) {
+              const wan1Type = wanTypes.find(w => String(w.vlanId) === String(wanInfo.type.wan1));
+              const wan2Type = wanTypes.find(w => String(w.vlanId) === String(wanInfo.type.wan2));
+              result.displayName = `Dual: ${wan1Type?.type || wanInfo.type.wan1} + ${wan2Type?.type || wanInfo.type.wan2}`;
+              result.wan1 = wanInfo.type.wan1;
+              result.wan2 = wanInfo.type.wan2;
+              result.wan1Display = wan1Type?.type || wanInfo.type.wan1;
+              result.wan2Display = wan2Type?.type || wanInfo.type.wan2;
+          } else if (wanInfo.type && !isDualWan) {
+              const found = wanTypes.find(w => String(w.vlanId) === String(wanInfo.type));
+              result.displayName = found?.type || wanInfo.type;
+          }
+          
+          callback(result);
+          
+      } catch (error) {
+          console.error('❌ Ошибка получения WAN типа:', error);
+          callback({ 
+              success: false, 
+              error: error.message 
+          });
+      }
   });
   
+  socket.on('device:getPassword', (deviceId, callback) => {
+      try{
+        const password = getDevicePassword(deviceId)
+        callback({success: true, password})
+      }
+      catch(error) {
+        callback({success: false, error: error.message})
+      }
+  });
+
+  socket.on('device:setPassword', (data, callback)=>{
+    try{
+      const {deviceId, password} = data;
+      const result = setDevicePassword(deviceId, password);
+      callback(result); 
+    }
+    catch(error){
+      callback({success: false, error: error.message})
+    }
+  })
+
   function startStatusMonitoring(deviceId, callback, operationType = 'reboot', timeout = 120000) {
     const device = getDeviceById(deviceId);
     const startTime = Date.now();
@@ -2401,28 +2682,46 @@ socket.on('device:changeMode', async (data, callback) => {
       let attempts = 0;
       const maxAttempts = 24;
       
+      // В цикле проверки статуса после смены режима
       while (attempts < maxAttempts && !deviceOnline) {
-        attempts++;
-        await new Promise(resolve => setTimeout(resolve, 5000));
-        
-        try {
-          console.log(`🔍 Проверка статуса ${deviceId} (${attempts}/${maxAttempts}) через ${device.checkUrl}/rci/show/version`);
-          const urlCorrect = `${device.checkUrl}/rci/show/version`
-          const status = await getDeviceStatusCode(device, urlCorrect);
-          console.log(`📊 Device ${deviceId} status check ${attempts}/${maxAttempts}: ${status}`);
+          attempts++;
+          await new Promise(resolve => setTimeout(resolve, 5000));
           
-          if (status === 200) {
-            deviceOnline = true;
-            console.log(`✅ Device ${deviceId} is back online!`);
-            sendModeChangeProgress(io, deviceId, 95, 'finalizing');
-            await new Promise(resolve => setTimeout(resolve, 3000));
-            
-            sendModeChangeProgress(io, deviceId, 100, 'completed');
-            break;
+          try {
+              // ✅ ИСПОЛЬЗУЕМ ПРОСТОЙ HEAD ЗАПРОС ДЛЯ ПРОВЕРКИ ДОСТУПНОСТИ
+              console.log(`🔍 Проверка статуса ${deviceId} (${attempts}/${maxAttempts}) через HEAD ${device.checkUrl}...`);
+              
+              const controller = new AbortController();
+              const timeoutId = setTimeout(() => controller.abort(), 8000);
+              
+              const response = await fetch(device.checkUrl, {
+                  method: 'HEAD',
+                  signal: controller.signal
+              });
+              
+              clearTimeout(timeoutId);
+              
+              console.log(`📊 Device ${deviceId} status check ${attempts}/${maxAttempts}: ${response.status}`);
+              
+              if (response.status === 200) {
+                  deviceOnline = true;
+                  console.log(`✅ Device ${deviceId} is back online!`);
+                  sendModeChangeProgress(io, deviceId, 95, 'finalizing');
+                  
+                  // ✅ Даем немного времени на полную загрузку API
+                  await new Promise(resolve => setTimeout(resolve, 5000));
+                  
+                  sendModeChangeProgress(io, deviceId, 100, 'completed');
+                  break;
+              }
+              
+          } catch (error) {
+              console.log(`⚠️ Status check ${attempts} failed:`, error.message);
+              
+              if (error.name === 'AbortError') {
+                  console.log(`⏰ Timeout checking device ${deviceId}`);
+              }
           }
-        } catch (error) {
-          console.log(`⚠️ Status check ${attempts} failed:`, error.message);
-        }
       }
       
       if (!deviceOnline) {

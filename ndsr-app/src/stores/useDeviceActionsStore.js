@@ -720,6 +720,9 @@ export const useDeviceActionsStore = defineStore('deviceActions', () => {
     cleanupPowerListeners,
     initializePowerListeners,
     requestPowerStatus,
-    isLoadingPowerStatus
+    isLoadingPowerStatus,
+    startOperation,
+    updateOperationProgress,
+    finishOperation
   }
 })

@@ -4,8 +4,12 @@
         "vlanId": "1617"
     },
     {
-        "type": "IPoE Public",
+        "type": "IPoE DMZ",
         "vlanId": "7"
+    },
+    {
+        "type": "IPoE Public",
+        "vlanId": "67"
     },
     {
         "type": "PPPoE",
@@ -23,6 +27,10 @@
         "type": "MAP-T",
         "vlanId": "3007"
     },
+        {
+        "type": "Dual WAN",
+        "vlanId": ""
+    }, 
     {
         "type": "Clear WAN type",
         "vlanId": "4094"
@@ -43,7 +51,7 @@
         ]
     },
     {
-        "setting": "offVlanPVID",
+        
         "commands": [
             "interface port-channel",
             "pvid"

@@ -119,18 +119,20 @@ const checkMultipleFirmwares = async (deviceIds, passwords = {}, isManual = fals
 const checkAllBookedFirmwares = async (devices, currentUserId, todayPassword) => {
   if (!devices || devices.length === 0) return
   
-  // Фильтруем только онлайн устройства
   const onlineDevices = devices.filter(d => d.statusCode === 200)
   if (onlineDevices.length === 0) return
   
-  // Собираем пароли для каждого устройства
   const passwords = {}
   onlineDevices.forEach(device => {
-    let password = todayPassword
-    if (device.booking?.isBooked && 
+    // ✅ Правильный приоритет
+    let password = device.devicePassword  // 1. Сохраненный пароль
+    if (!password && device.booking?.isBooked && 
         device.booking?.bookedBy === currentUserId && 
         device.booking?.accessPassword) {
-      password = device.booking.accessPassword
+      password = device.booking.accessPassword  // 2. Пароль из бронирования
+    }
+    if (!password) {
+      password = todayPassword  // 3. Daily password
     }
     passwords[device.id] = password
   })

@@ -64,7 +64,9 @@ import Chip from 'primevue/chip'
 import Dropdown from 'primevue/dropdown'
 import ProgressBar from 'primevue/progressbar'
 import Badge from 'primevue/badge'
-import InputNumber from 'primevue/inputnumber' 
+import InputNumber from 'primevue/inputnumber'
+import Password from 'primevue/password'  // ✅ Добавляем импорт
+import Divider from 'primevue/divider'    // ✅ Если нужен
 
 app.component('Button', Button)
 app.component('InputText', InputText)
@@ -86,5 +88,7 @@ app.component('Dropdown', Dropdown)
 app.component('ProgressBar', ProgressBar)
 app.component('Badge', Badge)
 app.component('InputNumber', InputNumber)
+app.component('Password', Password)
+app.component('Divider', Divider)
 
 app.mount('#app')

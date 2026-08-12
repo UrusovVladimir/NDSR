@@ -231,9 +231,22 @@ const showBookedSectionButton = computed(() => {
 
 const currentDeviceWanType = computed(() => {
   if (!selectedDevice.value) return null
-  return deviceStore.getDeviceWanType(selectedDevice.value.id)
+  
+  const wanType = deviceStore.getDeviceWanType(selectedDevice.value.id)
+  
+  // Если это объект Dual WAN - возвращаем как есть
+  if (wanType && typeof wanType === 'object' && wanType.type === 'dual_wan') {
+    return wanType
+  }
+  
+  // Если это строка - возвращаем строку
+  if (wanType && typeof wanType === 'string') {
+    return wanType
+  }
+  
+  // Если это null или undefined
+  return null
 })
-
 const filteredDevices = computed(() => {
   if (!globalFilter.value) return deviceStore.availableDevices
   const filter = globalFilter.value.toLowerCase()
@@ -321,12 +334,19 @@ const getTypeSeverity = (type) => {
   return severityMap[type] || 'secondary'
 }
 
-const getDevicePassword = (deviceId) => {
-  const device = deviceStore.devices.find(d => d.id === deviceId);
-  if (device?.booking?.isBooked && device.booking?.bookedBy === deviceStore.currentUserId) {
-    return device.booking.accessPassword;
+const getDevicePassword = () => {
+  // 1. Сначала сохраненный пароль из конфига
+  if (props.device.devicePassword) {
+    return props.device.password
   }
-  return null;
+  // 2. Пароль из бронирования
+  if (props.device.booking?.isBooked && 
+      props.device.booking?.bookedBy === props.currentUserId &&
+      props.device.booking?.accessPassword) {
+    return props.device.booking.accessPassword
+  }
+  // 3. Daily password
+  return props.todayPassword
 }
 
 // ========== HANDLERS ==========
@@ -476,11 +496,8 @@ const handleOpenModal = (device, modalType) => {
   }
   
   nextTick(() => {
-    if (modalType === 'mwsConnection') {
-      deviceModal.value?.show(modalType, devicePassword, passwordSource)
-    } else {
-      deviceModal.value?.show(modalType)
-    }
+    // ✅ Всегда передаем пароль, если он есть
+    deviceModal.value?.show(modalType, devicePassword, passwordSource)
   })
 }
 
@@ -589,29 +606,60 @@ const handleMwsSave = async (deviceId, routerId, action, routerPassword = null, 
   })
 }
 
-const handleWanSave = async (deviceId, vlanId) => {
+const handleWanSave = async (deviceId, wanData) => {
   return new Promise((resolve, reject) => {
-    // console.log(`🔧 Configuring WAN type for device ${deviceId} to VLAN ${vlanId}`);
+    // console.log(`🔧 Configuring WAN for device ${deviceId}:`, wanData);
     
-    socket.emit('device:wanTypes:save', deviceId, vlanId, (response) => {
+    // Проверяем, является ли это Dual WAN
+    const isDualWan = wanData && typeof wanData === 'object' && wanData.type === 'dual_wan'
+    
+    // Подготавливаем данные для отправки
+    let payload = wanData
+    
+    if (isDualWan) {
+      // Для Dual WAN отправляем объект с обоими VLAN
+      payload = {
+        type: 'dual_wan',
+        wan1: wanData.wan1,
+        wan2: wanData.wan2
+      }
+    } else {
+      // Для обычного WAN отправляем строку с VLAN ID
+      payload = wanData
+    }
+    
+    socket.emit('device:wanTypes:save', deviceId, payload, (response) => {
       if (!response) return reject(new Error('No response from server'))
       
       if (response?.status === 'ok') {
         const device = deviceStore.devices.find(d => d.id === deviceId)
         const deviceName = device?.shortName || device?.hwId || 'Unknown device'
-        const wanStatus = vlanId === "4094" ? "WAN port is DOWN" : "WAN port is UP"
         
-        // console.log(`✅ WAN type configuration completed for ${deviceName}`);
-        resolve(`WAN type updated for ${deviceName} - ${wanStatus}`)
+        let message = ''
+        if (isDualWan) {
+          const wan1Type = props.wanTypes.find(w => w.vlanId === wanData.wan1)?.type || wanData.wan1
+          const wan2Type = props.wanTypes.find(w => w.vlanId === wanData.wan2)?.type || wanData.wan2
+          message = `Dual WAN configured for ${deviceName}: ${wan1Type} + ${wan2Type}`
+        } else {
+          const wanType = props.wanTypes.find(w => w.vlanId === wanData)?.type || wanData
+          const wanStatus = wanData === "4094" ? "WAN port is DOWN" : "WAN port is UP"
+          message = `WAN type updated for ${deviceName}: ${wanType} - ${wanStatus}`
+        }
+        
+        // console.log(`✅ WAN configuration completed for ${deviceName}`);
+        resolve(message)
       } else {
         reject(new Error(response?.message || 'Save failed'))
       }
     })
     
-    setTimeout(() => reject(new Error('Switch configuration timeout - device may be slow')), 30000)
+    // Таймаут для Dual WAN может быть больше
+    const timeoutDuration = isDualWan ? 60000 : 30000
+    setTimeout(() => reject(new Error(`Switch configuration timeout - device may be slow (${timeoutDuration/1000}s)`)), timeoutDuration)
   })
 }
 
+// ========== ОБНОВЛЕННЫЙ ОБРАБОТЧИК МОДАЛЬНОГО СОХРАНЕНИЯ ==========
 const handleModalSave = (data) => {
   // console.log('💾 Handling modal save with data:', data);
   
@@ -623,6 +671,7 @@ const handleModalSave = (data) => {
   const { value, type, action, routerPassword, useDevicePassword, mode, callback } = data;
   
   if (type === 'wanTypes') {
+    // value может быть строкой (обычный WAN) или объектом (Dual WAN)
     handleWanSave(selectedDevice.value?.id, value)
       .then(message => {
         callback(true, message);
@@ -661,11 +710,24 @@ const handleModalSave = (data) => {
     
     callback(true, `MWS ${action} started`);
   }
-};
+}
 
-onMounted(() => {
+// ========== LIFECYCLE ==========
+onMounted(async () => {
+  // Загружаем состояние свернутой секции
   deviceStore.loadCollapsedState()
+  
+  // ✅ ЗАГРУЖАЕМ ВСЕ WAN ТИПЫ ПРИ СТАРТЕ
+  try {
+    await deviceStore.loadAllWanTypes()
+    // console.log('✅ All WAN types loaded successfully')
+  } catch (error) {
+    console.error('❌ Failed to load WAN types:', error)
+  }
+  
+  // Добавляем слушатели событий
   window.addEventListener('firmware:batchUpdated', handleBatchFirmwareUpdated)
+  
   // ✅ ЕДИНСТВЕННЫЕ СЛУШАТЕЛИ - ВСЕ В ОДНОМ МЕСТЕ
   socket.on('device:firmwareUpdated', handleFirmwareUpdated)
   socket.on('device:batchFirmwareUpdated', handleBatchFirmwareUpdated)
@@ -676,48 +738,37 @@ onMounted(() => {
   socket.on('device:wanTypeUpdated', handleWanTypeUpdated)
   socket.on('device:operationCompleted', handleOperationCompleted)
   
-  // ✅ ИСПРАВЛЕННЫЕ ПРОГРЕСС СЛУШАТЕЛИ - используем localDevice из ProgressModal
+  // ✅ ИСПРАВЛЕННЫЕ ПРОГРЕСС СЛУШАТЕЛИ
   socket.on('device:mwsOperationProgress', (data) => {
-    // console.log('📡 PROGRESS: device:mwsOperationProgress received:', data);
     if (progressModal.value && progressModal.value.localDevice?.id === data.deviceId) {
       progressModal.value.updateProgress(data.progress, data.step, data.details);
     }
   });
 
   socket.on('device:operationProgress', (data) => {
-    // console.log('📡 PROGRESS: device:operationProgress received:', data);
     if (progressModal.value && progressModal.value.localDevice?.id === data.deviceId) {
       progressModal.value.updateProgress(data.progress, data.step, data.details);
     }
   });
 
-socket.on('device:modeChangeProgress', (data) => {
-  // console.log('📡 PROGRESS: device:modeChangeProgress received:', data);
-  
-  // Проверяем ProgressModal
-  if (progressModal.value) {
-    // Если модалка еще не видима, но скоро станет, добавляем небольшую задержку
-    if (!progressModal.value.visible) {
-      // console.log('⏳ ProgressModal not visible yet, waiting...');
-      setTimeout(() => {
-        if (progressModal.value && 
-            progressModal.value.visible && 
-            progressModal.value.localDevice?.id === data.deviceId) {
-          // console.log('✅ ProgressModal now visible, updating progress');
-          progressModal.value.updateProgress(data.progress, data.step, data.details);
-        }
-      }, 50);
-      return;
+  socket.on('device:modeChangeProgress', (data) => {
+    if (progressModal.value) {
+      if (!progressModal.value.visible) {
+        setTimeout(() => {
+          if (progressModal.value && 
+              progressModal.value.visible && 
+              progressModal.value.localDevice?.id === data.deviceId) {
+            progressModal.value.updateProgress(data.progress, data.step, data.details);
+          }
+        }, 50);
+        return;
+      }
+      
+      if (progressModal.value.visible && 
+          progressModal.value.localDevice?.id === data.deviceId) {
+        progressModal.value.updateProgress(data.progress, data.step, data.details);
+      }
     }
-    
-    // Если модалка видима и для правильного устройства
-    if (progressModal.value.visible && 
-        progressModal.value.localDevice?.id === data.deviceId) {
-      progressModal.value.updateProgress(data.progress, data.step, data.details);
-    }
-  } else {
-    // console.log('⚠️ ProgressModal ref not available');
-  }
   });
 });
 

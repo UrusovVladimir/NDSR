@@ -30,7 +30,7 @@
         icon="pi pi-folder" 
         class="action-toggle"
         @click="openFileManager"
-        v-tooltip.bottom="'File Manager'"
+        v-tooltip.bottom="'Device Firmware Manager'"
       />
 
       <div class="header-actions">

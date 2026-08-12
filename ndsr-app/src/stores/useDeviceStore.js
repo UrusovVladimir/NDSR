@@ -10,6 +10,7 @@ export const useDeviceStore = defineStore('devices', () => {
   const currentUserId = ref(null)
   const allDevices = ref([])
   const users = ref([])
+  const wanTypesMap = ref({})
 
   // Getters
   const bookedDevices = computed(() => {
@@ -44,7 +45,20 @@ export const useDeviceStore = defineStore('devices', () => {
     // Используем ip как идентификатор (как в getUserByIp)
     return new Map(users.value.map(user => [user.ip, user]))
   })
-
+  const loadAllWanTypes = () => {
+    return new Promise((resolve) => {
+      socket.emit('device:getAllWanTypes', (response) => {
+        if (response?.success) {
+          wanTypesMap.value = response.types || {}
+        }
+        resolve()
+      })
+      setTimeout(() => resolve(), 5000)
+    })
+  }
+  const getDeviceWanTypeFromMap = (deviceId) => {
+    return wanTypesMap.value[deviceId] || null
+  }
   // ✅ ИСПРАВЛЕННАЯ ФУНКЦИЯ - переименована в getUserByIp для ясности
   const getUserByIp = (userIp) => {
     if (!userIp || !userMap.value.size) return null
@@ -61,7 +75,15 @@ export const useDeviceStore = defineStore('devices', () => {
   
   const getDeviceWanType = (deviceId) => {
     const device = devices.value.find(d => d.id === deviceId)
-    return device?.currentWanType || device?.wanType || null
+    if (!device) return null
+    
+    // ✅ Проверяем, является ли это Dual WAN
+    if (device.currentWanType && typeof device.currentWanType === 'object' && device.currentWanType.type === 'dual_wan') {
+      return device.currentWanType
+    }
+    
+    // Возвращаем строку или null
+    return device.currentWanType || device.wanType || null
   }
   // ✅ ДОБАВЛЕНА ФУНКЦИЯ для получения по ID (если нужно)
   const getUserById = (userId) => {
@@ -76,20 +98,7 @@ export const useDeviceStore = defineStore('devices', () => {
   const offlineCount = computed(() => 
     devices.value.filter(device => device.statusCode !== 200).length
   )
-  // const macAddresses = computed(() => {
-  //   console.log('Devices array:', devices.value); // посмотрите в консоли
-  //   console.log('First device:', devices.value[0]); // первое устройство
-    
-  //   return devices.value
-  //     .map(device => {
-  //       console.log('Processing device:', device);
-  //       return device.macAddress;
-  //     })
-  //     .filter(mac => {
-  //       console.log('MAC address:', mac);
-  //       return mac;
-  //     });
-  // });
+ 
   const totalDevices = computed(() => devices.value.length)
 
   const routerDevices = computed(() => 
@@ -442,6 +451,23 @@ const updateDeviceName = (deviceId, newShortName) => {
           device.currentWanType = data.type
         }
     })
+      socket.on('device:wanTypeUpdated', (data) => {
+        const device = devices.value.find(d => d.id === data.deviceId)
+        if (device) {
+          device.currentWanType = data.type
+        }
+        // ✅ Обновляем wanTypesMap
+        if (data.deviceId) {
+          wanTypesMap.value[data.deviceId] = data.type
+        }
+      })
+  
+  // ✅ Слушаем событие получения всех WAN типов
+      socket.on('device:wanTypes:all', (types) => {
+      if (types) {
+        wanTypesMap.value = types
+      }
+    })
       
   } 
 
@@ -455,6 +481,7 @@ const updateDeviceName = (deviceId, newShortName) => {
     socket.off('device:wanTypeUpdated')
   }
 
+  
   // UI actions
   const expandBookedSection = () => {
     isBookedSectionCollapsed.value = false
@@ -473,53 +500,56 @@ const updateDeviceName = (deviceId, newShortName) => {
     }
   }
 
-  return {
-    // State
-    devices,
-    loading,
-    isBookedSectionCollapsed,
-    currentUserId,
-    allDevices,
-    users,
+return {
+  // State
+  devices,
+  loading,
+  isBookedSectionCollapsed,
+  currentUserId,
+  allDevices,
+  users,
+  wanTypesMap, 
 
-    // Getters
-    bookedDevices,
-    bookedDevicesCount,
-    availableDevices,
-    bookedByOtherDevices,
-    onlineCount,
-    offlineCount,
-    totalDevices,
-    routerDevices,
+  // Getters
+  bookedDevices,
+  bookedDevicesCount,
+  availableDevices,
+  bookedByOtherDevices,
+  onlineCount,
+  offlineCount,
+  totalDevices,
+  routerDevices,
 
-    // Methods
-    getUserName,
-    getUserByIp,
-    getUserById,
-    setUsers,
-    setDevices,
-    setCurrentUserId,
-    updateDeviceStatus,
-    updateDeviceBooking,
-    bookDevice,
-    releaseDevice,
-    extendBooking,
-    expandBookedSection,
-    collapseBookedSection,
-    loadCollapsedState,
-    releaseMultipleDevices,
-    initializeSocketListeners,
-    cleanupSocketListeners,
-    getDeviceWanType,
-    reloadConfigs,
-    fetchUsers,
-    addNewUser,
-    deleteUser,
-    getUserByIpAddress,
-    reloadUsersConfig,
-    editUserName,
-    addDevice,
-    removeDevice,
-    updateDeviceName, 
-  }
+  // Methods
+  getUserName,
+  getUserByIp,
+  getUserById,
+  setUsers,
+  setDevices,
+  setCurrentUserId,
+  updateDeviceStatus,
+  updateDeviceBooking,
+  bookDevice,
+  releaseDevice,
+  extendBooking,
+  expandBookedSection,
+  collapseBookedSection,
+  loadCollapsedState,
+  releaseMultipleDevices,
+  initializeSocketListeners,
+  cleanupSocketListeners,
+  getDeviceWanType,
+  getDeviceWanTypeFromMap, 
+  loadAllWanTypes,
+  reloadConfigs,
+  fetchUsers,
+  addNewUser,
+  deleteUser,
+  getUserByIpAddress,
+  reloadUsersConfig,
+  editUserName,
+  addDevice,
+  removeDevice,
+  updateDeviceName,
+}
 })

@@ -54,15 +54,15 @@
             responsive-layout="scroll"
             class="booked-devices-table"
         >
-            <Column field="statusCode" header="Status" style="min-width: 85px">
+            <Column field="statusCode" header="Status" style="min-width: 70px; max-width: 85px;">
                 <template #body="{ data }">
                     <StatusIndicator :status="data.statusCode" :type="data.type" />
                 </template>
             </Column>
             
-            <Column field="hwId" header="Device" style="min-width: 200px">
+            <Column field="hwId" header="Device" style="min-width: 180px;">
                 <template #body="{ data }">
-                    <div class="common-device-info-container">
+                    <div class="common-device-info-container" @click.stop="toggleQuickActions($event, data)">
                         <div class="common-device-avatar" :class="getDeviceAvatarClass(data)">
                             <i :class="deviceIcon(data.type)" class="common-device-icon"></i>
                         </div>
@@ -70,21 +70,21 @@
                             <div class="common-device-name">{{ data.shortName }}</div>
                             <div class="common-device-hwid">{{ data.hwId }}
                                 <i class="pi pi-info-circle details-inline" 
-                                @click="showDeviceDetails(data)"
+                                @click.stop="showDeviceDetails(data)"
                                 v-tooltip="'View device details'"></i>
                             </div>
                             
                             <div class="common-device-hwid">
                                 Current Mode: <b>{{ getDisplayMode(data.id) }}</b>
                                 <i class="pi pi-refresh details-inline" 
-                                @click="refreshDeviceMode(data.id)"
+                                @click.stop="refreshDeviceMode(data.id)"
                                 v-tooltip="'Refresh mode info'"></i>
                             </div>
                             
                             <div class="common-device-hwid">
-                                Device Password: <b>{{ data.booking.accessPassword }}</b>
+                                Device Password: <b>{{ getDeviceDisplayPassword(data) }}</b>
                                 <i class="pi pi-copy details-inline" 
-                                @click="copyToClipboard(data.booking.accessPassword)"
+                                @click.stop="copyToClipboard(getDeviceDisplayPassword(data), 'Device Password')"
                                 v-tooltip="'Copy access password'"></i>
                             </div>
                             
@@ -104,7 +104,7 @@
                 </template>
             </Column>
 
-            <Column field="firmwareVersion" header="Firmware" bodyClass="firmware-column">
+            <Column field="firmwareVersion" header="Firmware" bodyClass="firmware-column" style="min-width: 180px; max-width: 230px;">
                 <template #body="{ data }">
                     <FirmwareVersion 
                         :device="data"
@@ -116,7 +116,7 @@
                 </template>
             </Column>
             
-            <Column header="WAN" style="min-width: 120px;">
+            <Column header="WAN" style="min-width: 100px; max-width: 140px;">
                 <template #body="{ data }">
                     <WanTypeDisplay 
                         :device="data" 
@@ -127,7 +127,7 @@
                 </template>
             </Column>
             
-            <Column header="Time Left" style="min-width: 150px;">
+            <Column header="Time Left" style="min-width: 130px; max-width: 180px;">
                 <template #body="{ data }">
                     <div class="time-left-container">
                         <Chip 
@@ -150,99 +150,94 @@
                 </template>
             </Column>
             
-            <Column header="Actions" style="min-width: 350px">
+            <Column header="Actions" style="min-width: 280px;">
                 <template #body="{ data }">
                     <div class="actions-container">
-                        <div class="device-controls">
-                            <Button
-                                v-tooltip.bottom="consoleStore.isConsoleOpen(data.id) ? 'Focus Console' : 'Open Console'"
-                                :icon="consoleStore.isConsoleOpen(data.id) ? 'bi bi-terminal-fill' : 'bi bi-terminal'"
-                                class="p-button-sm p-button-outlined p-button-secondary p-button-rounded action-btn"
-                                @click="handleConsoleClick(data)"
-                                :class="{ 'console-open': consoleStore.isConsoleOpen(data.id) }"
-                            />
-                            
-                            <Button
-                                v-if="data.rebootPort"
-                                v-tooltip.bottom="'Power Management'"
-                                icon="pi pi-power-off"
-                                class="p-button-sm p-button-outlined p-button-warning p-button-rounded action-btn"
-                                :class="{ 'power-menu': true }"
-                                @click="showPowerMenu(data)"
-                                :disabled="!canPowerManage(data) || isAnyOperationOnThisDevice(data)"
-                            />
-                            
-                            <Button
-                                v-tooltip.bottom="isResetting(data) ? 'Resetting...' : 'Reset Configuration'"
-                                :icon="isResetting(data) ? 'pi pi-spinner pi-spin' : 'pi pi-refresh'"
-                                class="p-button-sm p-button-outlined p-button-danger p-button-rounded action-btn"
-                                :disabled="!canResetConfig(data) || isAnyOperationOnThisDevice(data)" 
-                                @click="showResetConfirm(data)"
-                            />
-                            
-                            <Button
-                                v-if="data.type === 'AP'"
-                                v-tooltip.bottom="'Connection AP to Router(MWS)'"
-                                icon="pi pi-wifi"
-                                class="p-button-sm p-button-outlined p-button-success p-button-rounded action-btn"
-                                @click="$emit('open-modal', data, 'mwsConnection')"
-                                :disabled="!canMwsConnect(data)"
-                            />
-                            
-                            <Button
-                                v-if="data.type === 'router' && data.hWtype !== 'HardwareAP'"
-                                v-tooltip.bottom="'Change Mode'"
-                                icon="pi pi-wrench"
-                                class="p-button-sm p-button-outlined p-button-info p-button-rounded action-btn"
-                                @click="$emit('open-change-mode', data)"
-                                :disabled="!canChangeMode(data)"
-                            />
-                            
-                            <Button
-                                v-if="data.dslPort"
-                                v-tooltip.bottom="isResettingDsl(data) ? 'Resetting DSL...' : 'Reset DSL Line'"
-                                :icon="isResettingDsl(data) ? 'pi pi-spinner pi-spin' : 'pi pi-phone'"
-                                class="p-button-sm p-button-outlined p-button-help p-button-rounded action-btn"
-                                :disabled="!canResetDsl(data) || isAnyOperationOnThisDevice(data)"
-                                @click="showDslResetConfirm(data)"
-                            />
-                            
-                            <Button
-                                v-if="data.type === 'router' && data.vncUrl"
-                                v-tooltip.bottom="'LAN VNC'"
-                                icon="pi pi-desktop"
-                                class="p-button-sm p-button-outlined p-button-secondary p-button-rounded action-btn"
-                                @click="openVnc(data)"
-                                :disabled="!canOpenVnc(data)"
-                            />
-                            
-                            <Button
-                                v-if="data.URL"
-                                v-tooltip.bottom="'Open Device Interface'"
-                                icon="bi bi-layout-sidebar"
-                                class="p-button-sm p-button-outlined p-button-primary p-button-rounded action-btn"
-                                @click="openDeviceInterface(data)"
-                            />
-                            
-                            <Button
-                                v-if="data.type === 'router'"
-                                v-tooltip.bottom="isInitializing(data) ? 'Initializing...' : 'Skip Wizard - set password'"
-                                :icon="isInitializing(data) ? 'pi pi-spinner pi-spin' : 'bi bi-magic'"
-                                class="p-button-sm p-button-outlined p-button-warning p-button-rounded action-btn"
-                                :disabled="!canInitialize(data) || isAnyOperationOnThisDevice(data)" 
-                                @click="handleInitialization(data)"
-                            />
-                        </div>
+                        <Button
+                            v-tooltip.bottom="consoleStore.isConsoleOpen(data.id) ? 'Focus Console' : 'Open Console'"
+                            :icon="consoleStore.isConsoleOpen(data.id) ? 'bi bi-terminal-fill' : 'bi bi-terminal'"
+                            class="p-button-sm p-button-outlined p-button-secondary p-button-rounded action-btn"
+                            @click="handleConsoleClick(data)"
+                            :class="{ 'console-open': consoleStore.isConsoleOpen(data.id) }"
+                        />
                         
-                        <div class="release-control">
-                            <Button 
-                                :icon="releasingDeviceId === data.id ? 'pi pi-spinner pi-spin' : 'pi pi-trash'"
-                                class="p-button-outlined p-button-danger p-button-sm p-button-rounded release-btn"
-                                @click="showReleaseConfirm(data)"
-                                v-tooltip.bottom="releasingDeviceId === data.id ? 'Releasing...' : 'Release device'"
-                                :disabled="!isCurrentUserBooking(data) || releasingDeviceId === data.id"
-                            />
-                        </div>
+                        <Button
+                            v-if="data.rebootPort"
+                            v-tooltip.bottom="'Power Management'"
+                            icon="pi pi-power-off"
+                            class="p-button-sm p-button-outlined p-button-warning p-button-rounded action-btn"
+                            @click="showPowerMenu(data)"
+                            :disabled="!canPowerManage(data) || isAnyOperationOnThisDevice(data)"
+                        />
+                        
+                        <Button
+                            v-tooltip.bottom="isResetting(data) ? 'Resetting...' : 'Reset Configuration'"
+                            :icon="isResetting(data) ? 'pi pi-spinner pi-spin' : 'pi pi-refresh'"
+                            class="p-button-sm p-button-outlined p-button-danger p-button-rounded action-btn"
+                            :disabled="!canResetConfig(data) || isAnyOperationOnThisDevice(data)" 
+                            @click="showResetConfirm(data)"
+                        />
+                        
+                        <Button
+                            v-if="data.type === 'AP'"
+                            v-tooltip.bottom="'Connection AP to Router(MWS)'"
+                            icon="pi pi-wifi"
+                            class="p-button-sm p-button-outlined p-button-success p-button-rounded action-btn"
+                            @click="$emit('open-modal', data, 'mwsConnection')"
+                            :disabled="!canMwsConnect(data)"
+                        />
+                        
+                        <Button
+                            v-if="data.type === 'router' && data.hWtype !== 'HardwareAP'"
+                            v-tooltip.bottom="'Change Mode'"
+                            icon="pi pi-wrench"
+                            class="p-button-sm p-button-outlined p-button-info p-button-rounded action-btn"
+                            @click="$emit('open-change-mode', data)"
+                            :disabled="!canChangeMode(data)"
+                        />
+                        
+                        <Button
+                            v-if="data.dslPort"
+                            v-tooltip.bottom="isResettingDsl(data) ? 'Resetting DSL...' : 'Reset DSL Line'"
+                            :icon="isResettingDsl(data) ? 'pi pi-spinner pi-spin' : 'pi pi-phone'"
+                            class="p-button-sm p-button-outlined p-button-help p-button-rounded action-btn"
+                            :disabled="!canResetDsl(data) || isAnyOperationOnThisDevice(data)"
+                            @click="showDslResetConfirm(data)"
+                        />
+                        
+                        <Button
+                            v-if="data.type === 'router' && data.vncUrl"
+                            v-tooltip.bottom="'LAN VNC'"
+                            icon="pi pi-desktop"
+                            class="p-button-sm p-button-outlined p-button-secondary p-button-rounded action-btn"
+                            @click="openVnc(data)"
+                            :disabled="!canOpenVnc(data)"
+                        />
+                        
+                        <Button
+                            v-if="data.URL"
+                            v-tooltip.bottom="'Open Device Interface'"
+                            icon="bi bi-layout-sidebar"
+                            class="p-button-sm p-button-outlined p-button-primary p-button-rounded action-btn"
+                            @click="openDeviceInterface(data)"
+                        />
+                        
+                        <Button
+                            v-if="data.type === 'router'"
+                            v-tooltip.bottom="isInitializing(data) ? 'Initializing...' : 'Skip Wizard - set password'"
+                            :icon="isInitializing(data) ? 'pi pi-spinner pi-spin' : 'bi bi-magic'"
+                            class="p-button-sm p-button-outlined p-button-warning p-button-rounded action-btn"
+                            :disabled="!canInitialize(data) || isAnyOperationOnThisDevice(data)" 
+                            @click="handleInitialization(data)"
+                        />
+                        
+                        <Button 
+                            :icon="releasingDeviceId === data.id ? 'pi pi-spinner pi-spin' : 'pi pi-trash'"
+                            class="p-button-outlined p-button-danger p-button-sm p-button-rounded action-btn release-btn"
+                            @click="showReleaseConfirm(data)"
+                            v-tooltip.bottom="releasingDeviceId === data.id ? 'Releasing...' : 'Release device'"
+                            :disabled="!isCurrentUserBooking(data) || releasingDeviceId === data.id"
+                        />
                     </div>    
                 </template>
             </Column>
@@ -254,31 +249,164 @@
             </template>
         </DataTable>
 
+        <!-- Floating Quick Actions Menu -->
+        <OverlayPanel ref="quickActionsPanel" :showCloseIcon="true" :dismissable="true" class="quick-actions-panel">
+            <div class="quick-actions-container" v-if="quickActionDevice">
+                <div class="quick-actions-header">
+                    <div class="flex align-items-center gap-2">
+                        <i :class="deviceIcon(quickActionDevice.type)" style="font-size: 1.2rem;"></i>
+                        <div>
+                            <div class="font-bold">{{ quickActionDevice.shortName }}</div>
+                            <small class="text-color-secondary">{{ quickActionDevice.hwId }}</small>
+                        </div>
+                    </div>
+                    <Tag 
+                        :value="quickActionDevice.statusCode === 200 ? 'Online' : 'Offline'"
+                        :severity="quickActionDevice.statusCode === 200 ? 'success' : 'danger'"
+                    />
+                </div>
+                
+                <div class="quick-actions-grid">
+                    <Button
+                        :label="consoleStore.isConsoleOpen(quickActionDevice.id) ? 'Console' : 'Open Console'"
+                        :icon="consoleStore.isConsoleOpen(quickActionDevice.id) ? 'bi bi-terminal-fill' : 'bi bi-terminal'"
+                        class="p-button-sm p-button-outlined p-button-secondary quick-action-btn"
+                        @click="executeQuickAction('console')"
+                        :class="{ 'console-open': consoleStore.isConsoleOpen(quickActionDevice.id) }"
+                    />
+                    
+                    <Button
+                        v-if="quickActionDevice.rebootPort"
+                        label="Power"
+                        icon="pi pi-power-off"
+                        class="p-button-sm p-button-outlined p-button-warning quick-action-btn"
+                        @click="executeQuickAction('power')"
+                        :disabled="!canPowerManage(quickActionDevice) || isAnyOperationOnThisDevice(quickActionDevice)"
+                    />
+                    
+                    <Button
+                        :label="isResetting(quickActionDevice) ? 'Resetting...' : 'Reset Config'"
+                        :icon="isResetting(quickActionDevice) ? 'pi pi-spinner pi-spin' : 'pi pi-refresh'"
+                        class="p-button-sm p-button-outlined p-button-danger quick-action-btn"
+                        :disabled="!canResetConfig(quickActionDevice) || isAnyOperationOnThisDevice(quickActionDevice)" 
+                        @click="executeQuickAction('reset')"
+                    />
+                    
+                    <Button
+                        v-if="quickActionDevice.type === 'AP'"
+                        label="MWS Connect"
+                        icon="pi pi-wifi"
+                        class="p-button-sm p-button-outlined p-button-success quick-action-btn"
+                        @click="executeQuickAction('mwsConnection')"
+                        :disabled="!canMwsConnect(quickActionDevice)"
+                    />
+                    
+                    <Button
+                        label="WAN Settings"
+                        icon="pi pi-globe"
+                        class="p-button-sm p-button-outlined p-button-info quick-action-btn"
+                        @click="executeQuickAction('wanSettings')"
+                    />
+                    
+                    <Button
+                        v-if="quickActionDevice.type === 'router' && quickActionDevice.hWtype !== 'HardwareAP'"
+                        label="Change Mode"
+                        icon="pi pi-wrench"
+                        class="p-button-sm p-button-outlined p-button-info quick-action-btn"
+                        @click="executeQuickAction('changeMode')"
+                        :disabled="!canChangeMode(quickActionDevice)"
+                    />
+                    
+                    <Button
+                        v-if="quickActionDevice.dslPort"
+                        :label="isResettingDsl(quickActionDevice) ? 'DSL...' : 'Reset DSL'"
+                        :icon="isResettingDsl(quickActionDevice) ? 'pi pi-spinner pi-spin' : 'pi pi-phone'"
+                        class="p-button-sm p-button-outlined p-button-help quick-action-btn"
+                        :disabled="!canResetDsl(quickActionDevice) || isAnyOperationOnThisDevice(quickActionDevice)"
+                        @click="executeQuickAction('dslReset')"
+                    />
+                    
+                    <Button
+                        v-if="quickActionDevice.type === 'router' && quickActionDevice.vncUrl"
+                        label="LAN VNC"
+                        icon="pi pi-desktop"
+                        class="p-button-sm p-button-outlined p-button-secondary quick-action-btn"
+                        @click="executeQuickAction('vnc')"
+                        :disabled="!canOpenVnc(quickActionDevice)"
+                    />
+                    
+                    <Button
+                        v-if="quickActionDevice.URL"
+                        label="Interface"
+                        icon="bi bi-layout-sidebar"
+                        class="p-button-sm p-button-outlined p-button-primary quick-action-btn"
+                        @click="executeQuickAction('openInterface')"
+                    />
+                    
+                    <Button
+                        v-if="quickActionDevice.type === 'router'"
+                        :label="isInitializing(quickActionDevice) ? 'Init...' : 'Skip Wizard'"
+                        :icon="isInitializing(quickActionDevice) ? 'pi pi-spinner pi-spin' : 'bi bi-magic'"
+                        class="p-button-sm p-button-outlined p-button-warning quick-action-btn"
+                        :disabled="!canInitialize(quickActionDevice) || isAnyOperationOnThisDevice(quickActionDevice)" 
+                        @click="executeQuickAction('initialize')"
+                    />
+                    
+                    <Button
+                        label="Details"
+                        icon="pi pi-info-circle"
+                        class="p-button-sm p-button-outlined quick-action-btn"
+                        @click="executeQuickAction('details')"
+                    />
+                    
+                    <Button
+                        label="Extend"
+                        icon="pi pi-plus-circle"
+                        class="p-button-sm p-button-outlined p-button-success quick-action-btn"
+                        @click="executeQuickAction('extend')"
+                        :disabled="!isCurrentUserBooking(quickActionDevice)"
+                    />
+                    
+                    <Button
+                        :label="releasingDeviceId === quickActionDevice.id ? 'Releasing...' : 'Release'"
+                        :icon="releasingDeviceId === quickActionDevice.id ? 'pi pi-spinner pi-spin' : 'pi pi-trash'"
+                        class="p-button-sm p-button-danger quick-action-btn release-quick-btn"
+                        @click="executeQuickAction('release')"
+                        :disabled="!isCurrentUserBooking(quickActionDevice) || releasingDeviceId === quickActionDevice.id"
+                        :loading="releasingDeviceId === quickActionDevice.id"
+                    />
+                </div>
+            </div>
+        </OverlayPanel>
+
         <!-- Диалог подтверждения освобождения устройства -->
         <Dialog 
             v-model:visible="showReleaseConfirmDialog" 
             modal 
             :blockScroll="false"
             header="Release Device"
-            :style="{ width: '400px' }"
+            :style="{ width: '400px', maxWidth: '90vw' }"
+            class="responsive-dialog"
         >
             <div class="confirmation-content">
                 <i class="pi pi-exclamation-triangle mr-3" style="font-size: 2rem; color: #e74c3c;" />
                 <span>Are you sure you want to release this device?</span>
             </div>
             <template #footer>
-                <Button 
-                    label="No" 
-                    icon="pi pi-times" 
-                    class="p-button-text" 
-                    @click="showReleaseConfirmDialog = false"
-                />
-                <Button 
-                    label="Yes" 
-                    icon="pi pi-check" 
-                    class="p-button-danger" 
-                    @click="confirmRelease"
-                />
+                <div class="dialog-footer">
+                    <Button 
+                        label="No" 
+                        icon="pi pi-times" 
+                        class="p-button-text" 
+                        @click="showReleaseConfirmDialog = false"
+                    />
+                    <Button 
+                        label="Yes" 
+                        icon="pi pi-check" 
+                        class="p-button-danger" 
+                        @click="confirmRelease"
+                    />
+                </div>
             </template>
         </Dialog>
 
@@ -288,7 +416,8 @@
             modal 
             :blockScroll="false"
             header="Extend Booking"
-            :style="{ width: '400px' }"
+            :style="{ width: '400px', maxWidth: '90vw' }"
+            class="responsive-dialog"
         >
             <div class="extend-content">
                 <div class="current-time mb-3">
@@ -329,20 +458,22 @@
                 </div>
             </div>
             <template #footer>
-                <Button 
-                    label="Cancel" 
-                    icon="pi pi-times" 
-                    class="p-button-text" 
-                    @click="showExtendDialog = false"
-                />
-                <Button 
-                    label="Extend Booking" 
-                    icon="pi pi-plus" 
-                    class="p-button-success" 
-                    @click="confirmExtendBooking"
-                    :disabled="!selectedDuration"
-                    :loading="isExtending"
-                />
+                <div class="dialog-footer">
+                    <Button 
+                        label="Cancel" 
+                        icon="pi pi-times" 
+                        class="p-button-text" 
+                        @click="showExtendDialog = false"
+                    />
+                    <Button 
+                        label="Extend Booking" 
+                        icon="pi pi-plus" 
+                        class="p-button-success" 
+                        @click="confirmExtendBooking"
+                        :disabled="!selectedDuration"
+                        :loading="isExtending"
+                    />
+                </div>
             </template>
         </Dialog>
 
@@ -352,7 +483,8 @@
             modal 
             :blockScroll="false"
             header="Reset Configuration"
-            :style="{ width: '450px' }"
+            :style="{ width: '450px', maxWidth: '90vw' }"
+            class="responsive-dialog"
         >
             <div class="confirmation-content">
                 <i class="pi pi-exclamation-triangle mr-3" style="font-size: 2rem; color: #e74c3c;" />
@@ -365,18 +497,20 @@
                 </div>
             </div>
             <template #footer>
-                <Button 
-                    label="Cancel" 
-                    icon="pi pi-times" 
-                    class="p-button-text" 
-                    @click="showResetConfirmDialog = false"
-                />
-                <Button 
-                    label="Reset Configuration" 
-                    icon="pi pi-refresh" 
-                    class="p-button-danger" 
-                    @click="confirmReset"
-                />
+                <div class="dialog-footer">
+                    <Button 
+                        label="Cancel" 
+                        icon="pi pi-times" 
+                        class="p-button-text" 
+                        @click="showResetConfirmDialog = false"
+                    />
+                    <Button 
+                        label="Reset Configuration" 
+                        icon="pi pi-refresh" 
+                        class="p-button-danger" 
+                        @click="confirmReset"
+                    />
+                </div>
             </template>
         </Dialog>
 
@@ -386,7 +520,8 @@
             modal 
             :blockScroll="false"
             header="Reboot Device"
-            :style="{ width: '450px' }"
+            :style="{ width: '450px', maxWidth: '90vw' }"
+            class="responsive-dialog"
         >
             <div class="confirmation-content">
                 <i class="pi pi-exclamation-triangle mr-3" style="font-size: 2rem; color: #f39c12;" />
@@ -399,18 +534,20 @@
                 </div>
             </div>
             <template #footer>
-                <Button 
-                    label="Cancel" 
-                    icon="pi pi-times" 
-                    class="p-button-text" 
-                    @click="showRebootConfirmDialog = false"
-                />
-                <Button 
-                    label="Reboot Device" 
-                    icon="pi pi-power-off" 
-                    class="p-button-warning" 
-                    @click="confirmReboot"
-                />
+                <div class="dialog-footer">
+                    <Button 
+                        label="Cancel" 
+                        icon="pi pi-times" 
+                        class="p-button-text" 
+                        @click="showRebootConfirmDialog = false"
+                    />
+                    <Button 
+                        label="Reboot Device" 
+                        icon="pi pi-power-off" 
+                        class="p-button-warning" 
+                        @click="confirmReboot"
+                    />
+                </div>
             </template>
         </Dialog>
 
@@ -420,7 +557,8 @@
             modal 
             :blockScroll="false"
             header="Reset DSL Line"
-            :style="{ width: '450px' }"
+            :style="{ width: '450px', maxWidth: '90vw' }"
+            class="responsive-dialog"
         >
             <div class="confirmation-content">
                 <i class="pi pi-exclamation-triangle mr-3" style="font-size: 2rem; color: #3498db;" />
@@ -433,18 +571,20 @@
                 </div>
             </div>
             <template #footer>
-                <Button 
-                    label="Cancel" 
-                    icon="pi pi-times" 
-                    class="p-button-text" 
-                    @click="showDslResetConfirmDialog = false"
-                />
-                <Button 
-                    label="Reset DSL Line" 
-                    icon="pi pi-phone" 
-                    class="p-button-secondary" 
-                    @click="confirmDslReset"
-                />
+                <div class="dialog-footer">
+                    <Button 
+                        label="Cancel" 
+                        icon="pi pi-times" 
+                        class="p-button-text" 
+                        @click="showDslResetConfirmDialog = false"
+                    />
+                    <Button 
+                        label="Reset DSL Line" 
+                        icon="pi pi-phone" 
+                        class="p-button-secondary" 
+                        @click="confirmDslReset"
+                    />
+                </div>
             </template>
         </Dialog>
 
@@ -454,7 +594,8 @@
             modal 
             :blockScroll="false"
             header="Release All Devices"
-            :style="{ width: '450px' }"
+            :style="{ width: '450px', maxWidth: '90vw' }"
+            class="responsive-dialog"
         >
             <div class="confirmation-content">
                 <i class="pi pi-exclamation-triangle mr-3" style="font-size: 2rem; color: #e74c3c;" />
@@ -474,20 +615,22 @@
                 </div>
             </div>
             <template #footer>
-                <Button 
-                    label="Cancel" 
-                    icon="pi pi-times" 
-                    class="p-button-text" 
-                    @click="showReleaseAllConfirmDialog = false"
-                    :disabled="releasingAllDevices"
-                />
-                <Button 
-                    label="Release All" 
-                    icon="pi pi-trash" 
-                    class="p-button-danger" 
-                    @click="confirmReleaseAll"
-                    :loading="releasingAllDevices"
-                />
+                <div class="dialog-footer">
+                    <Button 
+                        label="Cancel" 
+                        icon="pi pi-times" 
+                        class="p-button-text" 
+                        @click="showReleaseAllConfirmDialog = false"
+                        :disabled="releasingAllDevices"
+                    />
+                    <Button 
+                        label="Release All" 
+                        icon="pi pi-trash" 
+                        class="p-button-danger" 
+                        @click="confirmReleaseAll"
+                        :loading="releasingAllDevices"
+                    />
+                </div>
             </template>
         </Dialog>
 
@@ -497,8 +640,9 @@
             v-model:visible="showPowerMenuDialog" 
             modal 
             header="Power Management"
-            :style="{ width: '400px' }"
+            :style="{ width: '400px', maxWidth: '90vw' }"
             :closable="true"
+            class="responsive-dialog"
         >
             <div class="power-menu-content">
                 <p class="mb-3">Select action for <strong>{{ powerActionDevice?.hwId }}</strong>:</p>
@@ -561,12 +705,14 @@
             </div>
             
             <template #footer>
-                <Button 
-                    label="Cancel" 
-                    icon="pi pi-times" 
-                    class="p-button-text" 
-                    @click="showPowerMenuDialog = false"
-                />
+                <div class="dialog-footer">
+                    <Button 
+                        label="Cancel" 
+                        icon="pi pi-times" 
+                        class="p-button-text" 
+                        @click="showPowerMenuDialog = false"
+                    />
+                </div>
             </template>
         </Dialog>
 
@@ -576,7 +722,8 @@
             v-model:visible="showPowerActionConfirmDialog" 
             modal 
             :header="`Confirm ${getPowerActionLabel(selectedPowerAction)}`"
-            :style="{ width: '450px' }"
+            :style="{ width: '450px', maxWidth: '90vw' }"
+            class="responsive-dialog"
         >
             <div class="confirmation-content">
                 <i 
@@ -608,18 +755,20 @@
             </div>
             
             <template #footer>
-                <Button 
-                    label="Cancel" 
-                    icon="pi pi-times" 
-                    class="p-button-text" 
-                    @click="cancelPowerAction"
-                />
-                <Button 
-                    :label="getPowerActionLabel(selectedPowerAction)"
-                    :icon="getPowerActionIcon(selectedPowerAction)"
-                    :class="`p-button-${getPowerActionSeverity(selectedPowerAction)}`"
-                    @click="confirmPowerAction"
-                />
+                <div class="dialog-footer">
+                    <Button 
+                        label="Cancel" 
+                        icon="pi pi-times" 
+                        class="p-button-text" 
+                        @click="cancelPowerAction"
+                    />
+                    <Button 
+                        :label="getPowerActionLabel(selectedPowerAction)"
+                        :icon="getPowerActionIcon(selectedPowerAction)"
+                        :class="`p-button-${getPowerActionSeverity(selectedPowerAction)}`"
+                        @click="confirmPowerAction"
+                    />
+                </div>
             </template>
         </Dialog>
 
@@ -629,8 +778,9 @@
             header="Device Details" 
             :modal="true"
             :blockScroll="false"
-            :style="{ width: '700px', maxWidth: '90vw' }"
+            :style="{ width: '700px', maxWidth: '95vw' }"
             :contentStyle="{ maxHeight: '70vh' }"
+            class="responsive-dialog"
         >
             <div v-if="selectedDevice" class="device-details-horizontal">
                 <div class="detail-section">
@@ -821,25 +971,124 @@
             </div>
 
             <template #footer>
-                <Button 
-                    label="Close" 
-                    icon="pi pi-times" 
-                    @click="showDetailsDialog = false" 
-                    class="p-button-text"
-                />
-                <Button 
-                    label="Copy All" 
-                    icon="pi pi-copy" 
-                    @click="copyAllDetails(selectedDevice)" 
-                    class="p-button-secondary"
-                />
+                <div class="dialog-footer">
+                    <Button 
+                        label="Close" 
+                        icon="pi pi-times" 
+                        @click="showDetailsDialog = false" 
+                        class="p-button-text"
+                    />
+                    <Button 
+                        label="Copy All" 
+                        icon="pi pi-copy" 
+                        @click="copyAllDetails(selectedDevice)" 
+                        class="p-button-secondary"
+                    />
+                </div>
+            </template>
+        </Dialog>
+
+        <!-- Диалог ввода пароля -->
+        <Dialog 
+            v-model:visible="showPasswordDialog" 
+            modal 
+            :blockScroll="false"
+            header="Enter Device Password"
+            :style="{ width: '450px', maxWidth: '95vw' }"
+            :closable="!isSavingPassword"
+            class="responsive-dialog"
+        >
+            <div class="password-dialog-content">
+                <div class="flex align-items-center gap-2 mb-3">
+                    <i class="pi pi-lock text-primary" style="font-size: 1.5rem"></i>
+                    <div>
+                        <div class="font-bold">Device: {{ passwordDialogDevice?.hwId }}</div>
+                        <small class="text-color-secondary">Enter a password to access the device interface</small>
+                    </div>
+                </div>
+                
+                <div class="field mb-3">
+                    <label for="newPassword" class="font-semibold block mb-2">
+                        New Password <span class="text-red-500">*</span>
+                    </label>
+                    <div class="password-input-wrapper">
+                        <Password 
+                            id="newPassword"
+                            v-model="newPassword" 
+                            :feedback="false"
+                            placeholder="Enter new password (min 8 chars)"
+                            class="custom-password-input"
+                            toggleMask
+                            :disabled="isSavingPassword"
+                            :class="{ 'p-invalid': passwordError }"
+                            :inputStyle="{ width: '100%', paddingRight: '2.5rem' }"
+                        />
+                    </div>
+                    <small class="text-color-secondary block mt-1">
+                        <i class="pi pi-info-circle mr-1"></i>
+                        Password must be at least 8 characters and not be common
+                    </small>
+                    <small v-if="passwordError" class="text-red-500 block mt-1">
+                        {{ passwordError }}
+                    </small>
+                </div>
+                
+                <div class="field">
+                    <label class="font-semibold block mb-2">
+                        Use booking password
+                    </label>
+                    <div class="booking-password-container">
+                        <div class="flex align-items-center gap-2 p-2 surface-ground border-round">
+                            <i class="pi pi-key text-warning"></i>
+                            <span class="font-mono text-sm">{{ passwordDialogDevice?.booking?.accessPassword || 'No password available' }}</span>
+                            <Button 
+                                icon="pi pi-copy" 
+                                class="p-button-sm p-button-text p-button-rounded copy-btn-small"
+                                @click="copyToClipboard(passwordDialogDevice?.booking?.accessPassword, 'Booking Password')"
+                            />
+                        </div>
+                    </div>
+                    <small class="text-color-secondary block mt-1">
+                        <i class="pi pi-info-circle mr-1"></i>
+                        You can use the booking password or set your own
+                    </small>
+                </div>
+            </div>
+            
+            <template #footer>
+                <div class="dialog-footer dialog-footer-three">
+                    <Button 
+                        label="Cancel" 
+                        icon="pi pi-times" 
+                        class="p-button-text" 
+                        @click="closePasswordDialog"
+                        :disabled="isSavingPassword"
+                    />
+                    <Button 
+                        label="Use Booking Password" 
+                        icon="pi pi-key" 
+                        class="p-button-secondary" 
+                        @click="useBookingPassword"
+                        :disabled="isSavingPassword || !passwordDialogDevice?.booking?.accessPassword"
+                    />
+                    <Button 
+                        label="Save & Open" 
+                        icon="pi pi-check" 
+                        class="p-button-primary" 
+                        @click="saveAndOpenInterface"
+                        :loading="isSavingPassword"
+                        :disabled="!newPassword || newPassword.length < 8 || isSavingPassword"
+                    />
+                </div>
             </template>
         </Dialog>
     </div>
 </template>
+
 <script setup>
 import { ref, computed, inject, onMounted, onUnmounted, watch, nextTick } from 'vue'
 import { useToast } from 'primevue/usetoast'
+import { socket } from '@/socket'
 import { useDeviceStore } from '@/stores/useDeviceStore'
 import { useDeviceActionsStore } from '@/stores/useDeviceActionsStore'
 import { useModeStore } from '@/stores/useModeStore'
@@ -848,7 +1097,16 @@ import { useConsoleStore } from '@/stores/useConsoleStore'
 import StatusIndicator from './StatusIndicator.vue'
 import FirmwareVersion from '@/components/FirmwareVersion.vue'
 import WanTypeDisplay from './WanTypeDisplay.vue'
-
+import Dialog from 'primevue/dialog'
+import Button from 'primevue/button'
+import Password from 'primevue/password'
+import InputNumber from 'primevue/inputnumber'
+import Chip from 'primevue/chip'
+import Tag from 'primevue/tag'
+import Badge from 'primevue/badge'
+import DataTable from 'primevue/datatable'
+import Column from 'primevue/column'
+import OverlayPanel from 'primevue/overlaypanel'
 
 const isCheckingAllFirmwares = ref(false)
 const modeStore = useModeStore()
@@ -884,6 +1142,17 @@ const showPowerActionConfirmDialog = ref(false)
 const selectedPowerAction = ref(null)
 const powerActionDevice = ref(null)
 
+const showPasswordDialog = ref(false)
+const passwordDialogDevice = ref(null)
+const newPassword = ref('')
+const passwordError = ref('')
+const isSavingPassword = ref(false)
+const pendingDeviceUrl = ref(null)
+
+// Состояние для floating меню
+const quickActionsPanel = ref(null)
+const quickActionDevice = ref(null)
+
 const props = defineProps({
     loading: Boolean,
     wanTypes: Array
@@ -891,7 +1160,8 @@ const props = defineProps({
 
 const emit = defineEmits([
     'open-modal',
-    'open-change-mode'
+    'open-change-mode',
+    'open-console'
 ])
 
 const extendOptions = [
@@ -903,18 +1173,71 @@ const extendOptions = [
     { label: '12 hours', value: 43200 }
 ]
 
-// ✅ WATCH для отслеживания изменений версии статуса питания
+// Переключение floating меню
+const toggleQuickActions = (event, device) => {
+    quickActionDevice.value = device
+    quickActionsPanel.value.toggle(event)
+}
+
+// Выполнение действия из floating меню
+const executeQuickAction = (action) => {
+    const device = quickActionDevice.value
+    if (!device) return
+    
+    quickActionsPanel.value.hide()
+    
+    switch (action) {
+        case 'console':
+            handleConsoleClick(device)
+            break
+        case 'power':
+            showPowerMenu(device)
+            break
+        case 'reset':
+            showResetConfirm(device)
+            break
+        case 'release':
+            showReleaseConfirm(device)
+            break
+        case 'mwsConnection':
+            emit('open-modal', device, 'mwsConnection')
+            break
+        case 'changeMode':
+            emit('open-change-mode', device)
+            break
+        case 'dslReset':
+            showDslResetConfirm(device)
+            break
+        case 'vnc':
+            openVnc(device)
+            break
+        case 'openInterface':
+            openDeviceInterface(device)
+            break
+        case 'initialize':
+            handleInitialization(device)
+            break
+        case 'details':
+            showDeviceDetails(device)
+            break
+        case 'extend':
+            showExtendModal(device)
+            break
+        case 'wanSettings':
+            handleOpenWanModal(device)
+            break
+    }
+}
+
 watch(
     () => deviceActionsStore.powerStatusVersion,
     (newVersion, oldVersion) => {
         if (newVersion !== oldVersion && isMounted.value) {
-            // console.log(`🔄 Power status version changed: ${oldVersion} -> ${newVersion}, refreshing UI...`)
             safeUpdateTable()
         }
     }
 )
 
-// ========== МЕТОДЫ ДЛЯ ПИТАНИЯ ==========
 const showPowerMenu = (device) => {
     powerActionDevice.value = device
     showPowerMenuDialog.value = true
@@ -928,6 +1251,7 @@ const selectPowerAction = (action) => {
         showPowerActionConfirmDialog.value = true
     }, 100)
 }
+
 const manualCheckAllFirmwares = async () => {
     isCheckingAllFirmwares.value = true
     
@@ -946,21 +1270,23 @@ const manualCheckAllFirmwares = async () => {
     try {
         const passwords = {}
         onlineBookedDevices.forEach(device => {
-            let password = todayPassword.value
-            if (device.booking?.isBooked && 
+            // ✅ Правильный приоритет:
+            let password = device.devicePassword  // 1. Сохраненный пароль
+            if (!password && device.booking?.isBooked && 
                 device.booking?.bookedBy === deviceStore.currentUserId && 
                 device.booking?.accessPassword) {
-                password = device.booking.accessPassword
+                password = device.booking.accessPassword  // 2. Пароль из бронирования
+            }
+            if (!password) {
+                password = todayPassword.value  // 3. Daily password
             }
             passwords[device.id] = password
         })
         
         const deviceIds = onlineBookedDevices.map(d => d.id)
         
-        // ✅ Получаем response от checkMultipleFirmwares
         const response = await firmwareStore.checkMultipleFirmwares(deviceIds, passwords, true)
         
-        // ✅ Проверяем, были ли неудачные проверки
         if (response && response.details && response.details.failed && response.details.failed.length > 0) {
             toast.add({
                 severity: 'warn',
@@ -1047,7 +1373,7 @@ const getPowerActionSeverity = (action) => {
     }
     return severities[action] || 'secondary'
 }
-// Замените эти методы:
+
 const getPowerStatusText = (deviceId) => {
   const _ = deviceActionsStore.powerStatusVersion
   
@@ -1088,7 +1414,13 @@ const canPowerManage = (device) => {
            device.rebootPort
 }
 
-// ========== ОСТАЛЬНЫЕ МЕТОДЫ (без изменений) ==========
+const getDeviceDisplayPassword = (device) => {
+    if (device.devicePassword) {
+        return device.devicePassword
+    }
+    return device.booking?.accessPassword || 'Not available'
+}
+
 const handleConsoleClick = (device) => {
     if (consoleStore.isConsoleOpen(device.id)) {
         consoleStore.focusConsole(device.id)
@@ -1189,7 +1521,13 @@ const startTimer = () => {
 
 const isOffline = (device) => device.statusCode !== 200
 
-const canInitialize = (device) => isCurrentUserBooking(device) && !isOffline(device) && !isAnyOperationOnThisDevice(device)
+const canInitialize = (device) => {
+    return isCurrentUserBooking(device) && 
+           !isOffline(device) && 
+           !isAnyOperationOnThisDevice(device) &&
+           device.booking?.accessPassword
+}
+
 const canOpenInterface = (device) => isCurrentUserBooking(device) && !isOffline(device) && device.URL
 const canMwsConnect = (device) => isCurrentUserBooking(device)
 const canChangeMode = (device) => isCurrentUserBooking(device) && !isOffline(device)
@@ -1456,7 +1794,17 @@ const openVnc = (device) => {
 }
 
 const openDeviceInterface = (device) => {
-    if (device.URL) {
+    if (!device.URL) {
+        toast.add({
+            severity: 'warn',
+            summary: 'Not Available',
+            detail: 'Device interface URL is not available',
+            life: 3000
+        })
+        return
+    }
+    
+    if (device.devicePassword) {
         window.open(device.URL, '_blank')
         toast.add({
             severity: 'info',
@@ -1464,11 +1812,220 @@ const openDeviceInterface = (device) => {
             detail: `Opening ${device.hwId} interface`,
             life: 2000
         })
+        return
+    }
+    
+    passwordDialogDevice.value = device
+    pendingDeviceUrl.value = device.URL
+    newPassword.value = ''
+    passwordError.value = ''
+    showPasswordDialog.value = true
+}
+
+const closePasswordDialog = () => {
+    showPasswordDialog.value = false
+    passwordDialogDevice.value = null
+    pendingDeviceUrl.value = null
+    newPassword.value = ''
+    passwordError.value = ''
+    isSavingPassword.value = false
+}
+
+const validatePassword = (password) => {
+    if (password.length < 8) {
+        return 'Password must be at least 8 characters'
+    }
+    
+    const weakPasswords = [
+        '12345678', '123456789', 'password', 'admin', 'admin123',
+        'qwerty123', '11111111', '00000000', 'abcdefgh', 'letmein'
+    ]
+    
+    if (weakPasswords.includes(password.toLowerCase())) {
+        return 'Password is too weak. Please choose a stronger password'
+    }
+    
+    return null
+}
+
+const useBookingPassword = () => {
+    let password = passwordDialogDevice.value?.booking?.accessPassword
+    if (password) {
+        if (typeof password === 'string') {
+            password = password.replace(/^["']|["']$/g, '').trim()
+        }
+        copyToClipboard(password, 'Booking Password')
+        savePasswordAndOpen(password)
     }
 }
 
-const handleInitialization = (device) => {
-    deviceActionsStore.initializationDevice(device, todayPassword.value)
+const savePasswordAndOpen = async (password) => {
+    isSavingPassword.value = true
+    
+    try {
+        let cleanPassword = password
+        if (typeof cleanPassword === 'string') {
+            cleanPassword = cleanPassword.replace(/^["']|["']$/g, '').trim()
+        }
+        
+        await new Promise((resolve, reject) => {
+            socket.emit('device:setPassword', {
+                deviceId: passwordDialogDevice.value.id,
+                password: cleanPassword
+            }, (response) => {
+                if (response?.success) {
+                    resolve(response)
+                } else {
+                    reject(new Error(response?.error || 'Failed to save password'))
+                }
+            })
+        })
+        
+        passwordDialogDevice.value.devicePassword = cleanPassword
+        
+        const urlToOpen = pendingDeviceUrl.value || passwordDialogDevice.value.URL
+        
+        closePasswordDialog()
+        
+        if (urlToOpen && urlToOpen !== 'null' && urlToOpen !== 'undefined') {
+            window.open(urlToOpen, '_blank')
+        } else {
+            toast.add({
+                severity: 'error',
+                summary: 'Error',
+                detail: 'Invalid device URL',
+                life: 3000
+            })
+            return
+        }
+        
+        await copyToClipboard(cleanPassword, 'Device Password')
+        
+        toast.add({
+            severity: 'success',
+            summary: 'Password Saved',
+            detail: `Password for ${passwordDialogDevice.value?.hwId || 'device'} saved and copied to clipboard`,
+            life: 3000
+        })
+        
+        safeUpdateTable()
+        
+    } catch (error) {
+        console.error('❌ Failed to save password:', error)
+        toast.add({
+            severity: 'error',
+            summary: 'Error',
+            detail: error.message || 'Failed to save password',
+            life: 3000
+        })
+    } finally {
+        isSavingPassword.value = false
+    }
+}
+
+const saveAndOpenInterface = () => {
+    const validationError = validatePassword(newPassword.value)
+    if (validationError) {
+        passwordError.value = validationError
+        return
+    }
+    
+    passwordError.value = ''
+    savePasswordAndOpen(newPassword.value)
+}
+
+const handleInitialization = async (device) => {
+    if (!device) {
+        toast.add({ severity: 'warn', summary: 'No Device', detail: 'No device selected', life: 3000 })
+        return
+    }
+    
+    // ✅ ПРАВИЛЬНЫЙ ПРИОРИТЕТ ПАРОЛЕЙ:
+    // 1. Сохраненный пароль из конфига (devicePassword)
+    // 2. Пароль из бронирования (booking.accessPassword)
+    // 3. Daily password (todayPassword)
+    const password = device.devicePassword || device.booking?.accessPassword || todayPassword.value
+    
+    if (!password) {
+        toast.add({ severity: 'error', summary: 'No Password', detail: 'Device password is not available', life: 3000 })
+        return
+    }
+    
+    // Устанавливаем операцию
+    deviceActionsStore.startOperation(device.id, 'initializing')
+    
+    // Один toast в начале
+    toast.add({ severity: 'info', summary: 'Initialization Started', detail: `Initializing ${device.hwId}...`, life: 3000 })
+    
+    try {
+        // Сохраняем пароль в конфиг (если он изменился)
+        await new Promise((resolve, reject) => {
+            socket.emit('device:setPassword', {
+                deviceId: device.id,
+                password: password
+            }, (response) => {
+                if (response?.success) resolve(response)
+                else reject(new Error(response?.error || 'Failed to save password'))
+            })
+        })
+        
+        // Сохраняем пароль локально
+        device.devicePassword = password
+        
+        // Копируем в буфер обмена без toast
+        try {
+            if (navigator && navigator.clipboard && navigator.clipboard.writeText) {
+                await navigator.clipboard.writeText(password)
+            }
+        } catch (e) {}
+        
+        // Данные для инициализации
+        const requestData = {
+            deviceId: device.id,
+            url: `${device.checkUrl}/rci/`,
+            body: [
+                { "eula": { "accept": {} }},
+                {"dpn": {"accept": {}}},
+                {"easyconfig": {"disable": true}},
+                {"user":{"password":{"plain":{"name":"admin","password": password}}}},
+                {"user":{"password":{"name":"admin","password": password}}},
+                {"system": {"configuration": {"save": true}}}
+            ]
+        }
+        
+        socket.emit('device:init', requestData, (response) => {
+            deviceActionsStore.finishOperation(device.id)
+            
+            if (response?.success || response?.status === 'ok') {
+                toast.add({ 
+                    severity: 'success', 
+                    summary: 'Initialization Complete', 
+                    detail: `${device.hwId} initialized. Password copied to clipboard.`, 
+                    life: 4000 
+                })
+            } else {
+                toast.add({ 
+                    severity: 'error', 
+                    summary: 'Initialization Failed', 
+                    detail: response?.error || 'Unknown error', 
+                    life: 5000 
+                })
+            }
+        })
+        
+        safeUpdateTable()
+        
+    } catch (error) {
+        console.error('❌ Initialization error:', error)
+        deviceActionsStore.finishOperation(device.id)
+        
+        toast.add({ 
+            severity: 'error', 
+            summary: 'Initialization Failed', 
+            detail: error.message || 'Failed to initialize device', 
+            life: 5000 
+        })
+    }
 }
 
 const handleOpenWanModal = (device) => {
@@ -1521,24 +2078,27 @@ const checkAllFirmwares = async () => {
     try {
         const passwords = {}
         onlineBookedDevices.forEach(device => {
-            let password = todayPassword.value
-            if (device.booking?.isBooked && 
+            let password = device.devicePassword
+            if (!password && device.booking?.isBooked && 
                 device.booking?.bookedBy === deviceStore.currentUserId && 
                 device.booking?.accessPassword) {
                 password = device.booking.accessPassword
+            }
+            if (!password) {
+                password = todayPassword.value
             }
             passwords[device.id] = password
         })
         
         const deviceIds = onlineBookedDevices.map(d => d.id)
         
-        // ✅ Передаем false - это автоматическая проверка
         await firmwareStore.checkMultipleFirmwares(deviceIds, passwords, false)
         
     } catch (error) {
         console.error('❌ Batch firmware check failed:', error)
     }
 }
+
 let updateTimeout = null
 let lastTableUpdate = 0
 
@@ -1621,22 +2181,50 @@ const showDeviceDetails = (device) => {
 const copyToClipboard = async (text, fieldName = 'Text') => {
     if (!text) return
     
+    let valueToCopy = text
+    if (typeof text === 'object' && text !== null) {
+        valueToCopy = text.password || text.value || JSON.stringify(text)
+    }
+    
+    if (typeof valueToCopy === 'string') {
+        valueToCopy = valueToCopy.replace(/^["']|["']$/g, '')
+    }
+    
+    let copied = false  // ✅ Добавляем переменную
+    
     try {
-        await navigator.clipboard.writeText(text)
-        toast.add({
-            severity: 'success',
-            summary: 'Copied!',
-            detail: `${fieldName} copied to clipboard`,
-            life: 2000
-        })
+        if (navigator && navigator.clipboard && navigator.clipboard.writeText) {
+            await navigator.clipboard.writeText(String(valueToCopy))
+            copied = true  // ✅ Устанавливаем в true
+        } else {
+            const textArea = document.createElement('textarea')
+            textArea.value = String(valueToCopy)
+            textArea.style.position = 'fixed'
+            textArea.style.opacity = '0'
+            document.body.appendChild(textArea)
+            textArea.select()
+            document.execCommand('copy')
+            document.body.removeChild(textArea)
+            copied = true  // ✅ Устанавливаем в true
+        }
     } catch (err) {
-        const textArea = document.createElement('textarea')
-        textArea.value = text
-        document.body.appendChild(textArea)
-        textArea.select()
-        document.execCommand('copy')
-        document.body.removeChild(textArea)
-        
+        try {
+            const textArea = document.createElement('textarea')
+            textArea.value = String(valueToCopy)
+            textArea.style.position = 'fixed'
+            textArea.style.opacity = '0'
+            document.body.appendChild(textArea)
+            textArea.select()
+            document.execCommand('copy')
+            document.body.removeChild(textArea)
+            copied = true  // ✅ Устанавливаем в true
+        } catch (fallbackErr) {
+            console.error('❌ Failed to copy:', fallbackErr)
+        }
+    }
+    
+    // ✅ Теперь переменная copied существует
+    if (copied) {
         toast.add({
             severity: 'success',
             summary: 'Copied!',
@@ -1645,7 +2233,6 @@ const copyToClipboard = async (text, fieldName = 'Text') => {
         })
     }
 }
-
 watch(
     () => modeStore.currentMode,
     (newModes) => {
@@ -1666,17 +2253,13 @@ watch(
     { deep: true, flush: 'post' }
 )
 
-
 watch(() => deviceStore.bookedDevices.length, (newLength, oldLength) => {
   if (newLength > oldLength && newLength > 0 && isMounted.value) {
-    // Запрашиваем статусы для новых устройств
     deviceStore.bookedDevices.forEach(async (device) => {
       if (device.rebootPort) {
         try {
-          // ✅ Явно запрашиваем статус
           await deviceActionsStore.requestPowerStatus(device.id)
         } catch (error) {
-          // Статус может не определиться - это нормально
         }
       }
     })
@@ -1687,19 +2270,6 @@ watch(() => deviceStore.bookedDevices.length, (newLength, oldLength) => {
     }, 3000)
   }
 })
-// onMounted(() => {
-//     startTimer()
-//     isMounted.value = true
-//     consoleStore.restoreConsoleState()
-//     unsubscribeModeUpdates = modeStore.listenForModeUpdates((data) => {
-//         if (isMounted.value) {
-//             setTimeout(() => {
-//                 if (isMounted.value) safeUpdateTable()
-//             }, 0)
-//         }
-//     })
-// })
-
 
 onMounted(() => {
     startTimer()
@@ -1713,15 +2283,13 @@ onMounted(() => {
         }
     })
     
-    // ✅ BATCH FIRMWARE CHECK при загрузке
     if (deviceStore.bookedDevices.length > 0) {
         setTimeout(() => {
             checkAllFirmwares()
-        }, 2000) // Задержка 2 секунды после монтирования
+        }, 2000)
     }
 })
 
-// ✅ Следим за добавлением новых устройств
 watch(() => deviceStore.bookedDevices.length, (newLength, oldLength) => {
     if (newLength > oldLength && newLength > 0 && isMounted.value) {
         setTimeout(() => {
@@ -1730,7 +2298,6 @@ watch(() => deviceStore.bookedDevices.length, (newLength, oldLength) => {
     }
 })
 
-// ✅ Следим за статусом устройств (онлайн/оффлайн)
 watch(
     () => deviceStore.bookedDevices.map(d => ({ id: d.id, status: d.statusCode })),
     (newStatuses, oldStatuses) => {
@@ -1745,7 +2312,6 @@ watch(
         }
         
         if (becameOnline.length > 0) {
-            // console.log(`🔄 Devices became online: ${becameOnline.join(', ')}, checking firmware...`)
             setTimeout(() => {
                 checkAllFirmwares()
             }, 5000)
@@ -1753,7 +2319,6 @@ watch(
     },
     { deep: true }
 )
-
 
 onUnmounted(() => {
     if (timerInterval) {
@@ -1773,6 +2338,7 @@ onUnmounted(() => {
 </script>
 
 <style scoped>
+/* Основные стили */
 .common-section-header {
     display: grid;
     grid-template-columns: 1fr auto; 
@@ -1792,7 +2358,7 @@ onUnmounted(() => {
 .header-right {
     display: flex;
     align-items: center;
-    gap: 1rem;
+    gap: 0.75rem;
     justify-content: flex-end;
     flex-wrap: wrap;
 }
@@ -1800,8 +2366,17 @@ onUnmounted(() => {
 @media (max-width: 768px) {
     .common-section-header {
         grid-template-columns: 1fr auto; 
-        gap: 0.75rem;
+        gap: 0.5rem;
         padding: 0.75rem 1rem;
+    }
+    
+    .header-right {
+        gap: 0.5rem;
+    }
+    
+    .header-right .p-button {
+        font-size: 0.75rem;
+        padding: 0.4rem 0.6rem;
     }
 }
 
@@ -1811,20 +2386,27 @@ onUnmounted(() => {
         gap: 0.5rem;
         justify-items: center;
         text-align: center;
+        padding: 0.5rem 0.75rem;
     }
     
     .header-right {
         justify-content: center;
         width: 100%;
+        gap: 0.4rem;
     }
-}
-
-.common-section-actions {
-    display: flex;
-    gap: 0.5rem;
-    align-items: center;
-    flex-wrap: wrap;
-    justify-content: space-between;
+    
+    .header-right .p-button {
+        font-size: 0.7rem;
+        padding: 0.3rem 0.5rem;
+    }
+    
+    .header-right .p-button .p-button-label {
+        display: none;
+    }
+    
+    .header-right .p-button .p-button-icon {
+        font-size: 0.9rem;
+    }
 }
 
 .booked-devices-section {
@@ -1843,22 +2425,24 @@ onUnmounted(() => {
 .time-left-container {
     display: flex;
     align-items: center;
-    gap: 0.5rem;
+    gap: 0.25rem;
     flex-wrap: wrap;
+    justify-content: center;
 }
 
 .time-chip {
-    font-size: 0.75rem;
-    min-width: 135px;
-    height: 2.1rem;
+    font-size: 0.7rem;
+    min-width: 100px;
+    height: 1.8rem;
     justify-content: center;
+    padding: 0.2rem 0.5rem !important;
 }
 
 .time-chip.badge-style {
     border: none !important;
     font-weight: 600 !important;
-    font-size: 0.75rem !important;
-    padding: 0.35rem 0.75rem !important;
+    font-size: 0.7rem !important;
+    padding: 0.25rem 0.6rem !important;
     border-radius: 20px !important;
     box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1) !important;
 }
@@ -1878,11 +2462,316 @@ onUnmounted(() => {
     color: white !important;
 }
 
-.time-chip.badge-style :deep(.pi-clock) {
-    color: inherit !important;
-    margin-right: 0.4rem !important;
+.extend-btn {
+    width: 1.8rem !important;
+    height: 1.8rem !important;
+    border-width: 2px !important;
+    min-width: auto !important;
+    padding: 0 !important;
 }
 
+/* Стили для actions */
+.actions-container {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.25rem;
+    justify-content: center;
+    align-items: center;
+    width: 100%;
+    max-width: 100%;
+}
+
+.action-btn {
+    width: 2rem !important;
+    height: 2rem !important;
+    min-width: auto !important;
+    padding: 0 !important;
+    font-size: 0.8rem !important;
+    flex-shrink: 0;
+}
+
+.action-btn .p-button-icon {
+    font-size: 0.8rem !important;
+}
+
+.release-btn {
+    width: 2rem !important;
+    height: 2rem !important;
+    min-width: auto !important;
+    padding: 0 !important;
+    font-size: 0.8rem !important;
+    flex-shrink: 0;
+    border-width: 2px !important;
+}
+
+/* Floating Quick Actions Panel */
+.quick-actions-panel {
+    min-width: 320px;
+    max-width: 400px;
+}
+
+.quick-actions-panel :deep(.p-overlaypanel-content) {
+    padding: 0.75rem;
+}
+
+.quick-actions-container {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+}
+
+.quick-actions-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding-bottom: 0.5rem;
+    border-bottom: 1px solid var(--surface-border);
+}
+
+.quick-actions-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 0.5rem;
+}
+
+.quick-action-btn {
+    width: 100% !important;
+    font-size: 0.8rem !important;
+    padding: 0.4rem 0.6rem !important;
+    justify-content: flex-start !important;
+    gap: 0.5rem !important;
+}
+
+.release-quick-btn {
+    grid-column: span 2;
+    font-weight: 600 !important;
+}
+
+.common-device-info-container {
+    cursor: pointer;
+    transition: background-color 0.2s;
+}
+
+.common-device-info-container:hover {
+    background-color: var(--surface-hover);
+    border-radius: 6px;
+}
+
+@media (max-width: 768px) {
+    .actions-container {
+        gap: 0.2rem;
+    }
+    
+    .action-btn {
+        width: 1.8rem !important;
+        height: 1.8rem !important;
+        font-size: 0.7rem !important;
+    }
+    
+    .release-btn {
+        width: 1.8rem !important;
+        height: 1.8rem !important;
+        font-size: 0.7rem !important;
+    }
+    
+    .quick-actions-panel {
+        min-width: 280px;
+        max-width: 90vw;
+    }
+    
+    .quick-actions-grid {
+        gap: 0.35rem;
+    }
+    
+    .quick-action-btn {
+        font-size: 0.75rem !important;
+        padding: 0.35rem 0.5rem !important;
+    }
+}
+
+@media (max-width: 480px) {
+    .actions-container {
+        gap: 0.15rem;
+    }
+    
+    .action-btn {
+        width: 1.6rem !important;
+        height: 1.6rem !important;
+        font-size: 0.65rem !important;
+    }
+    
+    .release-btn {
+        width: 1.6rem !important;
+        height: 1.6rem !important;
+        font-size: 0.65rem !important;
+    }
+    
+    .quick-actions-panel {
+        min-width: 260px;
+    }
+    
+    .quick-actions-grid {
+        gap: 0.3rem;
+    }
+    
+    .quick-action-btn {
+        font-size: 0.7rem !important;
+        padding: 0.3rem 0.4rem !important;
+    }
+}
+
+/* Стили для диалогов */
+.responsive-dialog :deep(.p-dialog) {
+    max-width: 95vw !important;
+}
+
+.responsive-dialog :deep(.p-dialog-content) {
+    padding: 0.75rem 1rem !important;
+}
+
+.responsive-dialog :deep(.p-dialog-footer) {
+    padding: 0.75rem 1rem !important;
+}
+
+.dialog-footer {
+    display: flex;
+    justify-content: flex-end;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+    width: 100%;
+}
+
+.dialog-footer .p-button {
+    min-width: 80px;
+    flex: 0 1 auto;
+}
+
+.dialog-footer-three .p-button {
+    min-width: 90px;
+}
+
+@media (max-width: 768px) {
+    .responsive-dialog :deep(.p-dialog) {
+        max-width: 95vw !important;
+        margin: 0.5rem !important;
+    }
+    
+    .responsive-dialog :deep(.p-dialog-content) {
+        padding: 0.75rem !important;
+    }
+    
+    .dialog-footer {
+        flex-direction: column;
+        width: 100%;
+        gap: 0.4rem;
+    }
+    
+    .dialog-footer .p-button {
+        width: 100%;
+        min-width: unset;
+        justify-content: center;
+    }
+    
+    .dialog-footer-three .p-button {
+        width: 100%;
+        min-width: unset;
+    }
+    
+    .confirmation-content {
+        flex-direction: column;
+        text-align: center;
+        padding: 0.5rem;
+    }
+    
+    .confirmation-content i {
+        margin-right: 0;
+        margin-bottom: 0.75rem;
+    }
+}
+
+@media (max-width: 480px) {
+    .responsive-dialog :deep(.p-dialog) {
+        max-width: 98vw !important;
+        margin: 0.25rem !important;
+    }
+    
+    .responsive-dialog :deep(.p-dialog-content) {
+        padding: 0.5rem !important;
+    }
+    
+    .responsive-dialog :deep(.p-dialog-header) {
+        padding: 0.5rem 0.75rem !important;
+    }
+    
+    .responsive-dialog :deep(.p-dialog-title) {
+        font-size: 1rem !important;
+    }
+    
+    .dialog-footer .p-button {
+        font-size: 0.8rem !important;
+        padding: 0.4rem 0.6rem !important;
+    }
+}
+
+/* Стили для поля пароля */
+.password-input-wrapper {
+    width: 100%;
+    position: relative;
+}
+
+.custom-password-input {
+    width: 100% !important;
+    display: block !important;
+}
+
+.custom-password-input :deep(.p-password) {
+    width: 100% !important;
+    display: block !important;
+}
+
+.custom-password-input :deep(.p-password-input) {
+    width: 100% !important;
+    padding-right: 3rem !important;
+    box-sizing: border-box !important;
+}
+
+.custom-password-input :deep(.p-password-panel) {
+    width: 100% !important;
+}
+
+.custom-password-input :deep(.p-input-icon-right),
+.custom-password-input :deep(.p-password-toggle-icon) {
+    position: absolute !important;
+    right: 10px !important;
+    top: 50% !important;
+    transform: translateY(-50%) !important;
+    z-index: 10 !important;
+    cursor: pointer !important;
+    color: #6c757d !important;
+    font-size: 1.1rem !important;
+}
+
+.booking-password-container {
+    width: 100%;
+}
+
+.booking-password-container .flex {
+    flex-wrap: wrap;
+}
+
+.booking-password-container .font-mono {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.password-dialog-content .field {
+    margin-bottom: 1rem;
+}
+
+/* Остальные стили */
 .confirmation-content {
     display: flex;
     align-items: center;
@@ -1911,10 +2800,6 @@ onUnmounted(() => {
     margin-top: 0.25rem;
 }
 
-.extend-options {
-    margin-top: 1rem;
-}
-
 .option-buttons {
     display: flex;
     flex-direction: column;
@@ -1932,50 +2817,6 @@ onUnmounted(() => {
     padding: 2rem;
 }
 
-.empty-text {
-    color: var(--text-color-secondary);
-}
-
-.actions-container {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 1rem;
-    width: 100%;
-}
-
-.device-controls {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.25rem;
-    flex: 1;
-}
-
-.release-control {
-    display: flex;
-    align-items: center;
-    justify-content: flex-end;
-    flex-shrink: 0;
-}
-
-.device-list {
-    max-height: 150px;
-    overflow-y: auto;
-    background: var(--surface-50);
-    border-radius: 4px;
-    padding: 0.5rem;
-    border: 1px solid var(--surface-200);
-}
-
-.device-list li {
-    padding: 0.25rem 0.5rem;
-    border-bottom: 1px solid var(--surface-100);
-}
-
-.device-list li:last-child {
-    border-bottom: none;
-}
-
 .power-option {
     cursor: pointer;
     transition: all 0.2s ease;
@@ -1988,209 +2829,13 @@ onUnmounted(() => {
     transform: translateX(5px);
 }
 
-.power-option:active {
-    transform: translateX(2px);
-}
-
-.power-menu {
-    transition: all 0.2s ease;
-}
-
-.power-menu:hover {
-    transform: scale(1.05);
-    background-color: var(--warning-50) !important;
-}
-
-.text-green-600 {
-    color: #10b981;
-}
-
-.text-gray-500 {
-    color: #6b7280;
-}
-
-@media (max-width: 768px) {
-    .section-header {
-        padding: 0.75rem 1rem;
-        flex-direction: column;
-        align-items: stretch;
-        gap: 0.75rem;
-    }
-    .section-title {
-        font-size: 1.1rem;
-        justify-content: space-between;
-        width: 100%;
-    }
-    .section-actions {
-        display: flex;
-        flex-direction: column;
-        gap: 0.5rem;
-        width: 100%;
-    }
-    .devices-count {
-        order: -1;
-        align-self: flex-start;
-        margin-bottom: 0.5rem;
-    }
-    .actions-container {
-        flex-direction: column;
-        gap: 0.5rem;
-    }
-    .release-control {
-        justify-content: center;
-        width: 100%;
-    }
-    .device-controls {
-        justify-content: center;
-        gap: 0.5rem;
-    }
-    .time-left-container {
-        flex-direction: column;
-        align-items: flex-start;
-        gap: 0.25rem;
-    }
-    .time-chip {
-        min-width: 80px;
-        font-size: 0.7rem;
-    }
-}
-
-@media (max-width: 480px) {
-    .section-header {
-        padding: 0.5rem 0.75rem;
-    }
-    .section-title {
-        font-size: 1rem;
-    }
-    .confirmation-content {
-        flex-direction: column;
-        text-align: center;
-    }
-    .confirmation-content i {
-        margin-bottom: 1rem;
-        margin-right: 0;
-    }
-    .option-buttons {
-        grid-template-columns: 1fr;
-    }
-    .section-actions {
-        gap: 0.25rem;
-    }
-}
-
-:deep(.firmware-column) {
-    text-align: center !important;
-    justify-content: center !important;
-    align-items: center !important;
-    min-width: 230px !important;
-}
-
-:deep(.booked-devices-table .p-column-header-content) {
-    justify-content: center !important;
-    text-align: center !important;
-    width: 100% !important;
-}
-
-:deep(.time-left-container) {
-    justify-content: center !important;
-    text-align: center !important;
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-}
-
-:deep(.actions-container) {
-    justify-content: left !important;
-    text-align: left !important;
-    display: flex;
-    align-items: left;
-    gap: 1rem;
-}
-
-:deep(.device-controls) {
-    display: flex;
-    justify-content: center !important;
-    align-items: center;
-    gap: 0.25rem;
-    flex-wrap: wrap;
-}
-
-:deep(.time-chip) {
-    display: inline-flex;
-    justify-content: center;
-    align-items: center;
-}
-
-:deep(.console-open) {
-    background-color: var(--primary-color) !important;
-    color: white !important;
-    border-color: var(--primary-color) !important;
-}
-
-:deep(.extend-btn.p-button) {
-    border-radius: 50% !important;
-    width: 2.5rem !important;
-    height: 2.5rem !important;
-    transition: all 0.3s ease !important;
-    border: 2px solid var(--green-300) !important;
-    color: var(--green-600) !important;
-    background: transparent !important;
-}
-
-:deep(.extend-btn.p-button:hover) {
-    background: var(--green-50) !important;
-    border-color: var(--green-500) !important;
-    color: var(--green-700) !important;
-    transform: translateY(-2px) !important;
-    box-shadow: 0 4px 8px rgba(34, 197, 94, 0.2) !important;
-}
-
-:deep(.extend-btn.p-button:active) {
-    transform: translateY(0) !important;
-}
-
-:deep(.extend-btn.p-button:disabled) {
-    opacity: 0.6 !important;
-}
-
-:deep(.p-button-loading) {
-    opacity: 0.7;
-    cursor: not-allowed;
-}
-
-:deep(.pi-circle-fill.power-on) {
-    background: linear-gradient(135deg, #10b981, #059669) !important;
-    -webkit-background-clip: text !important;
-    -webkit-text-fill-color: transparent !important;
-    background-clip: text !important;
-    font-size: 0.75rem;
-}
-
-:deep(.pi-circle-fill.power-off) {
-    color: #9ca3af !important;
-    font-size: 0.75rem;
-}
-
-@media (max-width: 768px) {
-    :deep(.p-tooltip) {
-        font-size: 0.75rem;
-        max-width: 200px;
-    }
-    :deep(.extend-btn.p-button) {
-        width: 2.25rem !important;
-        height: 2.25rem !important;
-        border-width: 1.5px !important;
-        border-radius: 50% !important;
-    }
-}
-
-@media (max-width: 480px) {
-    :deep(.extend-btn.p-button) {
-        width: 2.25rem !important;
-        height: 2.25rem !important;
-        border-width: 1px !important;
-        border-radius: 50% !important;
-    }
+.device-list {
+    max-height: 120px;
+    overflow-y: auto;
+    background: var(--surface-50);
+    border-radius: 4px;
+    padding: 0.5rem;
+    border: 1px solid var(--surface-200);
 }
 
 .device-details-horizontal {
@@ -2273,12 +2918,61 @@ onUnmounted(() => {
     height: 2rem;
 }
 
-.copy-btn:hover {
-    color: #495057;
-    background-color: #e9ecef;
+.copy-btn-small {
+    width: 1.6rem !important;
+    height: 1.6rem !important;
+    min-width: auto !important;
+    padding: 0 !important;
+}
+
+.text-green-600 { color: #10b981; }
+.text-gray-500 { color: #6b7280; }
+
+:deep(.firmware-column) {
+    text-align: center !important;
+}
+
+:deep(.console-open) {
+    background-color: var(--primary-color) !important;
+    color: white !important;
+    border-color: var(--primary-color) !important;
+}
+
+:deep(.extend-btn.p-button) {
+    border-radius: 50% !important;
+    transition: all 0.3s ease !important;
+    border: 2px solid var(--green-300) !important;
+    color: var(--green-600) !important;
+    background: transparent !important;
+}
+
+:deep(.extend-btn.p-button:hover) {
+    background: var(--green-50) !important;
+    border-color: var(--green-500) !important;
+    color: var(--green-700) !important;
+    transform: translateY(-2px) !important;
+    box-shadow: 0 4px 8px rgba(34, 197, 94, 0.2) !important;
+}
+
+:deep(.pi-circle-fill.power-on) {
+    background: linear-gradient(135deg, #10b981, #059669) !important;
+    -webkit-background-clip: text !important;
+    -webkit-text-fill-color: transparent !important;
+    background-clip: text !important;
+    font-size: 0.75rem;
+}
+
+:deep(.pi-circle-fill.power-off) {
+    color: #9ca3af !important;
+    font-size: 0.75rem;
 }
 
 @media (max-width: 768px) {
+    :deep(.p-tooltip) {
+        font-size: 0.75rem;
+        max-width: 200px;
+    }
+    
     .horizontal-grid {
         grid-template-columns: 1fr;
         gap: 0.75rem;
@@ -2286,6 +2980,10 @@ onUnmounted(() => {
     
     .compact-grid {
         grid-template-columns: repeat(2, 1fr);
+    }
+    
+    .detail-section {
+        padding: 0.75rem;
     }
 }
 
@@ -2296,6 +2994,28 @@ onUnmounted(() => {
     
     .field-value-group {
         padding: 0.5rem;
+    }
+    
+    .detail-section {
+        padding: 0.5rem;
+    }
+    
+    .detail-section h4 {
+        font-size: 0.95rem;
+    }
+    
+    .device-list {
+        max-height: 80px;
+    }
+    
+    .confirmation-content {
+        flex-direction: column;
+        text-align: center;
+    }
+    
+    .confirmation-content i {
+        margin-bottom: 1rem;
+        margin-right: 0;
     }
 }
 </style>
