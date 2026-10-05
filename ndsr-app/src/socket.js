@@ -7,7 +7,9 @@ export const state = reactive({
     //barEvents: []
 });
 
-export const socket = io(import.meta.env.VITE_WS_HOST, {
+// Пустой VITE_WS_HOST — подключаемся к адресу страницы (nginx проксирует
+// /socket.io/ на бэкенд). io('') дал бы битый URL "http://".
+export const socket = io(import.meta.env.VITE_WS_HOST || undefined, {
     path: "/socket.io/",
     transports: ['websocket', 'polling']
   });

@@ -1,18 +1,8 @@
 import net from 'net';
 import { Telnet } from "telnet-client";
-import { getCronStatus, deviceBookings, currentWanTypes } from '../socketHandler.js';
 import { getDeviceById, devices,saveConfig } from "../devices.js";
-import cron from "node-cron";
-import { changeWanType } from './changeWanType.js';
 import { getManagmentID } from "./getManagmentID.js";
 
-
-function isDeviceBookedNow(deviceId) {
-  if (!deviceBookings.has(deviceId)) return false;
-  const booking = deviceBookings.get(deviceId);
-  const now = Math.floor(Date.now() / 1000);
-  return now < booking.expiresAt;
-}
 
 /**
  * Вспомогательная функция для отправки команды и ожидания ответа (новый метод)
@@ -274,83 +264,3 @@ export async function resetConfig(deviceId, maxRetries = 3) {
     return await oldReset(deviceId, maxRetries);
   }
 }
-// ==================== CRON ЗАДАЧИ ====================
-
-// CRON на сброс всех устройств в 4:00
-async function resetAllDevices() {
-  if (!getCronStatus()) {
-    console.log("Cron is disabled — skipping auto reset.");
-    return;
-  }
-
-  console.log("Starting automatic device reset...");
-
-  for (const device of devices) {
-    if (isDeviceBookedNow(device.id)) {
-      console.log(`Skipping ${device.hwId} — booked`);
-      continue;
-    }
-
-    try {
-      await resetConfig(device.id);
-      console.log(`Successfully reset device: ${device.hwId}`);
-      await new Promise(resolve => setTimeout(resolve, 2000));
-    } catch (err) {
-      console.error(`Failed to reset device ${device?.hwId}:`, err.message);
-    }
-  }
-
-  console.log("All devices processed for reset.");
-}
-
-// CRON на сброс WAN типа в 2:50
-async function resetAllWanDevice() {
-  if (!getCronStatus()) {
-    console.log("Cron is disabled — skipping WAN type reset.");
-    return;
-  }
-
-  console.log("Starting automatic WAN type reset...");
-  
-  for (const device of devices) {
-    if (isDeviceBookedNow(device.id)) {
-      console.log(`Skipping ${device.hwId} — booked`);
-      continue;
-    }
-
-    try {
-      console.log("Resetting WAN type for device:", device.id);
-      
-      if (currentWanTypes[device.id]) {
-        delete currentWanTypes[device.id];
-        console.log(`Cleared WAN type for device ${device.hwId}`);
-      }
-      
-      await changeWanType(device.id, "4094");
-      await new Promise(resolve => setTimeout(resolve, 3000));
-      
-      console.log(`Successfully reset WAN type for device: ${device.hwId}`);
-    } catch (err) {
-      console.error(`Failed to reset WAN type for device ${device?.hwId}:`, err.message);
-    }
-  }
-
-  console.log("All devices processed for WAN type reset.");
-}
-
-// CRON задачи
-cron.schedule("0 4 * * *", () => {
-  const timestamp = new Date().toLocaleString();
-  console.log(`[${timestamp}] Auto-reset triggered by cron`);
-  resetAllDevices().catch(err => {
-    console.error(`[${timestamp}] Auto-reset failed:`, err);
-  });
-}, { timezone: "Europe/Moscow" });
-
-cron.schedule("50 2 * * *", () => {
-  const timestamp = new Date().toLocaleString();
-  console.log(`[${timestamp}] Auto-WAN type reset triggered by cron`);
-  resetAllWanDevice().catch(err => {
-    console.error(`[${timestamp}] Auto-WAN reset failed:`, err);
-  });
-}, { timezone: "Europe/Moscow" });

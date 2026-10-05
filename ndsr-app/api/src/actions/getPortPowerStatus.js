@@ -201,7 +201,7 @@ async function oldGetPortPowerStatus(deviceId, maxRetries = 3) {
  * Универсальная функция получения статуса питания
  * Выбирает метод на основе jeromeClass устройства
  */
-export async function getPortPowerStatus(deviceId, maxRetries = 3) {
+ async function getPortPowerStatusRaw(deviceId, maxRetries = 3) {
   const device = getDeviceById(deviceId);
   if (!device) {
     throw new Error(`Device ${deviceId} not found`);
@@ -216,4 +216,25 @@ export async function getPortPowerStatus(deviceId, maxRetries = 3) {
   } else {
     return await oldGetPortPowerStatus(deviceId, maxRetries);
   }
+}
+
+
+
+// 🔧 Л4а: in-flight дедуп параллельных запросов статуса питания (паттерн B2).
+// Два клиента одновременно → два sendInitData → оба видели пустой кэш →
+// два Jerome-коннекта на одно устройство. Параллельные вызовы теперь шарят
+// один промис; завершившийся вызов удаляется из карты → ПОСЛЕДУЮЩИЕ вызовы
+// (в т.ч. после power-toggle) всегда свежие.
+const inFlightPower = new Map();
+
+export async function getPortPowerStatus(deviceId) {
+    const key = String(deviceId);
+    if (inFlightPower.has(key)) {
+        return inFlightPower.get(key);
+    }
+    const promise = getPortPowerStatusRaw(deviceId).finally(() => {
+        inFlightPower.delete(key);
+    });
+    inFlightPower.set(key, promise);
+    return promise;
 }

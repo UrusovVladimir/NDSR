@@ -16,7 +16,7 @@ function savePasswordToFile(password = null) {
     if (!password)
         password = generatePassword()
 
-    fs.writeFile(path, password, (err) => {
+    fs.writeFile(process.env.PASSWORD_FILE_PATH, password, (err) => {
         if (err) return console.log(err);
         console.log('The password has been saved/changed.');
     });

@@ -1,4 +1,4 @@
-import { getParamRouter } from '../devices.js';
+import { getParamRouter, getDeviceById } from '../devices.js';
 import { makeAuthenticatedRequest, sessionManager } from '../actions/athentication.js';
 
 export class IpDiscoveryService {

@@ -14,7 +14,6 @@
       <!-- Статус пароля -->
       <div v-if="!hasValidPassword" class="mb-3">
         <Message severity="warn">
-          <i class="pi pi-exclamation-triangle mr-2"></i>
           No password available for this device. Please book the device first.
         </Message>
       </div>
@@ -27,7 +26,7 @@
         </Message>
       </div>
 
-      <div class="current-mode-section mb-4" v-if="hasValidPassword">
+        <div class="current-mode-section mb-4" v-if="hasValidPassword || passwordInvalidated">
         <h6 class="section-title mb-2">Current Mode:</h6>
         <div class="mode-display-container">
           <div class="flex align-items-center gap-3">
@@ -44,7 +43,7 @@
         <Chip :label="`Using ${passwordSource} password`" icon="pi pi-key" />
       </div> -->
 
-      <div v-if="hasValidPassword && !authError" class="action-selection-section mb-4">
+        <div v-if="(hasValidPassword || passwordInvalidated) && !authError" class="action-selection-section mb-4">
         <h6 class="section-title mb-3">Select Action:</h6>
         
         <!-- Router Mode -->
@@ -150,32 +149,31 @@
         </div>
       </div>
 
-      <!-- Router Password Section (для connect/disconnect) -->
-      <div v-if="(selectedAction === 'extenderConnect' || selectedAction === 'disconnectRouter') && hasValidPassword && !authError" 
-           class="router-password-section mb-4">
+      <!-- Router Password Section (только для connect: disconnect пароль роутера не использует) -->
+        <div v-if="selectedAction === 'extenderConnect' && (hasValidPassword || passwordInvalidated) && !authError" class="action-selection-section mb-4">
         <h6 class="section-title mb-3">Router Authentication:</h6>
         
         <div class="password-toggle-section mb-3">
           <div class="horizontal-password-options">
             <!-- Device Password Option -->
-            <div class="password-option horizontal-option" 
-                :class="{ 'active': useDevicePassword }"
-                @click="useDevicePassword = true">
+              <div class="password-option horizontal-option" 
+                  :class="{ 'active': useRouterPassword }"
+                  @click="useRouterPassword = true">
               <div class="option-content">
                 <RadioButton
-                  v-model="useDevicePassword"
-                  inputId="useDevicePassword"
+                  v-model="useRouterPassword"
+                  inputId="useRouterPassword"
                   name="passwordSource"
                   :value="true"
                   class="password-radio"
                 />
-                <label for="useDevicePassword" class="password-label">
+                <label for="useRouterPassword" class="password-label">
                   <div class="flex align-items-center mb-1">
                     <i class="pi pi-key mr-2 text-primary"></i>
-                    <strong>Device Password</strong>
+                    <strong>Router Password</strong>
                   </div>
                   <small class="block text-color-secondary">
-                    Same as Router
+                    From the selected router
                   </small>
                 </label>
               </div>
@@ -183,11 +181,11 @@
 
             <!-- Manual Password Option -->
             <div class="password-option horizontal-option" 
-                :class="{ 'active': !useDevicePassword }"
-                @click="useDevicePassword = false">
+                :class="{ 'active': !useRouterPassword }"
+                @click="useRouterPassword = false">
               <div class="option-content">
                 <RadioButton
-                  v-model="useDevicePassword"
+                  v-model="useRouterPassword"
                   inputId="useManualPassword"
                   name="passwordSource"
                   :value="false"
@@ -208,7 +206,7 @@
         </div>
 
         <!-- Manual Password Input -->
-        <div v-if="!useDevicePassword" class="manual-password-section">
+        <div v-if="!useRouterPassword" class="manual-password-section">
           <div class="password-input-container">
             <label class="text-sm font-semibold mb-2 block">Router Password:</label>
             <form @submit.prevent>
@@ -246,7 +244,7 @@
             <div class="flex align-items-center">
               <i class="pi pi-check-circle text-green-600 mr-2"></i>
               <span class="text-green-700">
-                Will use device password
+                Will use the selected router's password
               </span>
             </div>
           </div>
@@ -254,8 +252,7 @@
       </div>
 
       <!-- Router Selection for Disconnect -->
-      <div v-if="selectedAction === 'disconnectRouter' && hasValidPassword && !authError" 
-           class="router-selection-section mb-4">
+        <div v-if="selectedAction === 'disconnectRouter' && (hasValidPassword || passwordInvalidated) && !authError" class="router-selection-section mb-4">
         <h6 class="section-title mb-2">Select Router to Disconnect From:</h6>
         <Dropdown 
           v-model="selectedRouterId" 
@@ -273,7 +270,7 @@
       </div>
 
       <!-- Router Selection for Connect -->
-      <div v-if="selectedAction === 'extenderConnect' && hasValidPassword && !authError" class="router-selection-section mb-4">
+        <div v-if="selectedAction === 'extenderConnect' && (hasValidPassword || passwordInvalidated) && !authError" class="router-selection-section mb-4">
         <h6 class="section-title mb-2">Select Router to Connect:</h6>
         <Dropdown 
           v-model="selectedRouterId" 
@@ -304,14 +301,29 @@
         </div>
       </div>
 
-      <!-- Сообщение о необходимости бронирования -->
-      <div v-if="!hasValidPassword" class="mt-3">
+      <div v-if="!hasValidPassword && !passwordInvalidated" class="mt-3">
         <Message severity="info">
           <i class="pi pi-info-circle mr-2"></i>
           To change device mode, you need to book the device first.
         </Message>
       </div>
 
+        <div v-else-if="passwordInvalidated && !isHardwareControlled" class="mt-3">
+        <Message severity="warn">
+          Password is unknown (device was reset). Mode detection and change 
+          are attempted without authentication — they succeed only if the 
+          device is in factory-default state. Recommended: run 
+          <strong>Skip Wizard</strong> first to set a known password.
+        </Message>
+      </div>
+        <div v-else-if="isHardwareControlled" class="mt-3">
+        <Message severity="warn">
+          <i class="pi pi-lock mr-2"></i>
+          Mode is controlled by the hardware switch. Software transitions to 
+          Router mode are not possible — use the physical switch, or use 
+          Extender / Extender+Connect scenarios.
+        </Message>
+      </div>
       <!-- Сообщение при ошибке аутентификации -->
       <div v-if="authError" class="mt-3">
         <Message severity="info">
@@ -390,6 +402,15 @@
         class="p-button-warning modal-btn-warning"
       />
       <Button 
+        v-else-if="passwordInvalidated && !authError"
+        label="Try Without Password" 
+        icon="pi pi-exclamation-triangle" 
+        @click="confirmAction"
+        :disabled="!canConfirm || isLoading"
+        :loading="isLoading"
+        class="p-button-warning modal-btn-warning"
+      />
+      <Button 
         v-else
         label="Book Device First" 
         icon="pi pi-lock" 
@@ -436,7 +457,7 @@ const modeCheckInProgress = ref(false)
 const devicePassword = ref('')
 const passwordSource = ref('global')
 const authError = ref(false)
-const useDevicePassword = ref(true)
+const useRouterPassword = ref(true)
 const manualRouterPassword = ref('')
 const isMobile = ref(false)
 const currentDevice = ref(null)
@@ -451,6 +472,21 @@ const hasValidPassword = computed(() => {
         devicePassword.value !== 'Loading...'
 })
 
+
+// Устройство после reset: пароль неизвестен, но операции разрешены 
+// (дефолтное устройство открыто — GET /auth → 200)
+const passwordInvalidated = computed(() => {
+  return currentDevice.value?.booking?.passwordInvalidated === true ||
+         props.device?.booking?.passwordInvalidated === true
+})
+
+// 🔑 Аппаратный переключатель режима: софт-переходы ограничены
+// (4310 отдаёт hw_controlled: true и 404 на /rci/system/mode)
+const isHardwareControlled = computed(() => {
+  return String(currentDevice.value?.hwType ?? props.device?.hwType ?? '')
+    .toLowerCase() === 'true'
+})
+
 const modalTitle = computed(() => {
   if (!currentDevice.value) return 'Device Mode'
   return `Device Mode - ${currentDevice.value.shortName} ${currentDevice.value.hwId}`
@@ -463,10 +499,16 @@ const currentDeviceModeInfo = computed(() => {
 
 const currentDeviceBaseMode = computed(() => {
   const modeInfo = currentDeviceModeInfo.value
-  if (!modeInfo) {
-    return hasValidPassword.value && !authError.value ? 'router' : null
+  if (modeInfo?.mode) {
+    return modeInfo.mode
   }
-  return modeInfo.mode
+  // 🔑 Fallback при неизвестном режиме: 
+  // hw-переключатель → устройство в extender физически
+  // дефолтное (после reset) → заводской режим router
+  // остальное без пароля → null (не выдумываем)
+  if (isHardwareControlled.value) return 'extender'
+  if (passwordInvalidated.value) return 'router'
+  return hasValidPassword.value && !authError.value ? 'router' : null
 })
 
 const hasRouterConnection = computed(() => {
@@ -505,22 +547,26 @@ const availableBookedRoutersFormatted = computed(() => {
 
 // ========== ЛОГИКА ОТОБРАЖЕНИЯ ДЕЙСТВИЙ ==========
 const shouldShowAction = (action) => {
-  if (!hasValidPassword.value || authError.value) return true
+  // 🔑 Фильтры работают и без пароля — база режимов теперь известна
+  // (см. currentDeviceBaseMode fallback'и)
+  if ((!hasValidPassword.value && !passwordInvalidated.value) || authError.value) return true
   
   const baseMode = currentDeviceBaseMode.value
   const hasConnection = hasRouterConnection.value
   const connectedRouter = connectedRouterId.value
-  
-  if (baseMode === 'extender_connect' || (baseMode === 'extender' && hasConnection)) {
+
+  // 🔑 HW-переключатель (4310): софт-переход в router невозможен (404) —
+  // скрываем router и disconnectRouter, разрешаем extender/extenderConnect
+  if (isHardwareControlled.value) {
     switch (action) {
-      case 'disconnectRouter': return true
-      case 'router':
-      case 'extender':
-      case 'extenderConnect':
-        return false
+      case 'extender':       return true
+      case 'extenderConnect': return true
+      case 'router':         return false
+      case 'disconnectRouter': return false
       default: return false
     }
   }
+  
   
   switch (action) {
     case 'router':
@@ -537,12 +583,17 @@ const shouldShowAction = (action) => {
 }
 
 const canConfirm = computed(() => {
-  if (!hasValidPassword.value || modeCheckInProgress.value || isLoading.value) return false
+  if ((!hasValidPassword.value && !passwordInvalidated.value) || modeCheckInProgress.value || isLoading.value) return false
   if (!shouldShowAction(selectedAction.value)) return false
-  if (selectedAction.value === 'extenderConnect') return !!selectedRouterId.value
+  if (selectedAction.value === 'extenderConnect') return !!selectedRouterId.value && hasRouterPasswordChoice.value
   if (selectedAction.value === 'disconnectRouter') return !!selectedRouterId.value
   return !!selectedAction.value
 })
+
+// Ручной режим без введённого пароля — подключать нечем
+const hasRouterPasswordChoice = computed(() =>
+  useRouterPassword.value || !!manualRouterPassword.value
+)
 
 const canConfirmAuthError = computed(() => {
   if (!hasValidPassword.value || !authError.value || modeCheckInProgress.value || isLoading.value) return false
@@ -601,51 +652,59 @@ const warningMessage = computed(() => {
 
 // ========== СТАТУС РЕЖИМА ==========
 const modeStatusClass = computed(() => {
-  if (!hasValidPassword.value) return 'status-unknown'
+  // 🔑 Режим известен → показываем его, даже без пароля (дефолтное устройство)
+  if (currentDeviceBaseMode.value) return modeClassForBase()
+  if (!hasValidPassword.value && !passwordInvalidated.value) return 'status-unknown'
   if (authError.value) return 'status-error'
   if (modeCheckInProgress.value) return 'status-checking'
-  
-  const baseMode = currentDeviceBaseMode.value
-  const hasConnection = hasRouterConnection.value
-  
-  if (baseMode === 'router') return 'status-router'
-  if (baseMode === 'extender_connect') return 'status-extender-connected'
-  if (baseMode === 'extender') return 'status-extender'
   return 'status-unknown'
 })
 
 const modeStatusIcon = computed(() => {
-  if (!hasValidPassword.value) return 'pi pi-question-circle text-color-secondary'
+  if (currentDeviceBaseMode.value) return modeIconForBase()
+  if (!hasValidPassword.value && !passwordInvalidated.value) return 'pi pi-question-circle text-color-secondary'
   if (authError.value) return 'pi pi-exclamation-triangle text-red-500'
   if (modeCheckInProgress.value) return 'pi pi-spin pi-spinner text-primary'
-  
-  const baseMode = currentDeviceBaseMode.value
-  const hasConnection = hasRouterConnection.value
-  
-  if (baseMode === 'router') return 'bi bi-router text-blue-500'
-  if (baseMode === 'extender_connect') return 'pi pi-wifi text-green-500 pi-link'
-  if (baseMode === 'extender') return 'pi pi-wifi text-green-500'
   return 'pi pi-question-circle text-color-secondary'
 })
 
 const modeStatusText = computed(() => {
-  if (!hasValidPassword.value) return 'Password required'
+  // 🔑 Режим известен из стора/детекции — показываем его и без пароля
+  if (currentDeviceBaseMode.value) {
+    const base = currentDeviceBaseMode.value
+    if (base === 'router') return 'Router mode active'
+    if (base === 'extender_connect') return 'Extender mode (connected)'
+    if (base === 'extender') {
+      return isHardwareControlled.value ? 'Extender mode (hardware switch)' : 'Extender mode active'
+    }
+  }
+  if (!hasValidPassword.value && !passwordInvalidated.value) return 'Password required'
   if (authError.value) return 'Authentication failed'
   if (modeCheckInProgress.value) return 'Detecting mode...'
-  
-  const baseMode = currentDeviceBaseMode.value
-  const hasConnection = hasRouterConnection.value
-  
-  if (baseMode === 'router') return 'Router mode active'
-  if (baseMode === 'extender_connect') return 'Extender mode (connected)'
-  if (baseMode === 'extender') return 'Extender mode active'
   return 'Mode unknown'
 })
 
+
+// Маппинг режима → класс/иконка (вынесен, чтобы не дублировать в computed'ах)
+const modeClassForBase = () => {
+  const base = currentDeviceBaseMode.value
+  if (base === 'router') return 'status-router'
+  if (base === 'extender_connect') return 'status-extender-connected'
+  if (base === 'extender') return 'status-extender'
+  return 'status-unknown'
+}
+
+const modeIconForBase = () => {
+  const base = currentDeviceBaseMode.value
+  if (base === 'router') return 'bi bi-router text-blue-500'
+  if (base === 'extender_connect') return 'pi pi-wifi text-green-500 pi-link'
+  if (base === 'extender') return 'pi pi-wifi text-green-500'
+  return 'pi pi-question-circle text-color-secondary'
+}
 // ========== МЕТОДЫ ==========
 const show = async (password, source = 'global') => {
   devicePassword.value = password
-  useDevicePassword.value = true
+  useRouterPassword.value = true
   manualRouterPassword.value = ''
   passwordSource.value = source
   authError.value = false
@@ -658,7 +717,9 @@ const show = async (password, source = 'global') => {
   currentDevice.value = props.device
   visible.value = true
 
-  if (hasValidPassword.value && currentDevice.value) {
+  // 🔑 Детекция работает и без пароля: дефолтное устройство отвечает 200
+  // на GET /auth («password not set»), серверная цепочка кандидатов разрулит
+  if ((hasValidPassword.value || passwordInvalidated.value) && currentDevice.value) {
     await loadCurrentMode()
   }
 
@@ -687,7 +748,7 @@ const autoSelectActionBasedOnMode = (modeInfo) => {
 }
 
 const loadCurrentMode = async () => {
-  if (!hasValidPassword.value || !currentDevice.value) return
+  if ((!hasValidPassword.value && !passwordInvalidated.value) || !currentDevice.value) return
   
   modeCheckInProgress.value = true
   authError.value = false
@@ -791,13 +852,11 @@ const confirmAction = async () => {
         throw new Error('Invalid action selected')
     }
     
+    // 🔑 MWS: null → сервер берёт пароль самого роутера (resolveRouterPassword);
+    // пароль экстендера роутеру не подходит
     let routerPasswordToUse = null
-    if (selectedAction.value === 'extenderConnect' || selectedAction.value === 'disconnectRouter') {
-      if (useDevicePassword.value) {
-        routerPasswordToUse = devicePassword.value
-      } else if (manualRouterPassword.value) {
-        routerPasswordToUse = manualRouterPassword.value
-      }
+    if (selectedAction.value === 'extenderConnect' && !useRouterPassword.value) {
+      routerPasswordToUse = manualRouterPassword.value
     }
     
     const deviceId = currentDevice.value.id
@@ -812,7 +871,7 @@ const confirmAction = async () => {
       action: selectedAction.value
     }
   })
-    
+    closeModal() 
     // ✅ НЕБОЛЬШАЯ ЗАДЕРЖКА, ЧТОБЫ МОДАЛКА УСПЕЛА ОТКРЫТЬСЯ
     await new Promise(resolve => setTimeout(resolve, 100))
     
@@ -838,7 +897,7 @@ const confirmAction = async () => {
         routerId: routerId,
         action: selectedAction.value,
         mwsConnected: result.mwsConnected || false,
-        passwordUsed: useDevicePassword.value ? 'device' : 'manual'
+        passwordUsed: useRouterPassword.value ? 'router' : 'manual'
       })
       closeModal()
       
@@ -849,6 +908,7 @@ const confirmAction = async () => {
   } catch (error) {
     console.error('Action failed:', error)
     toast.add({ severity: 'error', summary: 'Operation Failed', detail: error.message, life: 5000 })
+    closeModal() 
   } finally {
     isLoading.value = false
   }
@@ -863,7 +923,7 @@ const fullCleanup = () => {
   selectedAction.value = 'router'
   selectedRouterId.value = ''
   devicePassword.value = ''
-  useDevicePassword.value = true
+  useRouterPassword.value = true
   manualRouterPassword.value = ''
   passwordSource.value = 'global'
   authError.value = false

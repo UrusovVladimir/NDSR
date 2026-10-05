@@ -1,55 +1,93 @@
+# Сгенерировано Ansible (роль NDSR-APP-Compose-role-UP)
+# stdout контейнеров (docker logs) с ротацией — по умолчанию json-file растёт бесконечно
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "{{ container_log_max_size }}"
+    max-file: "{{ container_log_max_file }}"
+
 services:
   frontend:
-     build:
-      context: /home/{{ admin }}/
-      dockerfile: Dockerfile_frontend
-     hostname: ndsr-app-frontend
-     container_name: ndsr-app-front
-     mac_address: 52:10:10:19:02:54
-     networks:
-       ndsr_default:
-         ipv4_address: ${FRONTEND_IP}
-     dns:
-       - 1.1.1.1
-       - 8.8.8.8
-     ports:
-       - 80:80
+    build:
+      context: {{ app_dir }}
+      dockerfile: {{ build_dir }}/Dockerfile_frontend
+    hostname: ndsr-app-frontend
+    container_name: ndsr-app-front
+    restart: unless-stopped
+    logging: *default-logging
+    mac_address: 52:10:10:19:02:54
+    networks:
+      ndsr_default:
+        ipv4_address: ${FRONTEND_IP}
+{% if container_dns | length > 0 %}
+    dns: {{ container_dns | to_json }}
+{% endif %}
+    ports:
+      - 80:80
+    volumes:
+      - {{ build_dir }}/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      - backend
 
   backend:
     build:
-      context: /home/{{ admin }}/
-      dockerfile: Dockerfile_backend
+      context: {{ app_dir }}/api
+      dockerfile: {{ build_dir }}/Dockerfile_backend
     hostname: ndsr-app-backend
     container_name: ndsr-app-back
+    restart: unless-stopped
+    logging: *default-logging
     mac_address: 52:10:10:19:02:53
     networks:
       ndsr_default:
         ipv4_address: ${BACKEND_IP}
-    dns:
-        - 1.1.1.1
-        - 8.8.8.8
-    ports:
-      - 3000:3000
+{% if container_dns | length > 0 %}
+    dns: {{ container_dns | to_json }}
+{% endif %}
+    # Порт наружу не публикуется: клиенты ходят через nginx фронта, и бэкенд
+    # доверяет X-Real-IP (TRUST_PROXY_HEADERS). Прямой доступ позволил бы его подделать.
+    expose:
+      - "{{ ws_port }}"
+      - "{{ guac_ws_port }}"
+    env_file:
+      - {{ backend_env_file }}
     volumes:
-      - /home/{{ admin }}/ndsr-app/api/devices.json:/app/devices.json
-      - /home/{{ admin }}/ndsr-app/api/wan_types.json:/app/wan_types.json
+      - {{ state_host_dir }}:{{ state_container_dir }}
+      - {{ uploads_host_dir }}:{{ upload_dir }}
+      - {{ ssh_key_host_path }}:{{ ssh_key_container_path }}:ro
+{% if log_host_dir %}
+      - {{ log_host_dir }}:{{ log_container_dir }}
+{% endif %}
 
+{% if browser_rdp_enabled | bool %}
+  # RDP в браузере: guacd ходит к mgmt-IP VM (через docker-хост, VLAN vmmgmt)
+  guacd:
+    image: guacamole/guacd:1.5.5
+    container_name: ndsr-guacd
+    restart: unless-stopped
+    logging: *default-logging
+    networks:
+      ndsr_default:
+        ipv4_address: {{ guacd_ip }}
 
+{% endif %}
   webtelnet:
-      build:
-       context: /home/{{ admin }}
-       dockerfile: Dockerfile_webtelnet
-      hostname: webtelnet
-      container_name: ndsr-webtelnet-console
-      mac_address: 52:10:10:19:02:52
-      networks:
-       ndsr_default:
-         ipv4_address: ${WEBTELNET_IP}
-      dns:
-        - 1.1.1.1
-        - 8.8.8.8
-      ports:
-        - 5005:5000
+    build:
+      context: {{ build_dir }}/webtelnet-build
+      dockerfile: {{ build_dir }}/Dockerfile_webtelnet
+    hostname: webtelnet
+    container_name: ndsr-webtelnet-console
+    restart: unless-stopped
+    logging: *default-logging
+    mac_address: 52:10:10:19:02:52
+    networks:
+      ndsr_default:
+        ipv4_address: ${WEBTELNET_IP}
+{% if container_dns | length > 0 %}
+    dns: {{ container_dns | to_json }}
+{% endif %}
+    ports:
+      - 5005:5000
 
 networks:
   ndsr_default:

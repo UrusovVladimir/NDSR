@@ -1,8 +1,9 @@
-###создаем image для Backend
+# Образ backend. Контекст сборки — {{ app_dir }}/api (см. .dockerignore там).
+# .env в образ не попадает: переменные приходят через env_file в compose.
 FROM node:20.13.1-alpine3.20
 WORKDIR /app
-#COPY /home/{{ admin }}/ndsr-app/api .
-COPY ./ndsr-app/api .
-#RUN mv ./.env.example ./.env
-RUN npm install telnet-client && npm install --production
+# Зависимости отдельным слоем — пересобираются только при смене package*.json
+COPY package.json package-lock.json ./
+RUN npm ci --omit=dev
+COPY . .
 CMD [ "node", "server.js" ]

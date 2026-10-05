@@ -1,8 +1,7 @@
 import { UniversalFirewallManager } from './UniversalFirewallManager.js';
 import { getParamRouter } from '../devices.js';
 import { makeAuthenticatedRequest } from '../actions/athentication.js';
-const globalExtenderIps = new Map();
-const globalRouterIps = new Map();
+import { saveMwsLink, getMwsLink, dropMwsLink } from '../state/mwsLinks.js';
 
 export class DockerManager {
     constructor(sshManager) {
@@ -11,8 +10,6 @@ export class DockerManager {
         }
         this.sshManager = sshManager;
         this.firewallManager = new UniversalFirewallManager(sshManager);
-        this.extenderIps = globalExtenderIps;
-        this.routerIps = globalRouterIps;
         console.log(`✅ DockerManager initialized with SSHManager`);
     }
     async getInterfaceIp(containerName, interfaceName) {
@@ -290,7 +287,7 @@ export class DockerManager {
             });
     
             // ✅ ОПРЕДЕЛЯЕМ ТИП УСТРОЙСТВА
-            const isAPDevice = device.type === 'AP' && device.hWtype === 'true';
+            const isAPDevice = device.type === 'AP' && device.hwType === 'true';
             let extenderIp;
     
             if (isAPDevice) {
@@ -332,9 +329,8 @@ export class DockerManager {
                 }
             }
     
-            // ✅ СОХРАНЯЕМ В ГЛОБАЛЬНЫЕ ХРАНИЛИЩА
-            this.extenderIps.set(deviceId, extenderIp);
-            this.routerIps.set(deviceId, routerIp);
+            // ✅ СОХРАНЯЕМ НА ДИСК (state/mwsLinks) — переживает рестарт
+            saveMwsLink(deviceId, { routerId, routerIp, extenderIp });
             
             console.log(`💾 Сохранены IP:`, {
                 extenderIp: extenderIp,
@@ -433,8 +429,9 @@ export class DockerManager {
                 throw new Error(`Роутер ${routerId} не найден`);
             }
     
-            const routerIp = this.routerIps.get(deviceId) || router.ip.split('/')[0];
-            const extenderIp = this.extenderIps.get(deviceId) || routerIp;
+            const link = getMwsLink(deviceId);
+            const routerIp = link?.routerIp || router.ip.split('/')[0];
+            const extenderIp = link?.extenderIp || routerIp;
             
             console.log(`📋 Параметры удаления:`, {
                 deviceId: deviceId,
@@ -452,8 +449,7 @@ export class DockerManager {
             await this.manageContainerFirewall(router.hwId, deviceId, extenderIp, 'remove');
     
             // ✅ УДАЛЯЕМ СОХРАНЕННЫЕ IP
-            this.extenderIps.delete(deviceId);
-            this.routerIps.delete(deviceId);
+            dropMwsLink(deviceId);
             console.log(`🧹 Удалены сохраненные IP для порта ${deviceId}`);
     
             console.log(`✅ Правила проброса удалены для устройства ${deviceId}`);

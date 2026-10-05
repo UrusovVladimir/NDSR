@@ -1,0 +1,26 @@
+[
+  {
+    "id": "vm1",
+    "name": "Win10-1",
+    "os": "Windows 10 Pro",
+    "vlan": 2001,
+    "mgmtIp": "10.10.31.11",
+    "rdpPort": 23001,
+    "rdpUser": "techsupport",
+    "rdpPassword": "change-me",
+    "lanNic": "LAN",
+    "lanMac": "00:50:56:aa:00:01"
+  },
+  {
+    "id": "vm2",
+    "name": "Win10-2",
+    "os": "Windows 10 Pro",
+    "vlan": 2002,
+    "mgmtIp": "10.10.31.12",
+    "rdpPort": 23002,
+    "rdpUser": "techsupport",
+    "rdpPassword": "change-me",
+    "lanNic": "LAN",
+    "lanMac": "00:50:56:aa:00:02"
+  }
+]

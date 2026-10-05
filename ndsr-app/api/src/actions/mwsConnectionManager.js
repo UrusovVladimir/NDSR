@@ -1,8 +1,9 @@
 import { SSHManager } from "../actions/sshManager.js";
 import { DockerManager } from "../utils/dockerManager.js";
-import { HOST_CONFIG } from "../utils/hostConfig.js";
+import { getSSHConfig } from "../utils/hostConfig.js";
 import { getDeviceById, getParamRouter } from "../devices.js";
 import { IpDiscoveryService } from "../utils/ipDiscovery.js"; 
+import { saveMwsLink, getMwsLink, dropMwsLink } from "../state/mwsLinks.js";
 
 export class MWSConnectionManager {
     static async getExtenderIpFromRouter(routerId, extenderMac, routerPassword = null, maxAttempts = 10, delay = 5000) {
@@ -42,7 +43,7 @@ export class MWSConnectionManager {
             });
     
             // ✅ ОПРЕДЕЛЯЕМ ТИП УСТРОЙСТВА
-            const isAPDevice = device.type === 'AP' && device.hWtype === 'true';
+            const isAPDevice = device.type === 'AP' && device.hwType === 'true';
             
             let hostTargetIp = router.ip.split('/')[0]; // IP роутера для хоста
             let containerTargetIp; // IP для контейнера
@@ -85,12 +86,9 @@ export class MWSConnectionManager {
             });
     
             // ✅ ПОДКЛЮЧАЕМСЯ ПО SSH
-            sshManager = new SSHManager(
-                HOST_CONFIG.mainHost.host,
-                HOST_CONFIG.mainHost.port,
-                HOST_CONFIG.mainHost.username,
-                HOST_CONFIG.mainHost.privateKeyPath
-            );
+            // 🔧 правка 28: единый SSH-конфиг (fail-fast, без кредо-дефолтов)
+            const cfg = getSSHConfig();
+            sshManager = new SSHManager(cfg.host, cfg.port, cfg.username, cfg.privateKeyPath);
             
             await sshManager.connect();
             console.log(`✅ SSH подключение установлено`);
@@ -108,6 +106,9 @@ export class MWSConnectionManager {
             console.log(`🔧 Настраиваем проброс портов в контейнере роутера...`);
             console.log(`   → Контейнер: порт ${extenderId} -> ${containerTargetIp}:80`);
             await dockerManager.manageContainerFirewall(router.hwId, extenderId, containerTargetIp, 'setup');
+
+            // ✅ СОХРАНЯЕМ НА ДИСК — по этим IP правила будут сняты при отключении
+            saveMwsLink(extenderId, { routerId, routerIp: hostTargetIp, extenderIp: containerTargetIp });
     
             console.log(`✅ MWS подключение настроено:`);
             console.log(`   - Хост: порт ${extenderId} -> ${hostTargetIp}:80`);
@@ -143,8 +144,14 @@ export class MWSConnectionManager {
             try {
                 console.log(`🔍 Попытка ${attempt}/${maxAttempts} поиска AP в DHCP...`);
                 
+                // 🔧 B22: getParamRouter может вернуть null → null.URL = TypeError,
+                // который ловился бы per-attempt и крутил цикл впустую maxAttempts раз
+                const router = getParamRouter(routerId);
+                if (!router?.URL) {
+                    throw new Error(`Роутер ${routerId} не найден или без URL`);
+                }
                 const dhcpBindings = await IpDiscoveryService.getDhcpBindingsSmart(
-                    getParamRouter(routerId).URL, 
+                    router.URL, 
                     routerPassword
                 );
     
@@ -199,12 +206,9 @@ static async removeMWSConnection(extenderId, routerId) {
         });
 
         // ✅ ПОДКЛЮЧАЕМСЯ ПО SSH
-        sshManager = new SSHManager(
-            HOST_CONFIG.mainHost.host,
-            HOST_CONFIG.mainHost.port,
-            HOST_CONFIG.mainHost.username,
-            HOST_CONFIG.mainHost.privateKeyPath
-        );
+        // 🔧 правка 28: единый SSH-конфиг (fail-fast, без кредо-дефолтов)
+            const cfg = getSSHConfig();
+            sshManager = new SSHManager(cfg.host, cfg.port, cfg.username, cfg.privateKeyPath);
         
         await sshManager.connect();
         console.log(`✅ SSH подключение установлено`);
@@ -217,14 +221,22 @@ static async removeMWSConnection(extenderId, routerId) {
         console.log(`🔧 Удаляем правила проброса в контейнере роутера...`);
         
         // ✅ ИСПРАВЛЕНИЕ: Получаем реальный IP устройства для удаления из контейнера
+        // Сначала — IP, на который правило ставили (state/mwsLinks): DHCP
+        // после рестарта/переподключения может вернуть другой или ничего
+        const link = getMwsLink(extenderId);
         let deviceIpForContainer = '0.0.0.0';
-        try {
-            // Для контейнера нужен реальный IP устройства в сети роутера
-            deviceIpForContainer = await this.getExtenderIpFromRouter(routerId, device.macAddress, null, 3, 2000);
-            console.log(`✅ Получен IP устройства для удаления из контейнера: ${deviceIpForContainer}`);
-        } catch (ipError) {
-            console.warn(`⚠️ Не удалось получить IP устройства для контейнера: ${ipError.message}`);
-            console.log(`🔄 Используем fallback IP для удаления из контейнера`);
+        if (link?.extenderIp) {
+            deviceIpForContainer = link.extenderIp;
+            console.log(`💾 IP устройства для удаления из контейнера взят из mwsLinks: ${deviceIpForContainer}`);
+        } else {
+            try {
+                // Для контейнера нужен реальный IP устройства в сети роутера
+                deviceIpForContainer = await this.getExtenderIpFromRouter(routerId, device.macAddress, null, 3, 2000);
+                console.log(`✅ Получен IP устройства для удаления из контейнера: ${deviceIpForContainer}`);
+            } catch (ipError) {
+                console.warn(`⚠️ Не удалось получить IP устройства для контейнера: ${ipError.message}`);
+                console.log(`🔄 Используем fallback IP для удаления из контейнера`);
+            }
         }
         
         await dockerManager.manageContainerFirewall(router.hwId, extenderId, deviceIpForContainer, 'remove');
@@ -233,6 +245,7 @@ static async removeMWSConnection(extenderId, routerId) {
         console.log(`🔧 Удаляем правила проброса на хосте (только для роутера ${router.ip})...`);
         await this.forceRemoveHostFirewallRules(sshManager, extenderId, router.ip);
 
+        dropMwsLink(extenderId);
         console.log(`✅ MWS подключение удалено для порта ${extenderId}`);
         
         return {
@@ -356,13 +369,9 @@ static async removeMWSConnection(extenderId, routerId) {
             }
 
             // ✅ ПОДКЛЮЧАЕМСЯ ПО SSH
-            sshManager = new SSHManager(
-                HOST_CONFIG.mainHost.host,
-                HOST_CONFIG.mainHost.port,
-                HOST_CONFIG.mainHost.username,
-                HOST_CONFIG.mainHost.privateKeyPath
-            );
-            
+            // 🔧 правка 28: единый SSH-конфиг (fail-fast, без кредо-дефолтов)
+            const cfg = getSSHConfig();
+            sshManager = new SSHManager(cfg.host, cfg.port, cfg.username, cfg.privateKeyPath);
             await sshManager.connect();
             console.log(`✅ SSH подключение установлено`);
             

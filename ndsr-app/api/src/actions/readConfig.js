@@ -1,4 +1,6 @@
-import { getCronStatus, deviceBookings, currentWanTypes } from '../socketHandler.js';
+import { deviceBookings } from '../state/bookings.js';
+import { currentWanTypes } from '../state/wan.js';
+import { getCronStatus } from '../state/runtime.js';
 import { Telnet } from "telnet-client";
 import { getDeviceById, devices } from "../devices.js";
 import cron from "node-cron";

@@ -2,6 +2,24 @@ import axios from 'axios';
 import crypto from 'crypto';
 import { sessionManager } from './sessionManager.js';
 
+
+
+// 🔒 Очередь авторизации per-device. Параллельные authenticate() на одном
+// устройстве инвалидируют друг друга: каждый GET /auth выдаёт новый challenge
+// и сбрасывает pending-сессию предыдущего потока → оба получают 401.
+const authLocks = new Map(); // ip -> Promise последней auth-операции
+
+function withAuthLock(ip, fn) {
+  const prev = authLocks.get(ip) || Promise.resolve();
+  const next = prev.catch(() => {}).then(fn);
+  authLocks.set(ip, next);
+  next.finally(() => {
+    if (authLocks.get(ip) === next) authLocks.delete(ip);
+  }).catch(() => {});
+  return next;
+}
+
+
 const isAuthenticated = async (ip, sessionCookie = null) => {
   try {
     const headers = {};
@@ -21,106 +39,200 @@ const isAuthenticated = async (ip, sessionCookie = null) => {
   }
 }
 
-const authenticate = async (ip, login, password) => {
+// ============================================================
+// x-ndw4-interactive: SCRAM-SHA3-512 + Argon2id (новые прошивки)
+// ============================================================
+async function ndw4Auth(ip, login, password, sessionCookie) {
+  const readData = (r) => {
+    const b64 = r.headers['x-ndm-data'];
+    if (!b64) throw new Error(`ndw4: нет X-NDM-Data (status ${r.status})`);
+    return JSON.parse(Buffer.from(b64, 'base64').toString('utf8'));
+  };
+
+  const post = (obj) => axios.post(`${ip}/auth`, obj, {
+    headers: {
+      'Cookie': sessionCookie,
+      'Content-Type': 'application/json'
+    },
+    maxRedirects: 0,
+    validateStatus: null,
+    timeout: 10000
+  });
+
+  // ── Фаза 1: запрос challenge ──
+  const clientNonce = crypto.randomBytes(16).toString('base64');
+  const r1 = await post({ login, nonce: clientNonce });
+  const d1 = readData(r1);
+  if (d1.error || d1.e) throw new Error(`ndw4 phase1: ${d1.error || d1.e}`);
+  if (!d1.nonce?.startsWith(clientNonce)) {
+    throw new Error('ndw4: nonce mismatch');
+  }
+
+  // AuthMessage — raw значения iter/memcost ровно как пришли (могут быть строками)
+  const authMessage = `login1=${login},nonce1=${clientNonce};iter2=${d1.iter},memcost2=${d1.memcost},nonce2=${d1.nonce},salt2=${d1.salt};login3=${login},nonce3=${d1.nonce}`;
+
+  // ── Вывод ключей ──
+  const { argon2id } = await import('hash-wasm');
+  const saltedPassword = await argon2id({
+    password,
+    salt: Buffer.from(d1.salt, 'base64'),
+    iterations: parseInt(d1.iter, 10),
+    memorySize: parseInt(d1.memcost, 10),
+    parallelism: 1,
+    hashLength: 64,
+    outputType: 'binary'
+  });
+
+  const clientKey = crypto.createHmac('sha3-512', Buffer.from(saltedPassword)).update('NDW4 Interactive Client Key').digest();
+  const storedKey = crypto.createHash('sha3-512').update(clientKey).digest();
+  const serverKey = crypto.createHmac('sha3-512', Buffer.from(saltedPassword)).update('NDW4 Interactive Server Key').digest();
+
+  const proof = (message) => {
+    const mac = crypto.createHmac('sha3-512', storedKey).update(message).digest();
+    const xored = Buffer.alloc(clientKey.length);
+    for (let i = 0; i < clientKey.length; i++) xored[i] = clientKey[i] ^ mac[i];
+    return xored.toString('base64');
+  };
+
+  // ── Фаза 2: client proof + верификация сервера (mutual auth) ──
+  const r2 = await post({ login, nonce: d1.nonce, proof: proof(authMessage) });
+  const d2 = readData(r2);
+  if (d2.error || d2.e) {
+    // Ошибка на фазе 2 = устройство НЕ подтвердило пароль → неверный пароль
+    const err = new Error(`Ошибка авторизации. Статус: ${r2.status}`);
+    err.isAuthError = true;   // машиночитаемый признак для isAuthError()
+    throw err;
+  }
+
+  const expectedSig = crypto.createHmac('sha3-512', serverKey).update(authMessage).digest('base64');
+  if (d2.signature !== expectedSig) {
+    const err = new Error('ndw4: сервер не подтвердил знание пароля (signature mismatch)');
+    err.isAuthError = true;
+    throw err;
+  }
+
+  // ── Фаза 3: подтверждение ──
+  const r3 = await post({
+    login,
+    nonce: d1.nonce,
+    'signature-proof': proof(authMessage + ';signature4=' + d2.signature)
+  });
+  if (r3.status !== 200) {
+    throw new Error(`Ошибка авторизации. Статус: ${r3.status}`);
+  }
+
+  // Кука могла ротироваться в ответах фаз — берём последнюю
+  return r3.headers['set-cookie']?.[0]?.split(';')[0] || sessionCookie;
+}
+
+// ============================================================
+// x-ndw2-interactive: классика (старые прошивки)
+// ============================================================
+async function ndw2Auth(ip, login, password, challengeRes) {
+  const realm = challengeRes.headers['x-ndm-realm'];
+  const challenge = challengeRes.headers['x-ndm-challenge'];
+  const sessionCookie = challengeRes.headers['set-cookie']?.[0]?.split(';')[0];
+
+  if (!sessionCookie || !challenge) {
+    throw new Error('Не удалось получить session cookie/challenge');
+  }
+
+  const md5Hash = crypto.createHash('md5')
+    .update(`${login}:${realm}:${password}`)
+    .digest('hex');
+  const sha256Hash = crypto.createHash('sha256')
+    .update(challenge + md5Hash)
+    .digest('hex');
+
+  // ✅ Тело ТОЛЬКО {login, password} — поле cookie в теле запрещено протоколом
+  const authRes = await axios.post(`${ip}/auth`, {
+    login,
+    password: sha256Hash
+  }, {
+    headers: {
+      'Cookie': sessionCookie,
+      'Content-Type': 'application/json'
+    },
+    maxRedirects: 0,
+    validateStatus: null,
+    timeout: 10000
+  });
+
+  if (authRes.status !== 200) {
+    const err = new Error(`Ошибка авторизации. Статус: ${authRes.status}`);
+    err.isAuthError = true;
+    throw err;
+  }
+
+  return authRes.headers['set-cookie']?.[0]?.split(';')[0] || sessionCookie;
+}
+
+// ============================================================
+// _authenticateCore: выбор схемы по WWW-Authenticate
+// ============================================================
+const _authenticateCore = async (ip, login, password) => {
   try {
-    console.log('🔐 Получаем challenge...');
-    
-    // ✅ ПРОВЕРЯЕМ - МОЖЕТ УСТРОЙСТВО УЖЕ АВТОРИЗОВАНО?
+    // Может устройство уже авторизовано?
     const alreadyAuthenticated = await isAuthenticated(ip);
     if (alreadyAuthenticated) {
       console.log('✅ Устройство уже авторизовано, сессия не требуется');
-      // Возвращаем специальный маркер для уже авторизованных устройств
       return 'ALREADY_AUTHENTICATED';
     }
+
+    console.log('🔐 Получаем challenge...');
 
     const challengeRes = await axios.get(`${ip}/auth`, {
       validateStatus: status => status === 401,
       timeout: 10000
     });
 
-    // ✅ ПРОВЕРЯЕМ - ЕСЛИ ПОЛУЧИЛИ 200, ТО УСТРОЙСТВО УЖЕ АВТОРИЗОВАНО
     if (challengeRes.status === 200) {
       console.log('✅ Устройство уже авторизовано (получили 200 на challenge)');
       return 'ALREADY_AUTHENTICATED';
     }
 
-    const realm = challengeRes.headers['x-ndm-realm'];
-    const challenge = challengeRes.headers['x-ndm-challenge'];
     const sessionCookie = challengeRes.headers['set-cookie']?.[0]?.split(';')[0];
-    
     if (!sessionCookie) {
       throw new Error('Не удалось получить session cookie');
     }
 
-    const sessionId = sessionCookie.split('=')[1];
+    const wa = challengeRes.headers['www-authenticate'] || '';
 
-    console.log('📋 Полученные параметры:', {
-      realm,
-      challenge: challenge ? 'получен' : 'отсутствует',
-      sessionId: sessionId ? 'получен' : 'отсутствует'
-    });
-
-    //  хэши
-    const md5Hash = crypto.createHash('md5')
-      .update(`${login}:${realm}:${password}`)
-      .digest('hex');
-
-    const sha256Hash = crypto.createHash('sha256')
-      .update(challenge + md5Hash)
-      .digest('hex');
-
-    //  запрос авторизации
-    const authData = {
-      login,
-      password: sha256Hash,
-      session_cookie: sessionId,
-      session_id: sessionId
-    };
-
-    const authRes = await axios.post(`${ip}/auth`, authData, {
-      headers: {
-        'Cookie': sessionCookie,
-        'Content-Type': 'application/json',
-      },
-      maxRedirects: 0,
-      validateStatus: null,
-      timeout: 10000
-    });
-
-    console.log('📡 Ответ от сервера:', {
-      status: authRes.status,
-      authenticated: authRes.status === 200
-    });
-
-    if (authRes.status !== 200) {
-      throw new Error(`Ошибка авторизации. Статус: ${authRes.status}`);
+    // Приоритет ndw4 (по документации Netcraze), fallback ndw2
+    if (wa.includes('x-ndw4-interactive')) {
+      console.log('🔐 Схема: x-ndw4-interactive (SCRAM-SHA3-512 + Argon2id)');
+      const cookie = await ndw4Auth(ip, login, password, sessionCookie);
+      sessionManager.setSession(ip, login, cookie);
+      console.log('✅ Авторизация успешна (ndw4)!');
+      return cookie;
     }
 
-    console.log('✅ Авторизация успешна пройдена!');
+    if (wa.includes('x-ndw2-interactive')) {
+      console.log('🔐 Схема: x-ndw2-interactive (классический хэш)');
+      const cookie = await ndw2Auth(ip, login, password, challengeRes);
+      sessionManager.setSession(ip, login, cookie);
+      console.log('✅ Авторизация успешна (ndw2)!');
+      return cookie;
+    }
+
+    throw new Error(`Неизвестная схема авторизации: ${wa}`);
     
-    //  сессия в кэш
-    sessionManager.setSession(ip, login, sessionCookie);
-    
-    return sessionCookie;
   } catch (error) {
     console.error('❌ Ошибка аутентификации:', error.message);
 
-    if (error.response) {
-      console.error('📋 Детали ошибки:', {
-        status: error.response.status,
-        data: error.response.data
-      });
-      
-      // ✅ ЕСЛИ 200 - УСТРОЙСТВО УЖЕ АВТОРИЗОВАНО
-      if (error.response.status === 200) {
-        console.log('✅ Устройство уже авторизовано (в catch блоке)');
-        return 'ALREADY_AUTHENTICATED';
-      }
+    if (error.response?.status === 200) {
+      // Гонка: между isAuthenticated и challenge-GET устройство «открылось»
+      return 'ALREADY_AUTHENTICATED';
     }
 
     return null;
   }
-}
+};
+
+// Публичная authenticate — сериализованная через per-device лок
+const authenticate = (ip, login, password) =>
+  withAuthLock(ip, () => _authenticateCore(ip, login, password));
+
 
 // ✅ ОБНОВЛЕННАЯ ФУНКЦИЯ ДЛЯ ВЫПОЛНЕНИЯ ЗАПРОСОВ С КЭШИРОВАНИЕМ СЕССИЙ
 export const makeAuthenticatedRequest = async (ip, login, password, endpoint, method = 'GET', data = null) => {

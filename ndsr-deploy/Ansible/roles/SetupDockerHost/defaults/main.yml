@@ -1,0 +1,10 @@
+# Значения по умолчанию (перекрываются group_vars inventory стенда).
+
+# Тестовые VM: сеть управления (mgmt-адаптеры всех VM), задачи с тегом vm_mgmt.
+# Включается в inventory стенда, где есть VM; адрес хоста в mgmt-сети —
+# тоже из inventory (vm_mgmt_address, напр. 10.10.31.1/24).
+vm_mgmt_enabled: false
+vm_trunk_iface: int            # trunk-NIC хоста (netplan стенда: ethernets.int)
+vm_mgmt_vlan: 3100
+vm_mgmt_iface: vmmgmt
+vm_mgmt_address: ""

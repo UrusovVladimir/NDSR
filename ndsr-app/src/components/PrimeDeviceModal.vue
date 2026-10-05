@@ -30,6 +30,9 @@
 
     <!-- WAN Types Modal -->
     <div v-if="modalType === 'wanTypes'" class="modal-content">
+      <Message v-if="isDeviceOffline" severity="warn" :closable="false" class="mb-3">
+        Device is offline — only turning the WAN port off on the switch is available
+      </Message>
       <!-- Основной выбор WAN типа -->
       <div class="options-grid" :class="{ 'opacity-50 pointer-events-none': isWanOperationInProgress }">
         <div 
@@ -181,24 +184,24 @@
           <div class="horizontal-password-options">
             <!-- Первая опция -->
             <div class="password-option horizontal-option" 
-                :class="{ 'active': useDevicePassword }"
-                @click="useDevicePassword = true">
+                :class="{ 'active': useRouterPassword }"
+                @click="useRouterPassword = true">
               <div class="option-content">
                 <RadioButton
-                  v-model="useDevicePassword"
-                  inputId="useDevicePassword"
+                  v-model="useRouterPassword"
+                  inputId="useRouterPassword"
                   name="passwordSource"
                   :value="true"
                   class="password-radio"
                   :disabled="isLoading || operationInProgress"
                 />
-                <label for="useDevicePassword" class="password-label">
+                <label for="useRouterPassword" class="password-label">
                   <div class="flex align-items-center mb-1">
                     <i class="pi pi-key mr-2 text-primary"></i>
-                    <strong>Device Password</strong>
+                    <strong>Router Password</strong>
                   </div>
                   <small class="block text-color-secondary">
-                    Same as device
+                    From the selected router
                   </small>
                 </label>
               </div>
@@ -206,11 +209,11 @@
 
             <!-- Вторая опция -->
             <div class="password-option horizontal-option" 
-                :class="{ 'active': !useDevicePassword }"
-                @click="useDevicePassword = false">
+                :class="{ 'active': !useRouterPassword }"
+                @click="useRouterPassword = false">
               <div class="option-content">
                 <RadioButton
-                  v-model="useDevicePassword"
+                  v-model="useRouterPassword"
                   inputId="useManualPassword"
                   name="passwordSource"
                   :value="false"
@@ -232,7 +235,7 @@
         </div>
 
         <!-- Поле для ручного ввода пароля -->
-        <div v-if="!useDevicePassword" class="manual-password-section">
+        <div v-if="!useRouterPassword" class="manual-password-section">
           <div class="password-input-container">
             <label class="text-sm font-semibold mb-2 block">Router Password:</label>
             <form @submit.prevent>
@@ -247,7 +250,7 @@
             </form>
             <small class="text-color-secondary mt-1 block">
               <i class="pi pi-info-circle mr-1"></i>
-              Enter the router's admin password if different from device
+              Enter the router's admin password if the stored one doesn't work
             </small>
           </div>
         </div>
@@ -258,7 +261,7 @@
             <div class="flex align-items-center">
               <i class="pi pi-check-circle text-green-600 mr-2"></i>
               <span class="text-green-700">
-                Will use device password: <strong>{{ devicePassword ? '••••••••' : 'Not set' }}</strong>
+                Will use the selected router's password
               </span>
             </div>
           </div>
@@ -597,6 +600,7 @@
 
 <script setup>
 import { ref, computed, watch, onUnmounted } from 'vue'
+import { isRival } from '@/utils/deviceFlags'
 import { useToast } from 'primevue/usetoast'
 import { socket } from '@/socket'
 import Dialog from 'primevue/dialog'
@@ -691,7 +695,7 @@ const currentStepId = ref('')
 const operationLog = ref([])
 
 // Состояния для управления паролем
-const useDevicePassword = ref(true)
+const useRouterPassword = ref(true)
 const manualRouterPassword = ref('')
 const devicePassword = ref('')
 const passwordSource = ref('global')
@@ -803,13 +807,11 @@ const hasValidPassword = computed(() => {
         devicePassword.value !== 'Loading...'
 })
 
-const routerPasswordToUse = computed(() => {
-  if (useDevicePassword.value) {
-    return devicePassword.value
-  } else {
-    return manualRouterPassword.value
-  }
-})
+// 🔑 MWS: null → сервер берёт пароль самого роутера (resolveRouterPassword);
+// пароль экстендера роутеру не подходит
+const routerPasswordToUse = computed(() =>
+  useRouterPassword.value ? null : manualRouterPassword.value
+)
 
 const saveDevicePassword = (password) => {
     return new Promise((resolve, reject) => {
@@ -838,8 +840,20 @@ const modalTitle = computed(() => {
   return titles[modalType.value] || (currentLanguage.value === 'en' ? 'FAQ' : 'Частые вопросы')
 })
 
+// WAN off = VLAN 4094 на порту свича ("Clear WAN type")
+const WAN_OFF_VLAN = '4094'
+
+// Офлайн-устройство: WAN можно только выключить — это операция на свиче
+const isDeviceOffline = computed(() => {
+  const device = currentDevice.value || props.device
+  return !!device && device.statusCode !== 200
+})
+
 const filteredWanTypes = computed(() => {
   if (modalType.value === 'wanTypes') {
+    if (isDeviceOffline.value) {
+      return props.wanTypes.filter(wan => String(wan.vlanId) === WAN_OFF_VLAN)
+    }
     return props.wanTypes.filter(wan => {
       // Для Dual WAN пропускаем всегда (даже если нет vlanId)
       if (wan.type === 'Dual WAN') return true
@@ -872,6 +886,7 @@ const availableRouters = computed(() => {
   
   return deviceStore.devices.filter(dev => 
     dev.type === 'router' &&
+    !isRival(dev) &&
     dev.statusCode === 200 &&
     dev.id !== currentDevice.value?.id &&
     dev.booking?.isBooked && 
@@ -891,7 +906,9 @@ const filteredFaqItems = computed(() => {
 })
 
 const canConnect = computed(() => {
-  return modalValue.value !== null && availableRouters.value.length > 0
+  // ручной режим без введённого пароля — подключать нечем
+  const hasRouterPassword = useRouterPassword.value || !!manualRouterPassword.value
+  return modalValue.value !== null && availableRouters.value.length > 0 && hasRouterPassword
 })
 
 const getModalStyle = computed(() => {
@@ -993,7 +1010,7 @@ const fetchCurrentConnection = async (deviceId) => {
       }
     }
 
-    if (device && device.type === 'AP' && device.hWtype === 'true') {
+    if (device && device.type === 'AP' && device.hwType === 'true') {
       await fetchAPDeviceConnection(deviceId, device)
     } else {
       currentConnection.value = null
@@ -1177,7 +1194,7 @@ const show = async (type, password = '', source = 'global') => {
     
     devicePassword.value = password
     passwordSource.value = source
-    useDevicePassword.value = true
+    useRouterPassword.value = true
     manualRouterPassword.value = ''
     authError.value = false
   
@@ -1231,6 +1248,13 @@ const show = async (type, password = '', source = 'global') => {
     else {
       modalValue.value = null
     }
+
+    // Офлайн: доступно только выключение WAN — выбираем его сразу,
+    // иначе Apply отправил бы скрытый текущий тип
+    if (isDeviceOffline.value) {
+      modalValue.value = WAN_OFF_VLAN
+      dualWanConfig.value = { wan1: null, wan2: null }
+    }
   }
   
   setupModeChangeListeners()
@@ -1262,7 +1286,7 @@ const closeModal = () => {
   
   devicePassword.value = ''
   manualRouterPassword.value = ''
-  useDevicePassword.value = true
+  useRouterPassword.value = true
   authError.value = false
   dualWanConfig.value = { wan1: null, wan2: null }
   isManualSelection.value = false
@@ -1284,14 +1308,13 @@ const saveChanges = async (action = 'connect') => {
     
     const deviceId = currentDevice.value.id;
     
-    if (currentDevice.value.hwType === 'yes') {
+    if (currentDevice.value.hwType === 'true') {
       // Для AP устройств используем device:mwsConnected
       const saveData = {
         value: modalValue.value,
         type: 'mwsApConnection',  
         action: action,
         routerPassword: routerPasswordToUse.value,
-        useDevicePassword: useDevicePassword.value,
         callback: (success, message) => {
           if (success) {
             toast.add({ severity: 'success', summary: 'Success', detail: message, life: 3000 })
@@ -1349,7 +1372,6 @@ const saveChanges = async (action = 'connect') => {
       type: 'mwsConnection',
       action: action,
       routerPassword: routerPasswordToUse.value,
-      useDevicePassword: useDevicePassword.value,
       mode: mode,
       callback: (success, message) => {
         if (success) {
@@ -1379,6 +1401,7 @@ const saveChanges = async (action = 'connect') => {
 
 // Обработка клика по Apply
 const handleApplyClick = () => {
+  if (isDeviceOffline.value && String(modalValue.value) !== WAN_OFF_VLAN) return
   // Если выбран Dual WAN или IPoE Public - показываем предупреждение
   if (isDualWanSelected.value || isPublicIPSelected.value) {
     // Сохраняем текущую конфигурацию

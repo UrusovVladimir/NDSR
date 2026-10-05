@@ -72,6 +72,18 @@ const showDebug = ref(true)
 const lastOperationId = ref(null)
 const operationHistory = ref(new Map()) // ✅ Отслеживаем историю операций
 
+// Операции, скрытые крестиком (ключ deviceId:startedAt). Диалог снова
+// открывается только для операций, начатых после закрытия: раньше любое
+// изменение числа операций (одно из нескольких устройств вернулось)
+// открывало его заново
+const dismissedKeys = ref(new Set())
+const opKey = (id, op) => `${id}:${op?.startedAt || 0}`
+
+const visibleEntries = computed(() =>
+    Array.from(deviceActionsStore.activeOperations.entries())
+        .filter(([id, op]) => !dismissedKeys.value.has(opKey(id, op)))
+)
+
 const breakpoints = ref({
     '960px': '75vw',
     '640px': '90vw'
@@ -79,7 +91,7 @@ const breakpoints = ref({
 
 // ✅ УЛУЧШЕННАЯ ЛОГИКА - ВСЕГДА ПОКАЗЫВАЕМ САМУЮ ПОСЛЕДНЮЮ ОПЕРАЦИЮ
 const activeOperation = computed(() => {
-    const entries = Array.from(deviceActionsStore.activeOperations.entries())
+    const entries = [...visibleEntries.value]
     
     if (entries.length === 0) return null
     
@@ -182,38 +194,28 @@ const handleClose = () => {
         //     progress: progress.value + '%',
         //     remainingOperations: activeOperationsCount.value
         // })
+        // Скрываем все идущие сейчас операции — их завершение диалог не откроет
+        for (const [id, op] of deviceActionsStore.activeOperations) {
+            dismissedKeys.value.add(opKey(id, op))
+        }
         visible.value = false
-        // ✅ НЕ сбрасываем lastOperationId - диалог может открыться снова для других операций
     }
 }
 
-// ✅ ПРОСТОЙ И НАДЕЖНЫЙ WATCHER
-watch(() => deviceActionsStore.activeOperations.size, (newSize) => {
-    // console.log('🌍 Active operations count:', newSize)
-    
-    if (newSize === 0) {
-        // Все операции завершены
-        lastOperationId.value = null
-        visible.value = false
-        // console.log('✅ All operations completed')
-    } else {
-        // Есть активные операции - показываем диалог
-        visible.value = true
-        // console.log('🔄 Operations in progress:', newSize)
-        
-        // ✅ ПРИНУДИТЕЛЬНО ОБНОВЛЯЕМ ТЕКУЩУЮ ОПЕРАЦИЮ
-        // Это заставляет computed activeOperation пересчитаться
-        const entries = Array.from(deviceActionsStore.activeOperations.entries())
-        if (entries.length > 0) {
-            const sortedEntries = entries.sort((a, b) => (b[1].startedAt || 0) - (a[1].startedAt || 0))
-            const latestEntry = sortedEntries[0]
-            
-            if (latestEntry[0] !== lastOperationId.value) {
-                // console.log('🎯 Auto-switching to latest operation:', latestEntry[0])
-                lastOperationId.value = latestEntry[0]
-            }
-        }
+// ✅ Видимость: открыт, пока есть нескрытые операции. Следим за набором
+// операций (а не за size), прогресс ключ не меняет — startedAt постоянен
+watch(() => Array.from(deviceActionsStore.activeOperations.entries())
+    .map(([id, op]) => opKey(id, op)).join('|'), () => {
+    const activeKeys = new Set(
+        Array.from(deviceActionsStore.activeOperations.entries()).map(([id, op]) => opKey(id, op))
+    )
+    // Завершённые операции забываем
+    for (const key of [...dismissedKeys.value]) {
+        if (!activeKeys.has(key)) dismissedKeys.value.delete(key)
     }
+
+    visible.value = visibleEntries.value.length > 0
+    if (!visible.value) lastOperationId.value = null
 }, { immediate: true })
 
 // ✅ WATCHER ДЛЯ ОБНОВЛЕНИЯ ПРОГРЕССА ТЕКУЩЕЙ ОПЕРАЦИИ
@@ -231,28 +233,6 @@ watch(() => {
     }
 })
 
-// ✅ WATCHER ДЛЯ СЛЕЖЕНИЯ ЗА ИЗМЕНЕНИЯМИ В АКТИВНЫХ ОПЕРАЦИЯХ
-watch(() => {
-    // Создаем сигнал для отслеживания изменений в операциях
-    return Array.from(deviceActionsStore.activeOperations.entries()).map(([id, op]) => 
-        `${id}-${op.type}-${op.progress}-${op.startedAt}`
-    ).join('|')
-}, (newValue, oldValue) => {
-    if (newValue !== oldValue) {
-        // console.log('🔄 Operations content changed')
-        // При изменении операций принудительно обновляем текущую
-        const entries = Array.from(deviceActionsStore.activeOperations.entries())
-        if (entries.length > 0) {
-            const sortedEntries = entries.sort((a, b) => (b[1].startedAt || 0) - (a[1].startedAt || 0))
-            const latestEntry = sortedEntries[0]
-            
-            if (!lastOperationId.value || latestEntry[0] !== lastOperationId.value) {
-                // console.log('🔄 Content change - switching to:', latestEntry[0])
-                lastOperationId.value = latestEntry[0]
-            }
-        }
-    }
-})
 </script>
 
 <style scoped>

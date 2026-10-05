@@ -1,5 +1,6 @@
 import axios from "axios";
-import { readFileSync, writeFileSync } from "fs";
+import { readFileSync, writeFileSync, existsSync } from "fs";
+import { validateVms } from "./utils/vmConfig.js";
 
 function readConfig(path) {
     let data = readFileSync(path, {encoding: 'utf8', flag: 'r'});
@@ -17,6 +18,26 @@ let devices = readConfig(process.env.DEVICES_CONFIG_PATH);
 let wanTypes = readConfig(process.env.WAN_TYPES_CONFIG_PATH);
 let users = readConfig(process.env.USER_CONFIG_PATH);
 let badgesConfig = readConfig(process.env.BADGES_CONFIG_PATH);
+// Тестовые VM (services/vmService). Файла нет — VM просто не используются.
+let vms = readVmsConfig();
+
+function readVmsConfig() {
+    const path = process.env.VMS_CONFIG_PATH;
+    if (!path || !existsSync(path)) return [];
+    // Битый JSON пула VM не должен ронять портал — только VM отключаются
+    try {
+        return validateVms(readConfig(path));
+    } catch (e) {
+        console.error(`❌ ${path}: ${e.message} — тестовые VM отключены`);
+        return [];
+    }
+}
+
+function getVmById(vmId) {
+    return vms.find(vm => String(vm.id) === String(vmId)) || null;
+}
+
+
 
 async function getDevicesStatus(devices) {
     let urls = devices.map(device => device.checkUrl)
@@ -29,10 +50,12 @@ async function getDevicesStatus(devices) {
     let statuses = {}
     await Promise.allSettled(requests).then(responses => {
         responses.forEach(res => {
-            if (res.status === 'fulfilled')
+            if (res.status === 'fulfilled') {
                 statuses[res.value.config.url] = res.value.status
-            else
-                statuses[res.reason.config.url] = 500
+            } else {
+                const url = res.reason?.config?.url  // 🔧 B19: reject может прийти не от axios (без .config)
+                if (url) statuses[url] = 500
+            }
         })
     });
     return statuses
@@ -42,8 +65,6 @@ async function getDeviceStatusCode(device, customUrl = null) {
     let statusCode;
     try {
         const urlToCheck = customUrl || device.checkUrl;
-        console.log(`🔍 getDeviceStatusCode проверяет: ${urlToCheck}`);
-        
         let response = await axios.get(urlToCheck, {
             timeout: STATUS_CHECK_TIMEOUT,
             maxRedirects: 0,
@@ -316,10 +337,11 @@ function reloadConfigs() {
     devices = readConfig(process.env.DEVICES_CONFIG_PATH);
     wanTypes = readConfig(process.env.WAN_TYPES_CONFIG_PATH);
     users = readConfig(process.env.USER_CONFIG_PATH);
+    badgesConfig = readConfig(process.env.BADGES_CONFIG_PATH);  // 🔧 B20: badges забыт в reload
+    vms = readVmsConfig();
     console.log('🔄 Configs reloaded');
-    return { success: true, devicesCount: devices.length, usersCount: users.length };
+    return { success: true, devicesCount: devices.length, usersCount: users.length, badgesCount: badgesConfig.length };
 }
-
 function reloadUsersConfig() {
     users = readConfig(process.env.USER_CONFIG_PATH);
     console.log(`🔄 Users config reloaded: ${users.length} users`);
@@ -345,6 +367,10 @@ export {
     addDevice,
     updateDeviceShortName,
     
+    // Тестовые VM
+    vms,
+    getVmById,
+
     // Пользователи
     getUserByIp,
     addUser,

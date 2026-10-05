@@ -1,56 +1,230 @@
-- name: Copy files for ndsr-app
+# ---------- Проверки до любых изменений на хосте ----------
+
+# Секреты — в inventory стенда (group_vars/all/vault.yml, ansible-vault) или,
+# по-старому, в vars/secrets.yml роли (не в git). Файл роли необязателен.
+- name: Check optional vars/secrets.yml
+  ansible.builtin.stat:
+    path: "{{ role_path }}/vars/secrets.yml"
+  delegate_to: localhost
+  run_once: true
+  register: secrets_file
+
+- name: Load secrets from vars/secrets.yml
+  ansible.builtin.include_vars:
+    file: secrets.yml
+  when: secrets_file.stat.exists
+
+# Все адреса стенда — только из inventory (inventory/<стенд>/group_vars/all)
+- name: Check stand variables are set (inventory group_vars)
+  ansible.builtin.assert:
+    that:
+      - lookup('vars', item, default='') | string | length > 0
+      - not (lookup('vars', item, default='') | string).startswith('<')
+    fail_msg: >-
+      Не задана переменная {{ item }} (или осталась заглушка <…> из образца). Все адреса и параметры стенда задаются в
+      inventory команды: inventory/<стенд>/group_vars/all/stand.yml (образец —
+      inventory/example), секреты — в vault.yml рядом.
+    quiet: true
+  loop: "{{ stand_required_vars }}"
+
+- name: Check guacd address when browser RDP is enabled
+  ansible.builtin.assert:
+    that:
+      - lookup('vars', 'guacd_ip', default='') | string | length > 0
+      - not (lookup('vars', 'guacd_ip', default='') | string).startswith('<')
+    fail_msg: "browser_rdp_enabled: true — задайте guacd_ip в inventory стенда (или browser_rdp_enabled: false)"
+    quiet: true
+  when: browser_rdp_enabled | bool
+
+- name: Check backend SSH key exists on control node
+  ansible.builtin.stat:
+    path: "{{ ssh_key_src }}"
+  delegate_to: localhost
+  run_once: true
+  register: ssh_key_file
+
+- name: Fail if backend SSH key is missing
+  ansible.builtin.fail:
+    msg: "Нет SSH-ключа бэкенда {{ ssh_key_src }} (ssh_key_src в vars/secrets.yml)"
+  when: not ssh_key_file.stat.exists
+
+# ---------- Каталоги и секреты на хосте ----------
+
+# webtelnet-build — пустой контекст сборки webtelnet (Dockerfile клонирует
+# код с GitHub): с контекстом {{ build_dir }} в builder уходил бы весь
+# домашний каталог, включая SSH-ключ и состояние
+- name: Create host dirs (state, uploads, secrets, webtelnet build context)
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: directory
+    mode: "{{ item.mode }}"
+  loop:
+    - { path: "{{ state_host_dir }}", mode: "0755" }
+    - { path: "{{ uploads_host_dir }}", mode: "0755" }
+    - { path: "{{ ssh_key_host_path | dirname }}", mode: "0700" }
+    - { path: "{{ build_dir }}/webtelnet-build", mode: "0755" }
+
+- name: Create backend log dir on docker host
+  ansible.builtin.file:
+    path: "{{ log_host_dir }}"
+    state: directory
+    mode: "0755"
+  when: log_host_dir | length > 0
+
+- name: Copy backend SSH key to docker host
   ansible.builtin.copy:
-    src: ../../../../ndsr-app
-    dest: /home/{{ admin }}
-    
-- name: Copy file nginx for ndsr-frontend
-  template:
-    src: nginx.conf.j2
-    dest: /home/{{ admin }}
-    
-- name: Copy files for ndsr-app-backend
-  template:
-    src: .env.example_back.j2
-    dest: /home/{{ admin }}/ndsr-app/api/.env
+    src: "{{ ssh_key_src }}"
+    dest: "{{ ssh_key_host_path }}"
+    mode: "0600"
 
-- name: Copy files for ndsr-app-frontend
-  template:
+# Раньше devices.json жил в app_dir и монтировался оттуда. Переносим рабочую
+# копию (с паролями и WAN) в state_host_dir ДО того, как app_dir пересоздастся.
+- name: Migrate runtime devices.json/users.json from old location
+  ansible.builtin.copy:
+    src: "{{ app_dir }}/api/{{ item }}"
+    dest: "{{ state_host_dir }}/{{ item }}"
+    remote_src: true
+    force: false
+  loop: [devices.json, users.json]
+  failed_when: false
+
+# ---------- Код приложения ----------
+
+# Копируем архивом и без node_modules (≈21 тыс. файлов против ≈140):
+# copy каталогом шёл бы файл за файлом. Секреты и локальное состояние
+# разработчика в архив не попадают.
+- name: Pack ndsr-app on control node
+  ansible.builtin.command:
+    argv:
+      - tar
+      - -czf
+      - "{{ ndsr_app_archive }}"
+      - --exclude=node_modules
+      - --exclude=dist
+      - --exclude=.env
+      - --exclude=.env.local
+      - --exclude=id_ed25519*
+      - --exclude=bookings.json
+      - --exclude=current_modes.json
+      - --exclude=mws_links.json
+      - --exclude=vms.json
+      - --exclude=vm_attachments.json
+      - --exclude=logs
+      - --exclude=uploads
+      - -C
+      - "{{ playbook_dir }}/../.."
+      - ndsr-app
+  vars:
+    ndsr_app_archive: "{{ lookup('env', 'TMPDIR') | default('/tmp', true) }}/ndsr-app-deploy.tgz"
+  delegate_to: localhost
+  run_once: true
+  changed_when: false
+
+# Чистый каталог: файлы, удалённые из репозитория, не остаются на хосте
+- name: Remove previous app copy
+  ansible.builtin.file:
+    path: "{{ app_dir }}"
+    state: absent
+
+- name: Unpack ndsr-app to docker host
+  ansible.builtin.unarchive:
+    src: "{{ lookup('env', 'TMPDIR') | default('/tmp', true) }}/ndsr-app-deploy.tgz"
+    dest: "{{ app_dir | dirname }}"
+
+- name: Seed devices.json/users.json in state dir
+  ansible.builtin.copy:
+    src: "{{ app_dir }}/api/{{ item }}"
+    dest: "{{ state_host_dir }}/{{ item }}"
+    remote_src: true
+    force: "{{ devices_json_overwrite | bool if item == 'devices.json' else false }}"
+    mode: "0644"
+  loop: [devices.json, users.json]
+
+# Пул тестовых VM: если рядом с ролью есть files/vms.json (gitignore — там
+# пароли Windows), он кладётся в state, но не поверх уже существующего
+- name: Check optional vms.json in role files
+  ansible.builtin.stat:
+    path: "{{ role_path }}/files/vms.json"
+  delegate_to: localhost
+  run_once: true
+  register: vms_json_src
+
+- name: Seed vms.json in state dir
+  ansible.builtin.copy:
+    src: vms.json
+    dest: "{{ state_host_dir }}/vms.json"
+    force: "{{ vms_json_overwrite | default(false) | bool }}"
+    mode: "0600"
+  when: vms_json_src.stat.exists
+
+# ---------- Конфиги, Dockerfile'ы, compose ----------
+
+- name: Render frontend .env (read by Vite at build time)
+  ansible.builtin.template:
     src: .env.example_front.j2
-    dest: /home/{{ admin }}/ndsr-app/.env
+    dest: "{{ app_dir }}/.env"
+    mode: "0644"
 
-- name: Create Dockerfile Webtelnet image's and copy to docker host
-  template:
-    src: Dockerfile.j2
-    dest: /home/{{ admin }}/Dockerfile_webtelnet
-    
-- name: Create Dockerfile Frontend image's and copy to docker host
-  template:
-    src: Dockerfile_front.j2
-    dest: /home/{{ admin }}/Dockerfile_frontend
-    
-- name: Create Dockerfile Webtelnet image's and copy to docker host
-  template:
-    src: Dockerfile_back.j2
-    dest: /home/{{ admin }}/Dockerfile_backend
+- name: Render backend env file (passed via env_file, not baked into image)
+  ansible.builtin.template:
+    src: .env.example_back.j2
+    dest: "{{ backend_env_file }}"
+    mode: "0600"
 
-- name: Copy app docker-compose file to remote host
-  template:
-   src: ndsr-app.yml.j2
-   dest: /home/{{ admin }}/ndsr-app.yml
+- name: Render nginx config
+  ansible.builtin.template:
+    src: nginx.conf.j2
+    dest: "{{ build_dir }}/nginx.conf"
+    mode: "0644"
+  register: nginx_conf
 
-- name: Copy app env file to remote host
-  copy:
-   src: VARS-APP.env
-   dest: /home/{{ admin }}
+- name: Render Dockerfiles
+  ansible.builtin.template:
+    src: "{{ item.src }}"
+    dest: "{{ build_dir }}/{{ item.dest }}"
+    mode: "0644"
+  loop:
+    - { src: Dockerfile_back.j2, dest: Dockerfile_backend }
+    - { src: Dockerfile_front.j2, dest: Dockerfile_frontend }
+    - { src: Dockerfile.j2, dest: Dockerfile_webtelnet }
 
-- name: Run `docker-compose APP up`
+- name: Render docker-compose file
+  ansible.builtin.template:
+    src: ndsr-app.yml.j2
+    dest: "{{ build_dir }}/ndsr-app.yml"
+    mode: "0644"
+
+- name: Render app env file (images and container IPs from inventory)
+  ansible.builtin.template:
+    src: VARS-APP.env.j2
+    dest: "{{ build_dir }}/VARS-APP.env"
+    mode: "0644"
+
+# ---------- Запуск ----------
+
+# build: always — иначе образ собирается только при первом деплое,
+# и новый код не попадает в контейнер
+- name: Build and start ndsr-app
   community.docker.docker_compose_v2:
-     project_src: /home/{{ admin }}
-     files: ndsr-app.yml
-     project_name: ndsr-app
-     env_files: VARS-APP.env
+    project_src: "{{ build_dir }}"
+    files: ndsr-app.yml
+    project_name: ndsr-app
+    env_files: VARS-APP.env
+    build: always
+    remove_orphans: true
   register: output
 
+# nginx.conf смонтирован в контейнер — compose не видит его изменений
+- name: Restart frontend if nginx config changed
+  community.docker.docker_compose_v2:
+    project_src: "{{ build_dir }}"
+    files: ndsr-app.yml
+    project_name: ndsr-app
+    env_files: VARS-APP.env
+    services: [frontend]
+    state: restarted
+  when: nginx_conf.changed
+
 - name: Show results
-  debug:
-     var: output
+  ansible.builtin.debug:
+    var: output.containers | default(output)

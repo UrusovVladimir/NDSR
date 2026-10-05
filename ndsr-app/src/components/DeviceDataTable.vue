@@ -19,6 +19,7 @@
 
     <div class="card">
       <DataTable
+        :key="tableView"
         :value="sortedAndFilteredDevices"
         :loading="deviceStore.loading"
         :sort-field="sortField"
@@ -36,22 +37,43 @@
         <template #header>
           <div class="table-header">
             <div class="common-section-header">
-              <h3 class="common-section-title">
-                <i class="pi pi-list-check mr-2"></i>
-                All Devices
-                <Badge :value="deviceStore.totalDevices" class="ml-2" />
-              </h3>
+              <div class="table-switch" role="tablist">
+                <button
+                  type="button"
+                  role="tab"
+                  class="table-switch-btn common-section-title"
+                  :class="{ active: tableView === 'our' }"
+                  :aria-selected="tableView === 'our'"
+                  @click="setTableView('our')"
+                >
+                  <i class="pi pi-list-check mr-2"></i>
+                  Our Devices
+                  <Badge :value="ourDevicesTotal" class="ml-2" />
+                </button>
+                <button
+                  type="button"
+                  role="tab"
+                  class="table-switch-btn common-section-title"
+                  :class="{ active: tableView === 'rival' }"
+                  :aria-selected="tableView === 'rival'"
+                  @click="setTableView('rival')"
+                >
+                  <i class="pi pi-flag mr-2"></i>
+                  Rival Devices
+                  <Badge :value="rivalDevicesTotal" class="ml-2" />
+                </button>
+              </div>
               <div class="common-section-actions">
                 <span class="devices-count">
                   <i class="pi pi-circle-fill online-icon"></i>
-                    {{ deviceStore.onlineCount }} online
+                    {{ viewStats.online }} online
                     <i class="pi pi-circle-fill offline-icon"></i>
-                    {{ deviceStore.offlineCount }} offline
+                    {{ viewStats.offline }} offline
                     <i class="pi pi-calculator total-icon"></i>
-                    {{ deviceStore.totalDevices }} total
-                    <span v-if="deviceStore.bookedByOtherDevices.length > 0" class="booked-by-others">
+                    {{ viewStats.total }} total
+                    <span v-if="viewStats.bookedByOthers > 0" class="booked-by-others">
                       <i class="pi pi-bookmark booked-icon"></i>
-                      {{ deviceStore.bookedByOtherDevices.length }} booked by others
+                      {{ viewStats.bookedByOthers }} booked by others
                       </span>
                 </span>
 
@@ -77,79 +99,147 @@
             </div>
           </div>
         </template>
-        <Column field="statusCode" header="Status" :sortable="true" class="status-column">
-          <template #body="{ data }">
-            <StatusIndicator :status="data.statusCode" :type="data.type" />
-          </template>
-        </Column>
+        <!-- Rival Devices: только Device, Status, HW Type, Booking, Actions (VNC/веб) -->
+        <template v-if="tableView === 'rival'">
+          <Column field="statusCode" header="Status" :sortable="true" class="status-column">
+            <template #body="{ data }">
+              <StatusIndicator :status="data.statusCode" :type="data.type" />
+            </template>
+          </Column>
 
-        <Column field="hwId" header="Device" :sortable="true" class="device-column">
-          <template #body="{ data }">
-            <div class="common-device-info-container">
-              <div class="common-device-avatar" :class="getDeviceAvatarClass(data)">
-                <i :class="deviceIcon(data.type)" class="common-device-icon"></i>
+          <Column field="hwId" header="Device" :sortable="true" class="device-column">
+            <template #body="{ data }">
+              <div class="common-device-info-container">
+                <div class="common-device-avatar" :class="getDeviceAvatarClass(data)">
+                  <i :class="deviceIcon(data.type)" class="common-device-icon"></i>
+                </div>
+                <div class="common-device-info">
+                  <div class="common-device-name">{{ data.shortName }}</div>
+                  <div class="common-device-hwid">{{ data.hwId }}</div>
+                  <div v-if="data.country" class="common-device-hwid">Country: {{ data.country }}</div>
+                  <!-- Пароль конкурента — только из конфига (devicePassword); пароли открыты всем по замыслу -->
+                  <div class="common-device-hwid">
+                    Password: <b>{{ data.devicePassword || '—' }}</b>
+                    <i
+                      v-if="data.devicePassword"
+                      class="pi pi-copy copy-password-icon"
+                      role="button"
+                      tabindex="0"
+                      aria-label="Copy password"
+                      v-tooltip="'Copy password'"
+                      @click.stop="copyPassword(data)"
+                      @keydown.enter.stop="copyPassword(data)"
+                    ></i>
+                  </div>
+                </div>
               </div>
-              <div class="common-device-info">
-                <div class="common-device-name">{{ data.shortName }}</div>
-                <div class="common-device-hwid">{{ data.hwId }}</div>
-                <div class="common-device-hwid">Country: {{ data.country }}</div>
+            </template>
+          </Column>
+
+          <Column field="type" header="HW Type" :sortable="true" class="type-column">
+            <template #body="{ data }">
+              <Tag :value="data.type?.toUpperCase()" :severity="getTypeSeverity(data.type)" class="type-tag" />
+            </template>
+          </Column>
+
+          <Column field="booking.isBooked" header="Booking" class="booking-column">
+            <template #body="{ data }">
+              <div v-if="data.booking?.isBooked && data.booking?.bookedBy !== deviceStore.currentUserId">
+                <Tag :value="deviceStore.getUserName(data.booking?.bookedBy)" severity="warning" /> 
               </div>
-            </div>
-          </template>
-        </Column>
+              <BookingStatus 
+                v-else
+                :device="data"
+                :current-user-id="deviceStore.currentUserId"
+              />
+            </template>
+          </Column>
 
-        <Column field="firmwareVersion" header="Firmware" bodyClass="firmware-column">
-          <template #body="{ data }">
-            <FirmwareVersion 
-              :device="data"
-              :current-user-id="deviceStore.currentUserId"
-              :today-password="todayPassword"
-              :auto-check-enabled="false"
-              @firmware-updated="handleFirmwareUpdated"
-            />
-          </template>
-        </Column>
+          <Column header="Actions" class="actions-column">
+            <template #body="{ data }">
+              <DeviceActions 
+                :device="data"
+                :current-user-id="deviceStore.currentUserId"  
+              />
+            </template>
+          </Column>
+        </template>
 
-        <Column field="type" header="HW Type" :sortable="true" class="type-column">
-          <template #body="{ data }">
-            <Tag :value="data.type.toUpperCase()" :severity="getTypeSeverity(data.type)" class="type-tag" />
-          </template>
-        </Column>
+        <template v-else>
+          <Column field="statusCode" header="Status" :sortable="true" class="status-column">
+            <template #body="{ data }">
+              <StatusIndicator :status="data.statusCode" :type="data.type" />
+            </template>
+          </Column>
 
-        <Column field="booking.isBooked" header="Booking" class="booking-column">
-          <template #body="{ data }">
-            <div v-if="data.booking?.isBooked && data.booking?.bookedBy !== deviceStore.currentUserId">
-              <Tag :value="deviceStore.getUserName(data.booking?.bookedBy)" severity="warning" /> 
-            </div>
-            <BookingStatus 
-              v-else
-              :device="data"
-              :current-user-id="deviceStore.currentUserId"
-            />
-          </template>
-        </Column>
+          <Column field="hwId" header="Device" :sortable="true" class="device-column">
+            <template #body="{ data }">
+              <div class="common-device-info-container">
+                <div class="common-device-avatar" :class="getDeviceAvatarClass(data)">
+                  <i :class="deviceIcon(data.type)" class="common-device-icon"></i>
+                </div>
+                <div class="common-device-info">
+                  <div class="common-device-name">{{ data.shortName }}</div>
+                  <div class="common-device-hwid">{{ data.hwId }}</div>
+                  <div class="common-device-hwid">Country: {{ data.country }}</div>
+                </div>
+              </div>
+            </template>
+          </Column>
 
-        <Column field="currentWanType" header="WAN" class="wan-column">
-          <template #body="{ data }">
-            <WanTypeDisplay 
-              :device="data" 
-              :wan-types="wanTypes"
-              :current-user-id="deviceStore.currentUserId"
-              @open-modal="handleOpenModal"
-            />
-          </template>
-        </Column>
+          <Column field="firmwareVersion" header="Firmware" bodyClass="firmware-column">
+            <template #body="{ data }">
+              <FirmwareVersion 
+                :device="data"
+                :current-user-id="deviceStore.currentUserId"
+                :today-password="todayPassword"
+                :auto-check-enabled="false"
+                @firmware-updated="handleFirmwareUpdated"
+              />
+            </template>
+          </Column>
 
-        <Column header="Actions" class="actions-column">
-          <template #body="{ data }">
-            <DeviceActions 
-              :device="data"
-              :current-user-id="deviceStore.currentUserId"  
-              @open-console="handleOpenConsole"
-              @open-change-mode="handleOpenChangeMode"
-            />
-          </template>
-        </Column>
+          <Column field="type" header="HW Type" :sortable="true" class="type-column">
+            <template #body="{ data }">
+              <Tag :value="data.type.toUpperCase()" :severity="getTypeSeverity(data.type)" class="type-tag" />
+            </template>
+          </Column>
+
+          <Column field="booking.isBooked" header="Booking" class="booking-column">
+            <template #body="{ data }">
+              <div v-if="data.booking?.isBooked && data.booking?.bookedBy !== deviceStore.currentUserId">
+                <Tag :value="deviceStore.getUserName(data.booking?.bookedBy)" severity="warning" /> 
+              </div>
+              <BookingStatus 
+                v-else
+                :device="data"
+                :current-user-id="deviceStore.currentUserId"
+              />
+            </template>
+          </Column>
+
+          <Column field="currentWanType" header="WAN" class="wan-column">
+            <template #body="{ data }">
+              <WanTypeDisplay 
+                :device="data" 
+                :wan-types="wanTypes"
+                :current-user-id="deviceStore.currentUserId"
+                @open-modal="handleOpenModal"
+              />
+            </template>
+          </Column>
+
+          <Column header="Actions" class="actions-column">
+            <template #body="{ data }">
+              <DeviceActions 
+                :device="data"
+                :current-user-id="deviceStore.currentUserId"  
+                @open-console="handleOpenConsole"
+                @open-change-mode="handleOpenChangeMode"
+              />
+            </template>
+          </Column>
+        </template>
 
         <template #empty>
           <div class="empty-state">
@@ -204,10 +294,17 @@ import ProgressModal from './ProgressModal.vue'
 import ChangeModeModal from './ChangeModeModal.vue'
 import FirmwareVersion from '@/components/FirmwareVersion.vue'
 import BookedDevicesTable from './BookedDevicesTable.vue'
+import { isRival } from '@/utils/deviceFlags'
+import { useClipboardStore } from '@/stores/useClipboardStore'
 
 const todayPassword = inject('todayPassword')
 const toast = useToast()
 const deviceStore = useDeviceStore()
+const clipboardStore = useClipboardStore()
+
+const copyPassword = (device) => {
+  clipboardStore.copyToClipboard(device.devicePassword, `Password for ${device.shortName || device.hwId} copied`)
+}
 
 const props = defineProps({
   wanTypes: {
@@ -223,6 +320,26 @@ const changeModeModal = ref(null)
 const progressModal = ref(null)
 const sortField = ref('statusCode')
 const sortOrder = ref(-1)
+
+// Our Devices / Rival Devices (rivals: true в devices.json). Выбор помним
+// в localStorage — удобство, без него просто открывается Our Devices.
+const TABLE_VIEW_KEY = 'devicesTableView'
+const readTableView = () => {
+  try {
+    return localStorage.getItem(TABLE_VIEW_KEY) === 'rival' ? 'rival' : 'our'
+  } catch {
+    return 'our'
+  }
+}
+const tableView = ref(readTableView())
+const setTableView = (view) => {
+  tableView.value = view
+  try {
+    localStorage.setItem(TABLE_VIEW_KEY, view)
+  } catch {
+    // приватный режим / заблокированное хранилище — не страшно
+  }
+}
 
 // ========== COMPUTED ==========
 const showBookedSectionButton = computed(() => {
@@ -247,10 +364,31 @@ const currentDeviceWanType = computed(() => {
   // Если это null или undefined
   return null
 })
+const ourDevicesTotal = computed(() => deviceStore.devices.filter(d => !isRival(d)).length)
+const rivalDevicesTotal = computed(() => deviceStore.devices.filter(d => isRival(d)).length)
+
+// Устройства текущей вкладки, кроме моих (мои — в My Booked Devices)
+const viewDevices = computed(() => {
+  const wantRival = tableView.value === 'rival'
+  return deviceStore.availableDevices.filter(d => isRival(d) === wantRival)
+})
+
+// Счётчики в шапке — по всей вкладке, включая мои брони
+const viewStats = computed(() => {
+  const wantRival = tableView.value === 'rival'
+  const all = deviceStore.devices.filter(d => isRival(d) === wantRival)
+  return {
+    online: all.filter(d => d.statusCode === 200).length,
+    offline: all.filter(d => d.statusCode !== 200).length,
+    total: all.length,
+    bookedByOthers: all.filter(d => d.booking?.isBooked && d.booking?.bookedBy !== deviceStore.currentUserId).length
+  }
+})
+
 const filteredDevices = computed(() => {
-  if (!globalFilter.value) return deviceStore.availableDevices
+  if (!globalFilter.value) return viewDevices.value
   const filter = globalFilter.value.toLowerCase()
-  return deviceStore.availableDevices.filter(device => 
+  return viewDevices.value.filter(device => 
     device.hwId?.toLowerCase().includes(filter) || 
     device.id?.toString().toLowerCase().includes(filter) || 
     device.shortName?.toLowerCase().includes(filter) ||
@@ -425,61 +563,6 @@ const handleBatchFirmwareUpdated = (data) => {
     });
   }
 }
-const handleMwsStatusUpdated = (data) => {
-  // console.log('📡 MWS status updated:', data);
-};
-
-const handleModeUpdated = (data) => {
-  // console.log('📡 Mode updated:', data);
-};
-
-const handleBookingUpdated = (data) => {
-  // console.log('📡 Booking updated:', data);
-  deviceStore.updateDeviceBooking(data.deviceId, data.booking);
-};
-
-const handleBatchBookingUpdated = (data) => {
-  // console.log('📡 Batch booking updated:', data);
-  if (data.successful) {
-    data.successful.forEach(deviceId => {
-      deviceStore.updateDeviceBooking(deviceId, null);
-    });
-  }
-};
-
-const handleWanTypeUpdated = (data) => {
-  // console.log('📡 WAN type updated:', data);
-  const device = deviceStore.devices.find(d => d.id === data.deviceId);
-  if (device) {
-    device.currentWanType = data.type;
-  }
-};
-
-const handleOperationCompleted = (data) => {
-  // console.log('📡 Operation completed:', data);
-  
-  if (data.success) {
-    toast.add({
-      severity: 'success',
-      summary: 'Success',
-      detail: data.message || 'Operation completed',
-      life: 3000
-    });
-  } else {
-    toast.add({
-      severity: 'error',
-      summary: 'Error',
-      detail: data.message || 'Operation failed',
-      life: 5000
-    });
-  }
-  
-  if (data.deviceId) {
-    setTimeout(() => {
-      socket.emit('device:forceStatusCheck', data.deviceId);
-    }, 2000);
-  }
-};
 
 // ========== MODAL HANDLERS ==========
 const handleOpenModal = (device, modalType) => {
@@ -563,7 +646,7 @@ const handleOpenChangeMode = (device) => {
   })
 }
 
-const handleMwsSave = async (deviceId, routerId, action, routerPassword = null, useDevicePassword = true) => {
+const handleMwsSave = async (deviceId, routerId, action, routerPassword = null) => {
   return new Promise((resolve, reject) => {
     const device = deviceStore.devices.find(d => d.id === deviceId)
     if (device && progressModal.value) {
@@ -577,8 +660,7 @@ const handleMwsSave = async (deviceId, routerId, action, routerPassword = null, 
       deviceId,
       routerId, 
       action,
-      routerPassword,
-      useDevicePassword
+      routerPassword
     }
     
     // console.log('🔗 Sending MWS operation:', mwsData);
@@ -668,7 +750,7 @@ const handleModalSave = (data) => {
     return;
   }
   
-  const { value, type, action, routerPassword, useDevicePassword, mode, callback } = data;
+  const { value, type, action, routerPassword, mode, callback } = data;
   
   if (type === 'wanTypes') {
     // value может быть строкой (обычный WAN) или объектом (Dual WAN)
@@ -690,8 +772,7 @@ const handleModalSave = (data) => {
       deviceId: selectedDevice.value.id,
       routerId: value,
       action: action,
-      routerPassword: routerPassword,
-      useDevicePassword: useDevicePassword
+      routerPassword: routerPassword
     };
     
     socket.emit('device:mwsConnected', mwsData, (response) => {
@@ -728,22 +809,13 @@ onMounted(async () => {
   // Добавляем слушатели событий
   window.addEventListener('firmware:batchUpdated', handleBatchFirmwareUpdated)
   
-  // ✅ ЕДИНСТВЕННЫЕ СЛУШАТЕЛИ - ВСЕ В ОДНОМ МЕСТЕ
+  // ✅ Слушатели ТОЛЬКО те, за которые отвечает компонент.
+  // booking/batchBooking/wanType/mode/mws статусы обрабатывают Pinia-сторы
+  // (useDeviceStore/useModeStore) — раньше здесь были дубли,
+  // вызывавшие двойную обработку событий
   socket.on('device:firmwareUpdated', handleFirmwareUpdated)
   socket.on('device:batchFirmwareUpdated', handleBatchFirmwareUpdated)
-  socket.on('device:mwsStatusUpdated', handleMwsStatusUpdated)
-  socket.on('device:modeUpdated', handleModeUpdated)
-  socket.on('device:bookingUpdated', handleBookingUpdated)
-  socket.on('device:batchBookingUpdated', handleBatchBookingUpdated)
-  socket.on('device:wanTypeUpdated', handleWanTypeUpdated)
-  socket.on('device:operationCompleted', handleOperationCompleted)
   
-  // ✅ ИСПРАВЛЕННЫЕ ПРОГРЕСС СЛУШАТЕЛИ
-  socket.on('device:mwsOperationProgress', (data) => {
-    if (progressModal.value && progressModal.value.localDevice?.id === data.deviceId) {
-      progressModal.value.updateProgress(data.progress, data.step, data.details);
-    }
-  });
 
   socket.on('device:operationProgress', (data) => {
     if (progressModal.value && progressModal.value.localDevice?.id === data.deviceId) {
@@ -777,16 +849,8 @@ onBeforeUnmount(() => {
   window.removeEventListener('firmware:batchUpdated', handleBatchFirmwareUpdated)
   socket.off('device:firmwareUpdated', handleFirmwareUpdated)
   socket.off('device:batchFirmwareUpdated', handleBatchFirmwareUpdated)
-  socket.off('device:mwsStatusUpdated', handleMwsStatusUpdated)
-  socket.off('device:modeUpdated', handleModeUpdated)
-  socket.off('device:bookingUpdated', handleBookingUpdated)
-  socket.off('device:batchBookingUpdated', handleBatchBookingUpdated)
-  socket.off('device:wanTypeUpdated', handleWanTypeUpdated)
-  socket.off('device:operationCompleted', handleOperationCompleted)
-  socket.off('device:mwsOperationProgress')
-  socket.off('device:operationProgress')
-  socket.off('device:modeChangeProgress')
 })
+
 
 watch(() => deviceStore.availableDevices, (newDevices) => {
   if (newDevices.length > 0) {
@@ -799,6 +863,47 @@ watch(() => deviceStore.availableDevices, (newDevices) => {
 </script>
 
 <style scoped>
+/* Копирование пароля в таблице Rival Devices */
+.copy-password-icon {
+  margin-left: 0.35rem;
+  cursor: pointer;
+  color: var(--primary-color);
+  font-size: 0.8rem;
+}
+
+/* Переключатель Our Devices / Rival Devices в шапке таблицы */
+.table-switch {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.table-switch-btn {
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  padding: 0.25rem 0.5rem;
+  cursor: pointer;
+  font-family: inherit;
+  opacity: 0.55;
+  transition: opacity 0.15s, border-color 0.15s;
+}
+
+.table-switch-btn:hover {
+  opacity: 0.85;
+}
+
+.table-switch-btn.active {
+  opacity: 1;
+  border-bottom-color: var(--primary-color);
+}
+
+.table-switch-btn:focus-visible {
+  outline: 2px solid var(--primary-color);
+  outline-offset: 2px;
+}
+
 .devices-count {
   font-size: 0.9rem;
   color: var(--text-color-secondary);

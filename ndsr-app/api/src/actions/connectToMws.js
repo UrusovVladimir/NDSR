@@ -49,7 +49,16 @@ async function connectToMws(data, universalPromptRegex) {
         let VLAN_ACCESS = wanTypes.find(command => "onVlanFixPort" === command.setting);
         let VLAN_TRUNKING = wanTypes.find(command => "VlanTrunking" === command.setting);
         let lanVlan = router.vlanLocal;
-        let PORTS = [extender.switchPortLan, router.port];
+        // 🔧 B23: router.port может отсутствовать в конфиге — тогда
+        // 'interface port-channel' ушёл бы БЕЗ порта (риск применения не туда)
+        let PORTS = [extender.switchPortLan, router.port].filter(Boolean);
+        if (PORTS.length < 2) {
+            console.warn(`⚠️ B23: неполный список портов для MWS ${deviceId}:`, {
+                extenderPort: extender.switchPortLan,
+                routerPort: router.port,
+                hint: 'у роутера должно быть поле port (порт коммутатора)'
+            });
+        }
         
         const IPs = process.env.SWITCH_IPs;
         const switchAddress = getManagmentID(IPs);

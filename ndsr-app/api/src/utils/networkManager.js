@@ -1,5 +1,4 @@
 import { SSHManager } from '../actions/sshManager.js';
-import { HOST_CONFIG } from './hostConfig.js';
 
 export class NetworkManager {
     constructor(sshManager) {

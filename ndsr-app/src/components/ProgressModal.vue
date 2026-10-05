@@ -239,7 +239,8 @@ const operationConfigs = {
           { id: 'switch_config', title: 'Switch Configuration', description: 'Removing MWS configuration' },
           { id: 'port_forwarding', title: 'Port Forwarding', description: 'Removing firewall rules' },
           { id: 'verification', title: 'Verification', description: 'Checking disconnection status' },
-          { id: 'completed', title: 'Completed', description: 'Disconnection finished' }
+          { id: 'completed', title: 'Completed', description: 'Mode change finished' },
+          { id: 'error', title: 'Failed', description: 'Operation failed — see error details' }
         ];
       } else {
         return [
@@ -247,7 +248,8 @@ const operationConfigs = {
           { id: 'switch_config', title: 'Switch Configuration', description: 'Setting up MWS on switch' },
           { id: 'port_forwarding', title: 'Port Forwarding', description: 'Configuring firewall rules' },
           { id: 'verification', title: 'Verification', description: 'Checking connection status' },
-          { id: 'completed', title: 'Completed', description: 'Connection established' }
+          { id: 'completed', title: 'Completed', description: 'Mode change finished' },
+          { id: 'error', title: 'Failed', description: 'Operation failed — see error details' }
         ];
       }
     },
@@ -272,7 +274,8 @@ const operationConfigs = {
           { id: 'port_forwarding', title: 'Port Forwarding', description: 'Removing firewall rules' },
           { id: 'device_reboot', title: 'Device Reboot', description: 'Restarting device' },
           { id: 'verification', title: 'Verification', description: 'Checking disconnection status' },
-          { id: 'completed', title: 'Completed', description: 'Disconnection finished' }
+          { id: 'completed', title: 'Completed', description: 'Mode change finished' },
+          { id: 'error', title: 'Failed', description: 'Operation failed — see error details' }
         ];
       } else {
         return [
@@ -281,7 +284,8 @@ const operationConfigs = {
           { id: 'port_forwarding', title: 'Port Forwarding', description: 'Configuring firewall rules' },
           { id: 'ap_dhcp', title: 'AP DHCP Setup', description: 'Waiting for IP assignment' },
           { id: 'verification', title: 'Verification', description: 'Checking connection status' },
-          { id: 'completed', title: 'Completed', description: 'Connection established' }
+          { id: 'completed', title: 'Completed', description: 'Mode change finished' },
+          { id: 'error', title: 'Failed', description: 'Operation failed — see error details' }
         ];
       }
     },
@@ -304,7 +308,8 @@ modeChange: {
         { id: 'rebooting', title: 'Device Rebooting', description: 'Restarting with new mode' },
         { id: 'waiting_online', title: 'Waiting for Device', description: 'Monitoring device status' },
         { id: 'finalizing', title: 'Finalizing', description: 'Completing mode transition' },
-        { id: 'completed', title: 'Completed', description: 'Mode change finished' }
+        { id: 'completed', title: 'Completed', description: 'Mode change finished' },
+        { id: 'error', title: 'Failed', description: 'Operation failed — see error details' }
       ];
     } else {
       const newMode = operationData?.newMode;
@@ -315,10 +320,12 @@ modeChange: {
           { id: 'initializing', title: 'Initializing', description: 'Preparing mode change' },
           { id: 'applying_config', title: 'Applying Configuration', description: 'Sending new settings' },
           { id: 'wan_off', title: 'WAN Configuration', description: `Disabling WAN interface for ${localDevice.value?.hwId} and setup Port forward` },
+          { id: 'port_forwarding', title: 'Port Forwarding', description: 'Setting up MWS connection and port forwarding' },
           { id: 'rebooting', title: 'Device Rebooting', description: 'Restarting with new mode' },
           { id: 'waiting_online', title: 'Waiting for Device', description: 'Monitoring device status' },
           { id: 'finalizing', title: 'Finalizing', description: 'Completing mode transition' },
-          { id: 'completed', title: 'Completed', description: 'Mode change finished' }
+          { id: 'completed', title: 'Completed', description: 'Mode change finished' },
+          { id: 'error', title: 'Failed', description: 'Operation failed — see error details' }
         ];
       } else {
         return [
@@ -327,7 +334,8 @@ modeChange: {
           { id: 'rebooting', title: 'Device Rebooting', description: 'Restarting with new mode' },
           { id: 'waiting_online', title: 'Waiting for Device', description: 'Monitoring device status' },
           { id: 'finalizing', title: 'Finalizing', description: 'Completing mode transition' },
-          { id: 'completed', title: 'Completed', description: 'Mode change finished' }
+          { id: 'completed', title: 'Completed', description: 'Mode change finished' },
+          { id: 'error', title: 'Failed', description: 'Operation failed — see error details' }
         ];
       }
     }
@@ -439,7 +447,7 @@ const startTimeFormatted = computed(() => {
 })
 
 const userCanClose = computed(() => {
-  return progress.value >= 100 || operationCompleted.value
+  return progress.value >= 100 || operationCompleted.value || hasErrors.value
 })
 
 const forceCloseAvailable = computed(() => {
@@ -606,20 +614,20 @@ const setupListeners = () => {
       // console.log(`📡 GLOBAL: ${event}`, args[0]);
     }
   });
-  
+  socket.on('device:modeChangeResult', (data) => {
+    if (String(data?.deviceId) !== String(localDevice.value?.id)) return
+
+    if (data.success) {
+      completeOperation()
+    } else {
+      failOperation(data.error || 'Operation failed')
+    }
+  })
   console.log('📊 Progress listeners set up');
 };
 
 const updateProgress = (newProgress, step, details = null) => {
-  // console.log('📥 ProgressModal updateProgress:', { 
-  //   newProgress, 
-  //   step, 
-  //   details,
-  //   currentStepId: currentStepId.value,
-  //   availableSteps: stepsList.value.map(s => s.id)
-  // });
-  
-  // Защита от дублирующихся событий
+
   const now = Date.now();
   const progressKey = `${newProgress}-${step}`;
   
@@ -632,10 +640,12 @@ const updateProgress = (newProgress, step, details = null) => {
   lastProgressTime.value = now;
   
   // Обновляем прогресс (только если новое значение больше текущего)
-  if (newProgress > progress.value) {
-    progress.value = newProgress;
+  if (step === 'error') {
+    progress.value = 0
+  } else if (newProgress > progress.value) {
+    progress.value = newProgress
   }
-  
+
   if (step) {
     // Проверяем, существует ли такой шаг в списке
     const stepExists = stepsList.value.some(s => s.id === step);
@@ -780,7 +790,30 @@ const completeOperation = () => {
     }
   }, 3000)
 }
+const failOperation = (errorMessage) => {
+  operationCompleted.value = true   // открывает userCanClose
+  hasErrors.value = true
+  currentStepId.value = 'error'
 
+  // Все незавершённые шаги — в error, текущий получает текст ошибки
+  stepsList.value.forEach(step => {
+    if (step.status !== 'completed' && step.id !== 'error') {
+      step.status = 'error'
+      step.error = step.error || errorMessage
+    }
+  })
+
+  progress.value = 0
+  addLog('error', errorMessage)
+
+  // Прогресс-окно закроется через 4 сек — тост с ошибкой уже показан стором,
+  // держим окно ровно чтобы пользователь увидел, на каком шаге упало
+  setTimeout(() => {
+    if (visible.value && !userClosed.value) {
+      closeModal()
+    }
+  }, 4000)
+}
 const getCloseButtonLabel = () => {
   if (closingInProgress.value) return 'Closing...'
   if (progress.value >= 100) return 'Complete'

@@ -42,12 +42,12 @@
           v-tooltip.bottom="cronEnabled ? 'Disable auto-reset all devices' : 'Enable auto-reset all devices'"
         />
         
-        <Button 
+        <!-- <Button 
           icon="pi pi-sync" 
           class="action-toggle"
           @click="$emit('toggle-day')"
           v-tooltip.bottom="'Toggle password day'"
-        />
+        /> -->
       </div>
     </div>
 

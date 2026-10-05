@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref, computed, inject } from 'vue'
 import { socket } from '@/socket'
+import { isRival } from '@/utils/deviceFlags'
 
 export const useDeviceStore = defineStore('devices', () => {
   // State
@@ -101,8 +102,9 @@ export const useDeviceStore = defineStore('devices', () => {
  
   const totalDevices = computed(() => devices.value.length)
 
+  // Роутеры для MWS/смены режима — только наши (у конкурентов операции запрещены)
   const routerDevices = computed(() => 
-    devices.value.filter(device => device.type === 'router')
+    devices.value.filter(device => device.type === 'router' && !isRival(device))
   )
 
   // Actions
@@ -450,12 +452,6 @@ const updateDeviceName = (deviceId, newShortName) => {
         if (device) {
           device.currentWanType = data.type
         }
-    })
-      socket.on('device:wanTypeUpdated', (data) => {
-        const device = devices.value.find(d => d.id === data.deviceId)
-        if (device) {
-          device.currentWanType = data.type
-        }
         // ✅ Обновляем wanTypesMap
         if (data.deviceId) {
           wanTypesMap.value[data.deviceId] = data.type
@@ -463,9 +459,15 @@ const updateDeviceName = (deviceId, newShortName) => {
       })
   
   // ✅ Слушаем событие получения всех WAN типов
-      socket.on('device:wanTypes:all', (types) => {
-      if (types) {
-        wanTypesMap.value = types
+    // 🔑 Синхронизация пароля устройства: обновление без перезагрузки страницы
+    socket.on('device:passwordUpdated', (data) => {
+      const deviceIndex = devices.value.findIndex(d => String(d.id) === String(data.deviceId))
+      if (deviceIndex !== -1) {
+        if (data.password) {
+          devices.value[deviceIndex].devicePassword = data.password
+        } else {
+          delete devices.value[deviceIndex].devicePassword
+        }
       }
     })
       
@@ -479,6 +481,7 @@ const updateDeviceName = (deviceId, newShortName) => {
     socket.off('device:statuses:initial')
     socket.off('device:batchBookingUpdated')
     socket.off('device:wanTypeUpdated')
+    socket.off('device:passwordUpdated')
   }
 
   

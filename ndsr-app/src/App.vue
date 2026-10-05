@@ -523,16 +523,8 @@ const initializeApp = async () => {
         }
     }, 2000)
     
-    // Слушатели обновлений
-    const modeUnsubscribe = modeStore.listenForModeUpdates((data) => {
-      // Обработка обновлений режимов
-    })
-    
-    const mwsUnsubscribe = modeStore.listenForMwsUpdates((data) => {
-      // Обработка обновлений MWS
-    })
-    
-    unsubscribeCallbacks.value.push(modeUnsubscribe, mwsUnsubscribe)
+    // 🔧 Слушатели mode/mws живут в BookedDeviceTable (рабочий колбэк).
+    // Раньше здесь были дубли-регистрации с пустыми колбэками
     
   } catch (error) {
     console.error('❌ Failed to initialize app:', error)

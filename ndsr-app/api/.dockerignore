@@ -1,0 +1,14 @@
+# Контекст сборки бэкенда: без зависимостей хоста, секретов и локального состояния
+node_modules
+.env
+.env.*
+!.env.example
+id_ed25519*
+bookings.json
+current_modes.json
+mws_links.json
+logs
+uploads
+*.log
+vms.json
+vm_attachments.json

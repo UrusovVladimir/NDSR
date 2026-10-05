@@ -1,0 +1,66 @@
+html, body {
+  margin: 0;
+  height: 100%;
+  background: #1e1e1e;
+  color: #e5e5e5;
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  overflow: hidden;
+}
+
+body {
+  display: flex;
+  flex-direction: column;
+}
+
+#rdp-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.35rem 0.75rem;
+  background: #2b2b2b;
+  border-bottom: 1px solid #3a3a3a;
+  font-size: 0.85rem;
+  flex: 0 0 auto;
+}
+
+#rdp-title {
+  font-weight: 600;
+}
+
+#rdp-status {
+  flex: 1;
+  color: #9ca3af;
+}
+
+#rdp-status.error {
+  color: #f87171;
+}
+
+#rdp-toolbar button {
+  background: #3a3a3a;
+  color: #e5e5e5;
+  border: 1px solid #4b4b4b;
+  border-radius: 4px;
+  padding: 0.2rem 0.6rem;
+  font: inherit;
+  cursor: pointer;
+}
+
+#rdp-toolbar button:hover {
+  background: #474747;
+}
+
+#rdp-screen {
+  flex: 1 1 auto;
+  position: relative;
+  overflow: hidden;
+  outline: none;
+  /* Guacamole ставит холстам z-index: -1 — без своего контекста наложения
+     они уходят под фон body и экран выглядит пустым */
+  isolation: isolate;
+}
+
+/* Курсор рисует сам Guacamole */
+#rdp-screen > div {
+  cursor: none;
+}

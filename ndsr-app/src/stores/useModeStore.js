@@ -1,4 +1,5 @@
 import { defineStore } from 'pinia'
+import { isRival } from '@/utils/deviceFlags'
 import { ref, watch } from 'vue'
 import { socket } from '@/socket'
 import { useToast } from 'primevue/usetoast'
@@ -8,6 +9,9 @@ export const useModeStore = defineStore('mode', () => {
   const toast = useToast()
   const isLoading = ref(false)
   const deviceStore = useDeviceStore()
+
+  const isApSwitchOn = (device) =>
+    ['true', 'yes', '1'].includes(String(device?.hwType ?? '').toLowerCase())
   
   const getInitialMode = () => {
     try {
@@ -189,7 +193,7 @@ const updateModeFromDetection = async (deviceId, password) => {
       
       const deviceStore = useDeviceStore();
       const apDevices = deviceStore.devices.filter(dev => 
-        dev.type === 'AP' && dev.hWtype === 'true'
+        dev.type === 'AP' && dev.hwType === 'true'
       );
       
       // console.log(`🔧 Found ${apDevices.length} AP devices for mode validation`);
@@ -200,7 +204,7 @@ const updateModeFromDetection = async (deviceId, password) => {
         const modeInfo = savedModes[deviceId];
         const device = deviceStore.devices.find(d => d.id === deviceId);
         
-        if (device && device.type === 'AP' && device.hWtype === 'true') {
+        if (device && device.type === 'AP' && device.hwType === 'true') {
           if (modeInfo.mode === 'router') {
             // console.log(`🔧 Исправляем AP устройство ${deviceId}: router -> extender`);
             savedModes[deviceId] = {
@@ -293,7 +297,7 @@ const validateAPDeviceModes = () => {
   try {
     const deviceStore = useDeviceStore();
     const apDevices = deviceStore.devices.filter(dev => 
-      dev.type === 'AP' && dev.hWtype === 'true'
+      dev.type === 'AP' && dev.hwType === 'true'
     );
     
     let fixedCount = 0;
@@ -419,70 +423,75 @@ const validateAPDeviceModes = () => {
   }
 
 const changeMode = async (deviceId, mode, routerId = null, password = null, routerPassword = null, action = null) => {
-  // console.log(`РЕЖИМ РАБОТЫ ИЗМЕНЯЕТСЯ НА ${mode} с action: ${action}`)
   isLoading.value = true
   error.value = null
-  
+
   try {
     return await new Promise((resolve, reject) => {
-      // console.log('🔄 Changing mode:', { deviceId, mode, routerId, action })
+      let settled = false
+
+      const settle = (fn) => {
+        if (settled) return
+        settled = true
+        clearTimeout(timeout)
+        socket.off('device:modeChangeResult', onResult)
+        fn()
+      }
 
       const timeout = setTimeout(() => {
-        showErrorToast('Operation timeout - device is not responding', 'Timeout')
-        reject(new Error('Request timeout (180s)'))
+        settle(() => {
+          showErrorToast('Operation timeout - device is not responding', 'Timeout')
+          reject(new Error('Request timeout (180s)'))
+        })
       }, 180000)
 
-      socket.emit('device:changeMode', { 
+      // 🎯 B3: итог операции приходит событием, а не через ack
+      const onResult = (data) => {
+        if (String(data?.deviceId) !== String(deviceId)) return
+
+        if (data.success) {
+          settle(() => {
+            updateDeviceMode(deviceId, {
+              mode: data.mode || mode,
+              routerId: data.routerId !== undefined ? data.routerId : routerId
+            })
+            showSuccessWithIcon(`Mode changed to ${data.mode || mode}`, 'Success')
+            resolve(data)
+          })
+        } else {
+          settle(() => {
+            const userMessage = handleModeError(new Error(data.error || 'Failed to change mode'), 'change mode')
+            error.value = userMessage
+            reject(new Error(userMessage))
+          })
+        }
+      }
+
+      socket.on('device:modeChangeResult', onResult)
+
+      // ack = подтверждение старта; отказ до старта (например, guard) приходит здесь
+      socket.emit('device:changeMode', {
         deviceId: String(deviceId),
         mode: String(mode),
         routerId: routerId ? String(routerId) : null,
         password: password ? String(password) : null,
         routerPassword: routerPassword ? String(routerPassword) : null,
-        action: action ? String(action) : null  // 👈 Добавляем action
+        action: action ? String(action) : null
       }, (response) => {
-        clearTimeout(timeout)
-        
-        if (response?.success) {
-          let finalMode = mode
-          let finalRouterId = routerId
-          
-          
-          if (action === 'wan_off') {
-            if (mode === 'extender' && routerId) {
-              finalMode = 'extender_connect'
-            } else if (mode === 'extender' && !routerId) {
-              finalMode = 'extender'
-            } else if (mode === 'extender_connect') {
-              finalMode = 'extender_connect'
-            }
-          } else if (action === 'wan_on') {
-            finalMode = 'router'
-            finalRouterId = null
-          }
-          
-          updateDeviceMode(deviceId, {
-            mode: finalMode,
-            routerId: finalRouterId
+        if (!response?.success) {
+          settle(() => {
+            const userMessage = handleModeError(new Error(response?.error || 'Failed to start operation'), 'change mode')
+            error.value = userMessage
+            reject(new Error(userMessage))
           })
-          
-          showSuccessWithIcon(`Mode changed to ${finalMode}`, 'Success')
-          resolve(response)
-        } else {
-          const errorMessage = response?.error || 'Failed to change mode'
-          const userMessage = handleModeError(new Error(errorMessage), 'change mode')
-          reject(new Error(userMessage))
         }
+        // при success ждём modeChangeResult — НЕ резолвим (это был источник ложного Success)
       })
     })
-  } catch (error) {
-    const userMessage = handleModeError(error, 'change mode')
-    error.value = userMessage
-    throw new Error(userMessage)
   } finally {
     isLoading.value = false
   }
 }
-
 const getCurrentMode = async (deviceId, password) => {
   isLoading.value = true
   error.value = null
@@ -497,7 +506,9 @@ const getCurrentMode = async (deviceId, password) => {
           socket.emit('device:getCurrentMode', {
               deviceId: String(deviceId),
               login: 'admin',
-              password: String(password)
+              // 🔑 null-safe: пустой пароль → null (сервер построит свою цепочку
+              // кандидатов, а не будет пробовать бессмысленную строку)
+              password: password ? String(password) : null
           }, (response) => {
               clearTimeout(timeout)
               
@@ -569,12 +580,11 @@ const listenForModeUpdates = (callback) => {
           })
         }
       } else if (data.status === 'disconnected') {
-        if (data.deviceId) {
-          updateDeviceMode(data.deviceId, {
-            mode: 'router',
-            routerId: null
-          })
-        }
+        const device = deviceStore.devices.find(d => String(d.id) === String(data.deviceId))
+        updateDeviceMode(data.deviceId, {
+          mode: isApSwitchOn(device) ? 'extender' : 'router',
+          routerId: null
+        })
       }
       
       callback?.(data)
@@ -608,7 +618,7 @@ const listenForModeUpdates = (callback) => {
                 
                 if (response?.success) {
                     updateDeviceMode(deviceId, {
-                      mode: 'Extender',
+                      mode: 'extender',
                       routerId: null
                     })
                     
@@ -681,15 +691,6 @@ const listenForModeUpdates = (callback) => {
             finalRouterId = null;
         }
         
-        // console.log(`📊 Mode resolution:`, {
-        //     deviceId,
-        //     existingMode,
-        //     detectedMode, 
-        //     finalMode,
-        //     existingRouterId,
-        //     finalRouterId
-        // });
-        
         updateDeviceMode(deviceId, {
             mode: finalMode,
             routerId: finalRouterId,
@@ -738,6 +739,8 @@ const listenForModeUpdates = (callback) => {
             // console.log(`⏭️ Skipping offline device: ${device.hwId}`)
             continue
           }
+          // Режим конкурента не определяем (авторизация Keenetic не подходит)
+          if (isRival(device)) continue
           
           const existingMode = currentMode.value[device.id]
           const existingRouterId = existingMode?.routerId
@@ -847,11 +850,18 @@ const validateAndFixModes = () => {
               // console.log(`🔧 Fixed mode for ${deviceId}: extender -> extender_connect (has routerId)`);
           } else if (modeInfo.mode === 'extender_disconnect') {
             // ✅ ПРАВИЛЬНО: оставляем как есть или меняем на AP
-            modeInfo.mode = 'AP';  // или оставить 'extender_disconnect'
+            modeInfo.mode = 'extender';  // или оставить 'extender_disconnect'
             modeInfo.routerId = null;
             fixedCount++;
             // console.log(`🔧 Fixed mode for ${deviceId}: extender_disconnect -> AP`);
-          } else if (modeInfo.mode === 'router' && modeInfo.routerId) {
+          } 
+            else if (modeInfo.mode === 'AP') {
+              // 🔧 п.11: легаси-значение 'AP' → честный 'extender'
+              modeInfo.mode = 'extender';
+              modeInfo.routerId = null;
+              fixedCount++;
+          }
+            else if (modeInfo.mode === 'router' && modeInfo.routerId) {
               // Если режим router, но есть routerId - очищаем routerId
               modeInfo.routerId = null;
               fixedCount++;
@@ -879,7 +889,16 @@ const validateAndFixModes = () => {
   }
 };
 
-
+  // 🔑 MWS-PW: эффективный пароль устройства = пароль мастера для
+  // подключённого экстендера (adoption синхронизирует креды)
+  const getEffectiveDevicePassword = (deviceId) => {
+    const modeInfo = currentMode.value[deviceId]
+    if (modeInfo?.mode === 'extender_connect' && modeInfo.routerId) {
+      const router = deviceStore.devices.find(d => String(d.id) === String(modeInfo.routerId))
+      return router?.devicePassword ?? null
+    }
+    return deviceStore.devices.find(d => String(d.id) === String(deviceId))?.devicePassword ?? null
+  }
 
 
 const checkDeviceStatusImmediately = async (deviceId, maxAttempts = 10, interval = 3000) => {
@@ -934,6 +953,7 @@ const checkDeviceStatusImmediately = async (deviceId, maxAttempts = 10, interval
     validateAndFixModes,
     updateModeFromDetection,
     validateAPDeviceModes,
-    checkDeviceStatusImmediately
+    checkDeviceStatusImmediately,
+    getEffectiveDevicePassword
   }
 })

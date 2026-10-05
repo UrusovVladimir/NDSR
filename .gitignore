@@ -6,11 +6,26 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
-
+bookings.json
+current_modes.json
+mws_links.json
+vm_attachments.json
+vms.json
 # Переменные окружения
 .env
 .env.local
 .env*.local
+!.env.example
+
+# Ключи и секреты деплоя
+id_ed25519
+id_ed25519.pub
+ndsr-deploy/Ansible/roles/*/vars/secrets.yml
+ndsr-deploy/Ansible/roles/*/files/vms.json
+# Inventory стендов (адреса и секреты команд) — в git только образец
+ndsr-deploy/Ansible/inventory/*/
+!ndsr-deploy/Ansible/inventory/example/
+ndsr-deploy/Ansible/inventory/*/group_vars/all/vault.yml
 
 # Настройки IDE
 .idea/
@@ -33,3 +48,5 @@ coverage/
 dist/
 build/
 out/
+# файловый лог бэкенда (LOG_DIR)
+ndsr-app/api/logs/

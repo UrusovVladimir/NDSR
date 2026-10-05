@@ -1,7 +1,6 @@
+import { getSSHConfig } from "../utils/hostConfig.js";
 import { SSHManager } from "../actions/sshManager.js";
-import { UniversalFirewallManager } from "./UniversalFirewallManager.js";
 import { DockerManager } from "./dockerManager.js";
-import { HOST_CONFIG } from "./hostConfig.js";
 import { getDeviceById, getParamRouter, wanTypes } from "../devices.js";
 import { getManagmentID } from "../actions/getManagmentID.js";
 import { TelnetConnection } from "../actions/telnetClassEthernet.js";
@@ -426,20 +425,17 @@ static async removeIptablesRulesOnly(deviceId, routerId) {
         if (!device || !router) {
             throw new Error(`Устройство или роутер не найдены`);
         }
-
+        // 🔧 правка 28: единый SSH-конфиг (fail-fast, без кредо-дефолтов).
+        // cfg ДО лога: при отсутствии env падаем до всяких попыток подключения
+        const cfg = getSSHConfig();
         console.log(`📋 Параметры подключения:`, {
-            host: HOST_CONFIG.mainHost.host,
-            port: HOST_CONFIG.mainHost.port,
-            username: HOST_CONFIG.mainHost.username
+            host: cfg.host,
+            port: cfg.port,
+            username: cfg.username
         });
 
-        // ✅ ПОДКЛЮЧАЕМСЯ ПО SSH
-        sshManager = new SSHManager(
-            HOST_CONFIG.mainHost.host,
-            HOST_CONFIG.mainHost.port,
-            HOST_CONFIG.mainHost.username,
-            HOST_CONFIG.mainHost.privateKeyPath
-        );
+        sshManager = new SSHManager(cfg.host, cfg.port, cfg.username, cfg.privateKeyPath);
+
         
         await sshManager.connect();
         console.log(`✅ SSH подключение установлено`);

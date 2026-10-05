@@ -1,0 +1,19 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8"/>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link rel="icon" href="/favicon.ico">
+    <title>RDP</title>
+    <script type="module" src="/src/rdp/main.js"></script>
+</head>
+<body>
+    <div id="rdp-toolbar">
+        <span id="rdp-title">RDP</span>
+        <span id="rdp-status">Connecting…</span>
+        <button type="button" id="rdp-cad" title="Send Ctrl+Alt+Del">Ctrl+Alt+Del</button>
+        <button type="button" id="rdp-reconnect" title="Reconnect" hidden>Reconnect</button>
+    </div>
+    <div id="rdp-screen" tabindex="0"></div>
+</body>
+</html>

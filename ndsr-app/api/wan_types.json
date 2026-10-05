@@ -51,7 +51,7 @@
         ]
     },
     {
-        
+        "setting": "offVlanPVID",
         "commands": [
             "interface port-channel",
             "pvid"
@@ -73,7 +73,7 @@
     {
         "setting": "VlanTagging",
         "commands": [
-                "fix",
+                "fixed",
                 "vlan-tagging"]
                         
     },

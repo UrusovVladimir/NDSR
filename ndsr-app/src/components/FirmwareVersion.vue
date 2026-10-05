@@ -1,8 +1,15 @@
 <template>
   <div class="firmware-version" :class="{ 'mobile-layout': isMobileLayout }">
     <div class="version-display">
+      <Tag 
+        v-if="rival"
+        value="N/A"
+        severity="secondary"
+        class="status-tag"
+        v-tooltip.bottom="'Firmware version is not available for rival devices'"
+      />
       <Chip 
-        v-if="displayVersion && !isError"
+        v-else-if="displayVersion && !isError"
         :label="`v${displayVersion}`"
         icon="pi pi-code"
         class="firmware-chip"
@@ -35,7 +42,7 @@
       />
       
       <i 
-        v-if="device.statusCode === 200"
+        v-if="device.statusCode === 200 && !rival"
         class="pi pi-refresh details-inline refresh-small"
         @click="refreshFirmware"
         v-tooltip.bottom="getRefreshTooltip"
@@ -79,6 +86,7 @@
 
 <script setup>
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
+import { isRival } from '@/utils/deviceFlags'
 import { useToast } from 'primevue/usetoast'
 import Chip from 'primevue/chip'
 import Tag from 'primevue/tag'
@@ -115,8 +123,11 @@ let loadFirmwareTimeout = null
 let statusChangeTimeout = null
 
 // Computed properties
+// Конкурент: версию не запрашиваем (авторизация Keenetic не подходит)
+const rival = computed(() => isRival(props.device))
+
 const canCheckFirmware = computed(() => {
-  return props.device.statusCode === 200
+  return props.device.statusCode === 200 && !rival.value
 })
 
 const displayVersion = computed(() => {

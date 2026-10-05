@@ -1,0 +1,8 @@
+# Секреты стенда. Скопируйте в vault.yml и зашифруйте:
+#   ansible-vault encrypt inventory/<стенд>/group_vars/all/vault.yml
+login_ves: "<логин VES>"
+password_ves: "<пароль VES>"
+login_switch: "<логин коммутаторов>"
+password_switch: "<пароль коммутаторов>"
+# Приватный ключ бэкенда (SSH на docker-хост) на машине, где запускается Ansible
+ssh_key_src: "~/.ssh/ndsr_backend_ed25519"

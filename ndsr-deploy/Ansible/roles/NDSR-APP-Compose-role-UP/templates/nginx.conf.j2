@@ -1,28 +1,54 @@
 server {
     listen 80;
-    server_name ip address server frontend;
-    
-    # ✅ VUE STATIC FILES - обслуживаем напрямую
+    server_name _;
+
+    # Vue — статика, SPA-роутинг
     location / {
         root /usr/share/nginx/html;
         index index.html index.htm;
         try_files $uri $uri/ /index.html;
     }
 
-    # ✅ SOCKET.IO - проксируем на бэкенд
+    # socket.io — на бэкенд. X-Real-IP = адрес инженера: бэкенд по нему
+    # идентифицирует пользователя (TRUST_PROXY_HEADERS=true)
     location /socket.io/ {
-        proxy_pass http://10.10.19.253:3000;
+        proxy_pass http://{{ backend_ip }}:{{ ws_port }};
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection "upgrade";
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-For $remote_addr;
         proxy_set_header X-Forwarded-Proto $scheme;
-        
-        # ✅ Дополнительные настройки для WebSocket
+
         proxy_buffering off;
         proxy_read_timeout 86400s;
         proxy_send_timeout 86400s;
+    }
+
+{% if browser_rdp_enabled | bool %}
+    # RDP к тестовым VM в браузере: WebSocket guacamole-lite бэкенда
+    location /guacamole/ {
+        proxy_pass http://{{ backend_ip }}:{{ guac_ws_port }};
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_buffering off;
+        proxy_read_timeout 86400s;
+        proxy_send_timeout 86400s;
+    }
+
+{% endif %}
+    # REST файлового менеджера (загрузка прошивок до 100 МБ, как multer)
+    location /api/ {
+        proxy_pass http://{{ backend_ip }}:{{ ws_port }};
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $remote_addr;
+        client_max_body_size 100m;
+        proxy_request_buffering off;
+        proxy_read_timeout 300s;
     }
 }

@@ -1,0 +1,35 @@
+# Параметры стенда — все адреса, зависящие от площадки. Роли адресов не
+# содержат и останавливаются, если обязательное здесь не задано.
+
+# --- Приложение (роль NDSR-APP-Compose-role-UP) ---
+# Адреса контейнеров в docker-сети ndsr_default (подсеть задаёт стек CFK)
+frontend_ip: "<напр. 10.10.19.254>"
+backend_ip: "<напр. 10.10.19.253>"
+webtelnet_ip: "<напр. 10.10.19.252>"
+guacd_ip: "<напр. 10.10.19.251>"     # RDP к VM в браузере; не нужен при browser_rdp_enabled: false
+# browser_rdp_enabled: false
+
+# Оборудование: списки через запятую, индексы в devices.json — с 1
+moxa_ips: "<host:port,host:port>"
+jerome_ips: "<ip,ip>"
+ves_ip: "<ip DSLAM>"
+switch_ips: "<ip,ip>"          # LAN-коммутаторы
+switch_wan_ips: "<ip,ip>"      # WAN-коммутаторы
+
+# Необязательное
+# vpn_ip_prefixes: "172.16."            # аудит клиентов из неожиданных подсетей
+# iperf_server: "<host> -p <port>"
+# iperf_server_public: "<host> -p <port>"
+# container_dns: ["<dns1>", "<dns2>"]   # иначе — резолвер docker-хоста
+# project_name: "Keenetic test bench"
+
+# По умолчанию берутся из hosts.ini (TRASP), задавать только если отличаются:
+# ssh_host: "<адрес docker-хоста для SSH бэкенда>"    # = ansible_host
+# ssh_port: "<порт>"                                  # = ansible_port
+# ssh_username: "<пользователь>"                      # = ansible_user
+# vm_rdp_public_host: "<адрес хоста для RDP-клиента>" # = ansible_host
+
+# --- Тестовые VM, сеть управления (роль SetupDockerHost, --tags vm_mgmt) ---
+# vm_mgmt_enabled: true
+# vm_mgmt_address: "<адрес хоста в mgmt-сети VM, напр. 10.10.31.1/24>"
+# vm_mgmt_vlan: 3100

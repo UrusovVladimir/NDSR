@@ -67,27 +67,54 @@
                             <i :class="deviceIcon(data.type)" class="common-device-icon"></i>
                         </div>
                         <div class="common-device-info">
-                            <div class="common-device-name">{{ data.shortName }}</div>
+                            <div class="common-device-name">{{ data.shortName }}
+                                <Tag v-if="isRival(data)" value="Rival" severity="warning" class="rival-tag"
+                                    v-tooltip="'Rival device: only VNC and web interface are available'" />
+                            </div>
                             <div class="common-device-hwid">{{ data.hwId }}
                                 <i class="pi pi-info-circle details-inline" 
                                 @click.stop="showDeviceDetails(data)"
                                 v-tooltip="'View device details'"></i>
                             </div>
                             
-                            <div class="common-device-hwid">
+                            <div v-if="!isRival(data)" class="common-device-hwid">
                                 Current Mode: <b>{{ getDisplayMode(data.id) }}</b>
                                 <i class="pi pi-refresh details-inline" 
                                 @click.stop="refreshDeviceMode(data.id)"
                                 v-tooltip="'Refresh mode info'"></i>
                             </div>
                             
-                            <div class="common-device-hwid">
-                                Device Password: <b>{{ getDeviceDisplayPassword(data) }}</b>
-                                <i class="pi pi-copy details-inline" 
-                                @click.stop="copyToClipboard(getDeviceDisplayPassword(data), 'Device Password')"
+                            <!-- Конкурент: пароль только из конфига, без редактирования -->
+                            <div v-if="isRival(data)" class="common-device-hwid">
+                                Device Password: <b>{{ data.devicePassword || '—' }}</b>
+                                <i v-if="data.devicePassword"
+                                class="pi pi-copy details-inline"
+                                @click.stop="copyToClipboard(data.devicePassword, 'Device Password')"
                                 v-tooltip="'Copy access password'"></i>
                             </div>
+                            <div v-else class="common-device-hwid">
+                                Device Password: <b>{{ getDeviceDisplayPassword(data) }}</b>
+                                <i v-if="canCopyDevicePassword(data)" 
+                                class="pi pi-copy details-inline" 
+                                @click.stop="copyToClipboard(getDeviceDisplayPassword(data), 'Device Password')"
+                                v-tooltip="'Copy access password'"></i>
+                                <i v-else-if="data.booking?.passwordInvalidated"
+                                class="pi pi-exclamation-triangle details-inline password-unknown-icon"
+                                v-tooltip="'Password unknown after reset — set a new one via Skip Wizard'"></i>
+                                <i v-if="isCurrentUserBooking(data)"
+                                class="pi pi-pencil details-inline"
+                                @click.stop="openChangePasswordDialog(data)"
+                                v-tooltip="'Change saved password (if it was changed on the device)'"></i>
+                            </div>
                             
+                            <div v-for="vm in vmStore.vmsForDevice(data.id)" :key="vm.id" class="common-device-hwid">
+                                VM: <b>{{ vm.name }}</b>
+                                <span v-if="vm.attachment.ipPending"> (getting IP…)</span>
+                                <span v-else-if="vm.attachment.ip"> ({{ vm.attachment.ip }})</span>
+                                <i class="pi pi-external-link details-inline" @click.stop="openVmDialog(data)"
+                                    v-tooltip="'RDP access'"></i>
+                            </div>
+
                             <div v-if="shouldShowConnectionInfo(data.id)" class="common-device-hwid">
                                 Connected to: <b>{{ getConnectedRouterInfo(data.id) }}</b>
                             </div>
@@ -118,7 +145,11 @@
             
             <Column header="WAN" style="min-width: 100px; max-width: 140px;">
                 <template #body="{ data }">
+                    <div v-if="isRival(data)" class="na-cell">
+                        <Tag value="N/A" severity="secondary" />
+                    </div>
                     <WanTypeDisplay 
+                        v-else
                         :device="data" 
                         :wan-types="wanTypes"
                         :current-user-id="deviceStore.currentUserId"
@@ -153,16 +184,19 @@
             <Column header="Actions" style="min-width: 280px;">
                 <template #body="{ data }">
                     <div class="actions-container">
+                        <!-- Конкурент: в Actions только VNC, веб и снятие брони -->
                         <Button
+                            v-if="!isRival(data)"
                             v-tooltip.bottom="consoleStore.isConsoleOpen(data.id) ? 'Focus Console' : 'Open Console'"
                             :icon="consoleStore.isConsoleOpen(data.id) ? 'bi bi-terminal-fill' : 'bi bi-terminal'"
                             class="p-button-sm p-button-outlined p-button-secondary p-button-rounded action-btn"
                             @click="handleConsoleClick(data)"
+                            :disabled="!canOpenConsole(data)"
                             :class="{ 'console-open': consoleStore.isConsoleOpen(data.id) }"
                         />
                         
                         <Button
-                            v-if="data.rebootPort"
+                            v-if="data.rebootPort && !isRival(data)"
                             v-tooltip.bottom="'Power Management'"
                             icon="pi pi-power-off"
                             class="p-button-sm p-button-outlined p-button-warning p-button-rounded action-btn"
@@ -171,6 +205,7 @@
                         />
                         
                         <Button
+                            v-if="!isRival(data)"
                             v-tooltip.bottom="isResetting(data) ? 'Resetting...' : 'Reset Configuration'"
                             :icon="isResetting(data) ? 'pi pi-spinner pi-spin' : 'pi pi-refresh'"
                             class="p-button-sm p-button-outlined p-button-danger p-button-rounded action-btn"
@@ -179,7 +214,7 @@
                         />
                         
                         <Button
-                            v-if="data.type === 'AP'"
+                            v-if="data.type === 'AP' && !isRival(data)"
                             v-tooltip.bottom="'Connection AP to Router(MWS)'"
                             icon="pi pi-wifi"
                             class="p-button-sm p-button-outlined p-button-success p-button-rounded action-btn"
@@ -188,7 +223,7 @@
                         />
                         
                         <Button
-                            v-if="data.type === 'router' && data.hWtype !== 'HardwareAP'"
+                            v-if="data.type === 'router' && data.hwType !== 'HardwareAP' && !isRival(data)"
                             v-tooltip.bottom="'Change Mode'"
                             icon="pi pi-wrench"
                             class="p-button-sm p-button-outlined p-button-info p-button-rounded action-btn"
@@ -197,7 +232,7 @@
                         />
                         
                         <Button
-                            v-if="data.dslPort"
+                            v-if="data.dslPort && !isRival(data)"
                             v-tooltip.bottom="isResettingDsl(data) ? 'Resetting DSL...' : 'Reset DSL Line'"
                             :icon="isResettingDsl(data) ? 'pi pi-spinner pi-spin' : 'pi pi-phone'"
                             class="p-button-sm p-button-outlined p-button-help p-button-rounded action-btn"
@@ -206,7 +241,7 @@
                         />
                         
                         <Button
-                            v-if="data.type === 'router' && data.vncUrl"
+                            v-if="(data.type === 'router' || isRival(data)) && data.vncUrl"
                             v-tooltip.bottom="'LAN VNC'"
                             icon="pi pi-desktop"
                             class="p-button-sm p-button-outlined p-button-secondary p-button-rounded action-btn"
@@ -223,7 +258,7 @@
                         />
                         
                         <Button
-                            v-if="data.type === 'router'"
+                            v-if="data.type === 'router' && !isRival(data)"
                             v-tooltip.bottom="isInitializing(data) ? 'Initializing...' : 'Skip Wizard - set password'"
                             :icon="isInitializing(data) ? 'pi pi-spinner pi-spin' : 'bi bi-magic'"
                             class="p-button-sm p-button-outlined p-button-warning p-button-rounded action-btn"
@@ -231,6 +266,19 @@
                             @click="handleInitialization(data)"
                         />
                         
+                        <!-- Тестовые VM в LAN устройства -->
+                        <!-- Тестовые VM — и у конкурентов тоже -->
+                        <span v-if="vmStore.vms.length" class="vm-btn-wrap">
+                            <Button
+                                v-tooltip.bottom="'Test VMs (RDP into the router LAN)'"
+                                icon="bi bi-pc-display"
+                                class="p-button-sm p-button-outlined p-button-rounded action-btn vm-action-btn"
+                                @click="openVmDialog(data)"
+                            />
+                            <Badge v-if="vmStore.vmsForDevice(data.id).length"
+                                :value="vmStore.vmsForDevice(data.id).length" class="vm-btn-badge" />
+                        </span>
+
                         <Button 
                             :icon="releasingDeviceId === data.id ? 'pi pi-spinner pi-spin' : 'pi pi-trash'"
                             class="p-button-outlined p-button-danger p-button-sm p-button-rounded action-btn release-btn"
@@ -248,6 +296,8 @@
                 </div>
             </template>
         </DataTable>
+
+        <VmAttachDialog v-model:visible="showVmDialog" :device="vmDialogDevice" />
 
         <!-- Floating Quick Actions Menu -->
         <OverlayPanel ref="quickActionsPanel" :showCloseIcon="true" :dismissable="true" class="quick-actions-panel">
@@ -268,15 +318,17 @@
                 
                 <div class="quick-actions-grid">
                     <Button
+                        v-if="!isRival(quickActionDevice)"
                         :label="consoleStore.isConsoleOpen(quickActionDevice.id) ? 'Console' : 'Open Console'"
                         :icon="consoleStore.isConsoleOpen(quickActionDevice.id) ? 'bi bi-terminal-fill' : 'bi bi-terminal'"
                         class="p-button-sm p-button-outlined p-button-secondary quick-action-btn"
                         @click="executeQuickAction('console')"
+                        :disabled="!canOpenConsole(quickActionDevice)"
                         :class="{ 'console-open': consoleStore.isConsoleOpen(quickActionDevice.id) }"
                     />
                     
                     <Button
-                        v-if="quickActionDevice.rebootPort"
+                        v-if="quickActionDevice.rebootPort && !isRival(quickActionDevice)"
                         label="Power"
                         icon="pi pi-power-off"
                         class="p-button-sm p-button-outlined p-button-warning quick-action-btn"
@@ -285,6 +337,7 @@
                     />
                     
                     <Button
+                        v-if="!isRival(quickActionDevice)"
                         :label="isResetting(quickActionDevice) ? 'Resetting...' : 'Reset Config'"
                         :icon="isResetting(quickActionDevice) ? 'pi pi-spinner pi-spin' : 'pi pi-refresh'"
                         class="p-button-sm p-button-outlined p-button-danger quick-action-btn"
@@ -293,7 +346,7 @@
                     />
                     
                     <Button
-                        v-if="quickActionDevice.type === 'AP'"
+                        v-if="quickActionDevice.type === 'AP' && !isRival(quickActionDevice)"
                         label="MWS Connect"
                         icon="pi pi-wifi"
                         class="p-button-sm p-button-outlined p-button-success quick-action-btn"
@@ -302,6 +355,7 @@
                     />
                     
                     <Button
+                        v-if="!isRival(quickActionDevice)"
                         label="WAN Settings"
                         icon="pi pi-globe"
                         class="p-button-sm p-button-outlined p-button-info quick-action-btn"
@@ -309,7 +363,7 @@
                     />
                     
                     <Button
-                        v-if="quickActionDevice.type === 'router' && quickActionDevice.hWtype !== 'HardwareAP'"
+                        v-if="quickActionDevice.type === 'router' && quickActionDevice.hwType !== 'HardwareAP' && !isRival(quickActionDevice)"
                         label="Change Mode"
                         icon="pi pi-wrench"
                         class="p-button-sm p-button-outlined p-button-info quick-action-btn"
@@ -318,7 +372,7 @@
                     />
                     
                     <Button
-                        v-if="quickActionDevice.dslPort"
+                        v-if="quickActionDevice.dslPort && !isRival(quickActionDevice)"
                         :label="isResettingDsl(quickActionDevice) ? 'DSL...' : 'Reset DSL'"
                         :icon="isResettingDsl(quickActionDevice) ? 'pi pi-spinner pi-spin' : 'pi pi-phone'"
                         class="p-button-sm p-button-outlined p-button-help quick-action-btn"
@@ -327,7 +381,7 @@
                     />
                     
                     <Button
-                        v-if="quickActionDevice.type === 'router' && quickActionDevice.vncUrl"
+                        v-if="(quickActionDevice.type === 'router' || isRival(quickActionDevice)) && quickActionDevice.vncUrl"
                         label="LAN VNC"
                         icon="pi pi-desktop"
                         class="p-button-sm p-button-outlined p-button-secondary quick-action-btn"
@@ -344,7 +398,7 @@
                     />
                     
                     <Button
-                        v-if="quickActionDevice.type === 'router'"
+                        v-if="quickActionDevice.type === 'router' && !isRival(quickActionDevice)"
                         :label="isInitializing(quickActionDevice) ? 'Init...' : 'Skip Wizard'"
                         :icon="isInitializing(quickActionDevice) ? 'pi pi-spinner pi-spin' : 'bi bi-magic'"
                         class="p-button-sm p-button-outlined p-button-warning quick-action-btn"
@@ -993,7 +1047,7 @@
             v-model:visible="showPasswordDialog" 
             modal 
             :blockScroll="false"
-            header="Enter Device Password"
+            :header="isChangePasswordMode ? 'Change Device Password' : 'Enter Device Password'"
             :style="{ width: '450px', maxWidth: '95vw' }"
             :closable="!isSavingPassword"
             class="responsive-dialog"
@@ -1003,7 +1057,9 @@
                     <i class="pi pi-lock text-primary" style="font-size: 1.5rem"></i>
                     <div>
                         <div class="font-bold">Device: {{ passwordDialogDevice?.hwId }}</div>
-                        <small class="text-color-secondary">Enter a password to access the device interface</small>
+                        <small class="text-color-secondary">{{ isChangePasswordMode
+                            ? 'Enter the password currently set on the device'
+                            : 'Enter a password to access the device interface' }}</small>
                     </div>
                 </div>
                 
@@ -1016,7 +1072,7 @@
                             id="newPassword"
                             v-model="newPassword" 
                             :feedback="false"
-                            placeholder="Enter new password (min 8 chars)"
+                            :placeholder="isChangePasswordMode ? 'Password set on the device' : 'Enter new password (min 8 chars)'"
                             class="custom-password-input"
                             toggleMask
                             :disabled="isSavingPassword"
@@ -1026,7 +1082,9 @@
                     </div>
                     <small class="text-color-secondary block mt-1">
                         <i class="pi pi-info-circle mr-1"></i>
-                        Password must be at least 8 characters and not be common
+                        {{ isChangePasswordMode
+                            ? 'The portal will use this password for all device operations'
+                            : 'Password must be at least 8 characters and not be common' }}
                     </small>
                     <small v-if="passwordError" class="text-red-500 block mt-1">
                         {{ passwordError }}
@@ -1038,19 +1096,24 @@
                         Use booking password
                     </label>
                     <div class="booking-password-container">
-                        <div class="flex align-items-center gap-2 p-2 surface-ground border-round">
-                            <i class="pi pi-key text-warning"></i>
-                            <span class="font-mono text-sm">{{ passwordDialogDevice?.booking?.accessPassword || 'No password available' }}</span>
+                        <div class="flex align-items-center gap-2 p-2 surface-ground border-round"
+                             :class="{ 'booking-password-invalid': passwordDialogDevice?.booking?.passwordInvalidated }">
+                            <i :class="passwordDialogDevice?.booking?.passwordInvalidated ? 'pi pi-exclamation-triangle text-yellow-500' : 'pi pi-key text-warning'"></i>
+                            <span class="font-mono text-sm">{{ suggestedBookingPassword || 'No password available' }}</span>
+                            <small v-if="isSuggestingTodayPassword" class="text-color-secondary">(Today)</small>
                             <Button 
                                 icon="pi pi-copy" 
                                 class="p-button-sm p-button-text p-button-rounded copy-btn-small"
-                                @click="copyToClipboard(passwordDialogDevice?.booking?.accessPassword, 'Booking Password')"
+                                :disabled="!suggestedBookingPassword"
+                                @click="copyToClipboard(suggestedBookingPassword, 'Booking Password')"
                             />
                         </div>
                     </div>
                     <small class="text-color-secondary block mt-1">
                         <i class="pi pi-info-circle mr-1"></i>
-                        You can use the booking password or set your own
+                        {{ isSuggestingTodayPassword
+                            ? 'Password was reset — use today\'s password or set your own'
+                            : 'You can use the booking password or set your own' }}
                     </small>
                 </div>
             </div>
@@ -1069,15 +1132,15 @@
                         icon="pi pi-key" 
                         class="p-button-secondary" 
                         @click="useBookingPassword"
-                        :disabled="isSavingPassword || !passwordDialogDevice?.booking?.accessPassword"
+                        :disabled="isSavingPassword || !suggestedBookingPassword"
                     />
                     <Button 
-                        label="Save & Open" 
+                        :label="isChangePasswordMode ? 'Save' : 'Save & Open'" 
                         icon="pi pi-check" 
                         class="p-button-primary" 
                         @click="saveAndOpenInterface"
                         :loading="isSavingPassword"
-                        :disabled="!newPassword || newPassword.length < 8 || isSavingPassword"
+                        :disabled="!newPassword || newPassword.length < minPasswordLength || isSavingPassword"
                     />
                 </div>
             </template>
@@ -1087,6 +1150,7 @@
 
 <script setup>
 import { ref, computed, inject, onMounted, onUnmounted, watch, nextTick } from 'vue'
+import { isRival } from '@/utils/deviceFlags'
 import { useToast } from 'primevue/usetoast'
 import { socket } from '@/socket'
 import { useDeviceStore } from '@/stores/useDeviceStore'
@@ -1094,6 +1158,8 @@ import { useDeviceActionsStore } from '@/stores/useDeviceActionsStore'
 import { useModeStore } from '@/stores/useModeStore'
 import { useFirmwareStore } from '@/stores/useFirmwareStore'
 import { useConsoleStore } from '@/stores/useConsoleStore'
+import { useVmStore } from '@/stores/useVmStore'
+import VmAttachDialog from './VmAttachDialog.vue'
 import StatusIndicator from './StatusIndicator.vue'
 import FirmwareVersion from '@/components/FirmwareVersion.vue'
 import WanTypeDisplay from './WanTypeDisplay.vue'
@@ -1116,6 +1182,13 @@ const deviceActionsStore = useDeviceActionsStore()
 const todayPassword = inject('todayPassword')
 const firmwareStore = useFirmwareStore()
 const consoleStore = useConsoleStore()
+const vmStore = useVmStore()
+const showVmDialog = ref(false)
+const vmDialogDevice = ref(null)
+const openVmDialog = (device) => {
+    vmDialogDevice.value = device
+    showVmDialog.value = true
+}
 
 const tableKey = ref(0)
 const isMounted = ref(false)
@@ -1148,6 +1221,13 @@ const newPassword = ref('')
 const passwordError = ref('')
 const isSavingPassword = ref(false)
 const pendingDeviceUrl = ref(null)
+// 'open' — нет пароля, сохранить и открыть интерфейс;
+// 'change' — пароль сменили на самом устройстве, только обновить его в портале
+const passwordDialogMode = ref('open')
+const isChangePasswordMode = computed(() => passwordDialogMode.value === 'change')
+// Пароль, уже стоящий на устройстве, может быть любым — проверяем только
+// минимум бэкенда (setPassword: 4); новый пароль портала — 8 и не слабый
+const minPasswordLength = computed(() => isChangePasswordMode.value ? 4 : 8)
 
 // Состояние для floating меню
 const quickActionsPanel = ref(null)
@@ -1255,7 +1335,7 @@ const selectPowerAction = (action) => {
 const manualCheckAllFirmwares = async () => {
     isCheckingAllFirmwares.value = true
     
-    const onlineBookedDevices = deviceStore.bookedDevices.filter(d => d.statusCode === 200)
+    const onlineBookedDevices = deviceStore.bookedDevices.filter(d => d.statusCode === 200 && !isRival(d))
     if (onlineBookedDevices.length === 0) {
         toast.add({
             severity: 'info',
@@ -1285,6 +1365,7 @@ const manualCheckAllFirmwares = async () => {
         
         const deviceIds = onlineBookedDevices.map(d => d.id)
         
+        // 🔧 Ручной вызов идёт мимо debounce — пользователь ждёт результат сейчас
         const response = await firmwareStore.checkMultipleFirmwares(deviceIds, passwords, true)
         
         if (response && response.details && response.details.failed && response.details.failed.length > 0) {
@@ -1408,20 +1489,34 @@ const getPowerStatusClass = (deviceId) => {
     : 'text-gray-500'
 }
 
+// Устройства конкурентов (rivals: true): доступны только VNC и веб-интерфейс,
+// бронь (продление/снятие) — как обычно. Сервер запрещает остальное сам.
 const canPowerManage = (device) => {
-    return isCurrentUserBooking(device) && 
+    return !isRival(device) && isCurrentUserBooking(device) && 
            !isAnyOperationOnThisDevice(device) &&
            device.rebootPort
 }
 
 const getDeviceDisplayPassword = (device) => {
+    // 🔑 Пароль из конфига — истина (поддерживается setPassword/clearPassword)
     if (device.devicePassword) {
         return device.devicePassword
+    }
+    // После reset пароль неизвестен — НЕ показываем мёртвый пароль из брони
+    if (device.booking?.passwordInvalidated) {
+        return 'Unknown (after reset)'
     }
     return device.booking?.accessPassword || 'Not available'
 }
 
+// Копировать можно только реально существующий пароль
+const canCopyDevicePassword = (device) => {
+    return !!(device.devicePassword || 
+              (!device.booking?.passwordInvalidated && device.booking?.accessPassword))
+}
+
 const handleConsoleClick = (device) => {
+    if (!canOpenConsole(device)) return
     if (consoleStore.isConsoleOpen(device.id)) {
         consoleStore.focusConsole(device.id)
     } else {
@@ -1439,7 +1534,8 @@ const isInitializing = (device) => deviceActionsStore.getDeviceOperation(device.
 const isResetting = (device) => deviceActionsStore.getDeviceOperation(device.id) === 'resetting'
 const isRebooting = (device) => deviceActionsStore.getDeviceOperation(device.id) === 'rebooting'
 const isResettingDsl = (device) => deviceActionsStore.getDeviceOperation(device.id) === 'resettingDsl'
-const canRefreshMode = (device) => isCurrentUserBooking(device) && !isOffline(device) && device.booking?.accessPassword
+const canRefreshMode = (device) => !isRival(device) && isCurrentUserBooking(device) && !isOffline(device) && 
+    (device.booking?.accessPassword || device.booking?.passwordInvalidated)
 
 const getConnectedRouterInfo = (deviceId) => {
     if (!isMounted.value) return 'Loading...'
@@ -1522,20 +1618,24 @@ const startTimer = () => {
 const isOffline = (device) => device.statusCode !== 200
 
 const canInitialize = (device) => {
-    return isCurrentUserBooking(device) && 
+    // 🔑 Требование accessPassword убрано: после reset пароля НЕТ,
+    // и init — это ровно та операция, которая его УСТАНАВЛИВАЕТ
+    // (handleInitialization имеет фолбэк на daily и шлёт RCI без auth
+    // на свежесброшенном устройстве)
+    return !isRival(device) &&
+           isCurrentUserBooking(device) && 
            !isOffline(device) && 
-           !isAnyOperationOnThisDevice(device) &&
-           device.booking?.accessPassword
+           !isAnyOperationOnThisDevice(device)
 }
 
 const canOpenInterface = (device) => isCurrentUserBooking(device) && !isOffline(device) && device.URL
-const canMwsConnect = (device) => isCurrentUserBooking(device)
-const canChangeMode = (device) => isCurrentUserBooking(device) && !isOffline(device)
+const canMwsConnect = (device) => !isRival(device) && isCurrentUserBooking(device)
+const canChangeMode = (device) => !isRival(device) && isCurrentUserBooking(device) && !isOffline(device)
 const canOpenVnc = (device) => isCurrentUserBooking(device) && !isOffline(device) && device.vncUrl
-const canReboot = (device) => isCurrentUserBooking(device) && !isAnyOperationOnThisDevice(device)
-const canResetConfig = (device) => isCurrentUserBooking(device) && !isAnyOperationOnThisDevice(device)
-const canResetDsl = (device) => isCurrentUserBooking(device) && device.dslPort
-const canOpenConsole = (device) => isCurrentUserBooking(device)
+const canReboot = (device) => !isRival(device) && isCurrentUserBooking(device) && !isAnyOperationOnThisDevice(device)
+const canResetConfig = (device) => !isRival(device) && isCurrentUserBooking(device) && !isAnyOperationOnThisDevice(device)
+const canResetDsl = (device) => !isRival(device) && isCurrentUserBooking(device) && device.dslPort
+const canOpenConsole = (device) => !isRival(device) && isCurrentUserBooking(device)
 
 const extendBooking = async (deviceId, additionalDuration = 3600) => {
     isExtending.value = true
@@ -1720,7 +1820,9 @@ const refreshingModes = ref(new Set())
 const refreshDeviceMode = async (deviceId) => {
     try {
         const device = deviceStore.devices.find(d => d.id === deviceId)
-        if (!device || !device.booking?.accessPassword) {
+        // 🔑 После reset пароля нет, но детекция работает (дефолтное устройство
+        // открыто) — серверная цепочка кандидатов разрулит
+        if (!device || (!device.booking?.accessPassword && !device.booking?.passwordInvalidated)) {
             toast.add({
                 severity: 'warn',
                 summary: 'Cannot Refresh Mode',
@@ -1817,6 +1919,16 @@ const openDeviceInterface = (device) => {
     
     passwordDialogDevice.value = device
     pendingDeviceUrl.value = device.URL
+    passwordDialogMode.value = 'open'
+    newPassword.value = ''
+    passwordError.value = ''
+    showPasswordDialog.value = true
+}
+
+const openChangePasswordDialog = (device) => {
+    passwordDialogDevice.value = device
+    pendingDeviceUrl.value = null
+    passwordDialogMode.value = 'change'
     newPassword.value = ''
     passwordError.value = ''
     showPasswordDialog.value = true
@@ -1826,6 +1938,7 @@ const closePasswordDialog = () => {
     showPasswordDialog.value = false
     passwordDialogDevice.value = null
     pendingDeviceUrl.value = null
+    passwordDialogMode.value = 'open'
     newPassword.value = ''
     passwordError.value = ''
     isSavingPassword.value = false
@@ -1848,8 +1961,21 @@ const validatePassword = (password) => {
     return null
 }
 
+// 🔑 Пароль для «Use Booking Password»: пароль брони, а после reset
+// (passwordInvalidated — пароль брони мёртв) — Today-пароль дня
+const isSuggestingTodayPassword = computed(() => {
+    const booking = passwordDialogDevice.value?.booking
+    return !!booking?.passwordInvalidated || !booking?.accessPassword
+})
+
+const suggestedBookingPassword = computed(() => {
+    return isSuggestingTodayPassword.value
+        ? todayPassword?.value || ''
+        : passwordDialogDevice.value.booking.accessPassword
+})
+
 const useBookingPassword = () => {
-    let password = passwordDialogDevice.value?.booking?.accessPassword
+    let password = suggestedBookingPassword.value
     if (password) {
         if (typeof password === 'string') {
             password = password.replace(/^["']|["']$/g, '').trim()
@@ -1883,9 +2009,22 @@ const savePasswordAndOpen = async (password) => {
         
         passwordDialogDevice.value.devicePassword = cleanPassword
         
+        const changeOnly = isChangePasswordMode.value
+        const deviceName = passwordDialogDevice.value.hwId || 'device'
         const urlToOpen = pendingDeviceUrl.value || passwordDialogDevice.value.URL
         
         closePasswordDialog()
+        
+        if (changeOnly) {
+            toast.add({
+                severity: 'success',
+                summary: 'Password Updated',
+                detail: `Password for ${deviceName} updated in the portal`,
+                life: 3000
+            })
+            safeUpdateTable()
+            return
+        }
         
         if (urlToOpen && urlToOpen !== 'null' && urlToOpen !== 'undefined') {
             window.open(urlToOpen, '_blank')
@@ -1904,7 +2043,7 @@ const savePasswordAndOpen = async (password) => {
         toast.add({
             severity: 'success',
             summary: 'Password Saved',
-            detail: `Password for ${passwordDialogDevice.value?.hwId || 'device'} saved and copied to clipboard`,
+            detail: `Password for ${deviceName} saved and copied to clipboard`,
             life: 3000
         })
         
@@ -1924,7 +2063,9 @@ const savePasswordAndOpen = async (password) => {
 }
 
 const saveAndOpenInterface = () => {
-    const validationError = validatePassword(newPassword.value)
+    const validationError = isChangePasswordMode.value
+        ? (newPassword.value.length < minPasswordLength.value ? `Password must be at least ${minPasswordLength.value} characters` : null)
+        : validatePassword(newPassword.value)
     if (validationError) {
         passwordError.value = validationError
         return
@@ -2071,8 +2212,8 @@ const formatDuration = (seconds) => {
     else return `${minutes}m`
 }
 
-const checkAllFirmwares = async () => {
-    const onlineBookedDevices = deviceStore.bookedDevices.filter(d => d.statusCode === 200)
+const checkAllFirmwares = async (showToast = false) => {
+    const onlineBookedDevices = deviceStore.bookedDevices.filter(d => d.statusCode === 200 && !isRival(d))
     if (onlineBookedDevices.length === 0) return
     
     try {
@@ -2097,6 +2238,24 @@ const checkAllFirmwares = async () => {
     } catch (error) {
         console.error('❌ Batch firmware check failed:', error)
     }
+}
+
+// 🔧 Debounce batch firmware: 4+ триггера ((mount, booking-цикл, came online,
+// ручная кнопка) раньше могли запустить до 3-4 серий подряд. Теперь любое
+// число триггеров в окне BATCH_DEBOUNCE_MS = один batch с последним снапшотом
+const BATCH_DEBOUNCE_MS = 5000
+let batchCheckTimeout = null
+let batchCheckManual = false
+
+const scheduleBatchFirmwareCheck = (manual = false) => {
+    batchCheckManual = batchCheckManual || manual   // ручной вызов — приоритет
+    if (batchCheckTimeout) clearTimeout(batchCheckTimeout)
+    batchCheckTimeout = setTimeout(() => {
+        const wasManual = batchCheckManual
+        batchCheckTimeout = null
+        batchCheckManual = false
+        checkAllFirmwares(wasManual)
+    }, BATCH_DEBOUNCE_MS)
 }
 
 let updateTimeout = null
@@ -2252,26 +2411,27 @@ watch(
     },
     { deep: true, flush: 'post' }
 )
-
+let prevBookedIds = new Set()
 watch(() => deviceStore.bookedDevices.length, (newLength, oldLength) => {
-  if (newLength > oldLength && newLength > 0 && isMounted.value) {
-    deviceStore.bookedDevices.forEach(async (device) => {
-      if (device.rebootPort) {
-        try {
-          await deviceActionsStore.requestPowerStatus(device.id)
-        } catch (error) {
-        }
+  if (!isMounted.value) return
+  const currentIds = new Set(deviceStore.bookedDevices.map(d => String(d.id)))
+  if (newLength > oldLength && newLength > 0) {
+    // 🔧 Л4б: запрашиваем только РЕАЛЬНО новые брони. Снапшот обновляется на
+    // КАЖДОМ изменении длины (включая release) — иначе повторное бронирование
+    // того же устройства пропустилось бы
+    deviceStore.bookedDevices.forEach(device => {
+      if (device.rebootPort && !prevBookedIds.has(String(device.id))) {
+        deviceActionsStore.requestPowerStatus(device.id).catch(() => {})
       }
     })
-    
-    setTimeout(() => {
-      checkAllFirmwares()
-      safeUpdateTable()
-    }, 3000)
+    scheduleBatchFirmwareCheck()
+    safeUpdateTable()
   }
+  prevBookedIds = currentIds
 })
 
 onMounted(() => {
+    prevBookedIds = new Set(deviceStore.bookedDevices.map(d => String(d.id)))
     startTimer()
     isMounted.value = true
     consoleStore.restoreConsoleState()
@@ -2284,17 +2444,7 @@ onMounted(() => {
     })
     
     if (deviceStore.bookedDevices.length > 0) {
-        setTimeout(() => {
-            checkAllFirmwares()
-        }, 2000)
-    }
-})
-
-watch(() => deviceStore.bookedDevices.length, (newLength, oldLength) => {
-    if (newLength > oldLength && newLength > 0 && isMounted.value) {
-        setTimeout(() => {
-            checkAllFirmwares()
-        }, 3000)
+        scheduleBatchFirmwareCheck()
     }
 })
 
@@ -2312,9 +2462,7 @@ watch(
         }
         
         if (becameOnline.length > 0) {
-            setTimeout(() => {
-                checkAllFirmwares()
-            }, 5000)
+            scheduleBatchFirmwareCheck()
         }
     },
     { deep: true }
@@ -2338,6 +2486,46 @@ onUnmounted(() => {
 </script>
 
 <style scoped>
+.vm-btn-wrap {
+    position: relative;
+    display: inline-flex;
+}
+
+:deep(.vm-action-btn.p-button.p-button-outlined) {
+    color: #0d9488;
+    border-color: #0d9488;
+}
+
+:deep(.vm-action-btn.p-button.p-button-outlined:enabled:hover) {
+    background: rgba(13, 148, 136, 0.08);
+    color: #0f766e;
+    border-color: #0f766e;
+}
+
+.vm-btn-badge {
+    position: absolute;
+    top: -4px;
+    right: -4px;
+    min-width: 1.1rem;
+    height: 1.1rem;
+    line-height: 1.1rem;
+    font-size: 0.65rem;
+    pointer-events: none;
+}
+
+.na-cell {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+
+.rival-tag {
+    margin-left: 0.4rem;
+    font-size: 0.65rem;
+    padding: 0.1rem 0.4rem;
+    vertical-align: middle;
+}
+
 /* Основные стили */
 .common-section-header {
     display: grid;
@@ -2618,6 +2806,10 @@ onUnmounted(() => {
         font-size: 0.7rem !important;
         padding: 0.3rem 0.4rem !important;
     }
+}
+.booking-password-invalid {
+    border: 1px solid var(--yellow-500);
+    background: var(--yellow-50) !important;
 }
 
 /* Стили для диалогов */

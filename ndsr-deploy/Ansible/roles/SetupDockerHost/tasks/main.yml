@@ -87,6 +87,83 @@
   become: yes
   when: "'TRASP' in groups['docker_host']"
 
+# ---------- Тестовые VM (RDP в LAN устройства) ----------
+# На живом стенде запускать ТОЛЬКО эти задачи:
+#   ansible-playbook -i inventory/inventory.ini setupDockerHost.yml --tags vm_mgmt
+# Остальные задачи роли (DNAT для CFK, bridges) содержат устаревшие данные
+# старого стенда (VLAN 19xx) — полный прогон добавил бы лишние правила.
+# mgmt-NIC всех VM — в общем VLAN vm_mgmt_vlan; у хоста там IP (шлюз для
+# DNAT RDP и доступа бэкенда к OpenSSH в Windows). test-NIC VM подключает
+# сам бэкенд: сабинтерфейсы vm<vlan> на trunk создаются по требованию.
+- name: Check VM mgmt address is set (inventory)
+  tags: [vm_mgmt]
+  ansible.builtin.assert:
+    that:
+      - vm_mgmt_address | string | length > 0
+      - not (vm_mgmt_address | string).startswith('<')
+    fail_msg: "vm_mgmt_enabled: true — задайте vm_mgmt_address (адрес хоста в mgmt-сети VM, напр. 10.10.31.1/24) в inventory стенда"
+    quiet: true
+  when: vm_mgmt_enabled | bool
+
+- name: VM mgmt VLAN on docker host (netplan)
+  tags: [vm_mgmt]
+  ansible.builtin.copy:
+    dest: /etc/netplan/60-ndsr-vm-mgmt.yaml
+    mode: "0600"
+    content: |
+      network:
+        version: 2
+        vlans:
+          {{ vm_mgmt_iface }}:
+            id: {{ vm_mgmt_vlan }}
+            link: {{ vm_trunk_iface }}
+            addresses: [{{ vm_mgmt_address }}]
+            dhcp4: false
+            dhcp6: false
+  become: yes
+  register: vm_mgmt_netplan
+  when: "'TRASP' in groups['docker_host'] and vm_mgmt_enabled | bool"
+
+- name: Apply netplan for VM mgmt VLAN
+  tags: [vm_mgmt]
+  ansible.builtin.command: netplan apply
+  become: yes
+  when: "'TRASP' in groups['docker_host'] and vm_mgmt_enabled | bool and vm_mgmt_netplan.changed"
+
+# RDP приходит на internet, DNAT (ставит бэкенд, только с IP владельца брони)
+# ведёт в mgmt-сеть VM — разрешаем этот форвард
+- name: FORWARD RDP from engineers to VM mgmt network
+  tags: [vm_mgmt]
+  ansible.builtin.iptables:
+    chain: FORWARD
+    in_interface: internet
+    out_interface: '{{ vm_mgmt_iface }}'
+    protocol: tcp
+    destination_port: '3389'
+    action: insert
+    jump: ACCEPT
+  become: yes
+  when: "'TRASP' in groups['docker_host'] and vm_mgmt_enabled | bool"
+
+# Windows видит соединения с адреса хоста — маршруты к сетям инженеров
+# внутри VM не нужны, mgmt-NIC без шлюза
+- name: MASQUERADE into VM mgmt network
+  tags: [vm_mgmt]
+  ansible.builtin.iptables:
+    table: nat
+    chain: POSTROUTING
+    out_interface: '{{ vm_mgmt_iface }}'
+    jump: MASQUERADE
+  become: yes
+  when: "'TRASP' in groups['docker_host'] and vm_mgmt_enabled | bool"
+
+# Только при запуске с --tags vm_mgmt: сохранить правила VM без остальных задач роли
+- name: iptables save (vm_mgmt)
+  shell: netfilter-persistent save
+  become: yes
+  tags: [never, vm_mgmt]
+  when: "'TRASP' in groups['docker_host'] and vm_mgmt_enabled | bool"
+
 - name: Add iptables rule for TCPMSS
   ansible.builtin.script: ./scripts/tcpmss.sh
 

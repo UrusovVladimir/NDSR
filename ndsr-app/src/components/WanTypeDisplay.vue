@@ -38,12 +38,15 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onUnmounted } from 'vue'
-import { socket } from '@/socket'
+import { computed } from 'vue'
 import { useDeviceStore } from '@/stores/useDeviceStore'
 import Tag from 'primevue/tag'
 import Button from 'primevue/button'
 
+// 🔧 Anti-spam: компонент больше НЕ эмитит device:getCurrentWan при каждом
+// ререндере таблицы (раньше — до 6 запросов на устройство). Источник правды —
+// deviceStore.wanTypesMap: сервер шлёт снапшот device:wanTypes:all при
+// коннекте и точечные device:wanTypeUpdated при изменении — стор уже слушает.
 const deviceStore = useDeviceStore()
 
 const props = defineProps({
@@ -54,41 +57,47 @@ const props = defineProps({
 
 const emit = defineEmits(['open-modal'])
 
-const currentWanType = ref(null)
-const isDualWan = ref(false)
-const wan1 = ref(null)
-const wan2 = ref(null)
-const isLoading = ref(false)
+// Единый источник данных: кэш стора, fallback на конфиг устройства
+const wanData = computed(() => {
+  return deviceStore.getDeviceWanTypeFromMap(props.device.id)
+      ?? props.device.currentWanType
+      ?? null
+})
 
 const isOwnedByCurrentUser = computed(() => {
   return !props.device.booking?.isBooked || 
          props.device.booking?.bookedBy === props.currentUserId
 })
 
+// Онлайн не требуется: WAN — это порт на свиче, устройство не трогаем.
+// Офлайн-устройству модалка предложит только выключение WAN (4094).
 const canChangeWan = computed(() => {
   return isOwnedByCurrentUser.value && 
-         props.device.type === 'router' && 
-         props.device.statusCode === 200
+         props.device.type === 'router'
 })
+
+const isDualWan = computed(() => {
+  return !!(wanData.value && typeof wanData.value === 'object' && wanData.value.type === 'dual_wan')
+})
+
+const wan1 = computed(() => isDualWan.value ? wanData.value.wan1 || null : null)
+const wan2 = computed(() => isDualWan.value ? wanData.value.wan2 || null : null)
 
 // ✅ ОТОБРАЖАЕМОЕ ИМЯ ДЛЯ ОБЫЧНОГО WAN
 const displayWanType = computed(() => {
-  if (!currentWanType.value) return 'Not configured'
+  const data = wanData.value
+  if (!data) return 'Not configured'
   
-  // Если это строка - ищем по vlanId
-  if (typeof currentWanType.value === 'string') {
-    // Clear WAN type (vlanId = 4094)
-    if (currentWanType.value === '4094') {
-      return 'Not configured'
-    }
-    const found = props.wanTypes?.find(w => String(w.vlanId) === String(currentWanType.value))
-    return found?.type || currentWanType.value
-  }
+  // Dual WAN не должен отображаться как обычный
+  if (typeof data === 'object') return 'Not configured'
   
-  return 'Not configured'
+  if (data === '4094') return 'Not configured'
+  
+  const found = props.wanTypes?.find(w => String(w.vlanId) === String(data))
+  return found?.type || data
 })
 
-// ✅ ОТОБРАЖАЕМОЕ ИМЯ ДЛЯ WAN 1
+// ✅ ОТОБРАЖАЕМЫЕ ИМЕНА ДЛЯ DUAL WAN
 const wan1Display = computed(() => {
   if (!wan1.value) return null
   if (wan1.value === '4094') return 'Not configured'
@@ -96,7 +105,6 @@ const wan1Display = computed(() => {
   return found?.type || wan1.value
 })
 
-// ✅ ОТОБРАЖАЕМОЕ ИМЯ ДЛЯ WAN 2
 const wan2Display = computed(() => {
   if (!wan2.value) return null
   if (wan2.value === '4094') return 'Not configured'
@@ -116,83 +124,7 @@ const openModal = () => {
     emit('open-modal', props.device, 'wanTypes')
   }
 }
-
-// ✅ ОБРАБОТКА ДАННЫХ
-const processWanData = (data) => {
-  if (!data) {
-    isDualWan.value = false
-    currentWanType.value = null
-    wan1.value = null
-    wan2.value = null
-    return
-  }
-  
-  // Проверяем на Dual WAN
-  if (data && typeof data === 'object' && data.type === 'dual_wan') {
-    isDualWan.value = true
-    currentWanType.value = data
-    wan1.value = data.wan1 || null
-    wan2.value = data.wan2 || null
-  } else if (data && typeof data === 'object' && data.isDualWan) {
-    isDualWan.value = true
-    currentWanType.value = data.type || data
-    wan1.value = data.wan1 || null
-    wan2.value = data.wan2 || null
-  } else {
-    isDualWan.value = false
-    currentWanType.value = data || null
-    wan1.value = null
-    wan2.value = null
-  }
-}
-
-// ✅ ЗАГРУЗКА ТЕКУЩЕГО WAN ТИПА
-const fetchCurrentWan = async () => {
-  try {
-    isLoading.value = true
-    
-    // Сначала проверяем в store
-    let wanData = deviceStore.getDeviceWanTypeFromMap?.(props.device.id)
-    
-    if (wanData) {
-      processWanData(wanData)
-    } else {
-      // Запрашиваем с сервера
-      const response = await new Promise((resolve) => {
-        socket.emit('device:getCurrentWan', props.device.id, (response) => {
-          resolve(response)
-        })
-        setTimeout(() => resolve({ type: null }), 10000)
-      })
-      
-      if (response) {
-        processWanData(response.type || response)
-      }
-    }
-  } catch (error) {
-    console.error('❌ Error fetching WAN type:', error)
-  } finally {
-    isLoading.value = false
-  }
-}
-
-// ✅ ОБРАБОТЧИК ОБНОВЛЕНИЯ WAN ТИПА
-const handleWanTypeUpdate = ({ deviceId, type }) => {
-  if (deviceId === props.device.id) {
-    processWanData(type)
-  }
-}
-
-onMounted(() => {
-  fetchCurrentWan()
-  socket.on('device:wanTypeUpdated', handleWanTypeUpdate)
-})
-
-onUnmounted(() => {
-  socket.off('device:wanTypeUpdated', handleWanTypeUpdate)
-})
 </script>
-
 <style scoped>
 .wan-type-display {
   display: flex;

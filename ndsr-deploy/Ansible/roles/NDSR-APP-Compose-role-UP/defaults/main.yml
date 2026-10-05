@@ -1,0 +1,124 @@
+# Значения по умолчанию роли — без адресов конкретного стенда.
+# Всё, что зависит от стенда (адреса, IP контейнеров, оборудование), задаётся
+# в inventory команды: inventory/<стенд>/group_vars/all/stand.yml
+# (образец — inventory/example). Роль проверяет обязательные переменные
+# (stand_required_vars) до любых изменений на хосте.
+# Здесь defaults (а не vars) намеренно: group_vars inventory их перекрывают.
+
+# Каталоги на docker-хосте
+app_dir: "/home/{{ admin }}/ndsr-app"          # код; при каждом деплое пересоздаётся целиком
+build_dir: "/home/{{ admin }}"                 # Dockerfile'ы, compose, nginx.conf, env бэкенда
+backend_env_file: "{{ build_dir }}/ndsr-app-backend.env"
+
+ws_port: "3000"
+
+# Фронт ходит на бэкенд через тот же nginx (тот же origin): /socket.io/ и /api/.
+# Пусто = адрес страницы. Задавать, только если фронт и бэкенд на разных адресах.
+ws_host: ""
+api_url: ""
+project_name: "Keenetic test bench"
+# iperf-серверы для подсказок в UI (пусто — не показываются)
+iperf_server: ""
+iperf_server_public: ""
+
+# DNS для контейнеров приложения (пусто — резолвер docker-хоста)
+container_dns: []
+
+# Состояние бэкенда — в volume, иначе пропадает при пересоздании контейнера.
+# Каталог на хосте вне app_dir, который пересоздаётся при каждом деплое.
+# Здесь же devices.json и users.json: бэкенд сам их меняет (пароли, WAN,
+# add/remove), поэтому деплой их не перезаписывает — см. devices_json_overwrite.
+state_host_dir: "/home/{{ admin }}/ndsr-state"
+state_container_dir: "/app/state"
+devices_path: "{{ state_container_dir }}/devices.json"
+users_path: "{{ state_container_dir }}/users.json"
+current_modes_path: "{{ state_container_dir }}/current_modes.json"
+bookings_path: "{{ state_container_dir }}/bookings.json"
+mws_links_path: "{{ state_container_dir }}/mws_links.json"
+# Тестовые VM: пул (с паролями Windows — в git не хранится) и связки VM → устройство.
+# vms.json кладётся в state_host_dir вручную или из files/vms.json (gitignore).
+vms_path: "{{ state_container_dir }}/vms.json"
+vm_attachments_path: "{{ state_container_dir }}/vm_attachments.json"
+vm_trunk_iface: "int"            # trunk-NIC docker-хоста (netplan стенда: ethernets.int)
+vm_rdp_in_iface: "internet"      # мост, через который приходят инженеры
+# Адрес docker-хоста для RDP-клиента пользователя — по умолчанию адрес из inventory
+vm_rdp_public_host: "{{ ansible_host }}"
+# RDP к VM прямо в браузере (Guacamole): контейнер guacd + WebSocket бэкенда
+# на guac_ws_port, nginx проксирует /guacamole/. false — guacd не запускается,
+# GUACD_HOST пустой, в UI остаётся только RDP-клиент (откат без правки кода).
+browser_rdp_enabled: true
+guac_ws_port: "3006"
+# Только чтение — берутся из образа (меняются через репозиторий + деплой)
+wan_type_path: "/app/wan_types.json"
+badges_path: "/app/badge.json"
+# true — перезаписать devices.json на хосте версией из репозитория
+# (потеряются пароли, WAN и устройства, добавленные через UI). Разово:
+#   ansible-playbook ... -e devices_json_overwrite=true
+devices_json_overwrite: false
+
+# Загруженные прошивки/конфиги (FileManager) — тоже переживают пересоздание
+uploads_host_dir: "/home/{{ admin }}/ndsr-uploads"
+upload_dir: "/app/uploads"
+
+# Логи. stdout всех контейнеров (docker logs) ротирует docker json-file:
+# хранится до container_log_max_file файлов по container_log_max_size.
+container_log_max_size: "10m"
+container_log_max_file: "5"
+# Файловый лог бэкенда на хосте с ротацией по размеру (backend.log, .1, … —
+# самый старый перезаписывается). "" — выключить, останутся только docker logs.
+log_host_dir: "/home/{{ admin }}/ndsr-logs"
+log_container_dir: "/app/logs"
+log_max_size_mb: "10"
+log_max_files: "5"
+
+status_check_interval: "15"
+status_check_timeout: "3"
+debug_wan: "false"
+# Клиенты приходят через nginx фронта, реальный IP — в X-Real-IP.
+# Порт бэкенда наружу не публикуется, поэтому подделать заголовок нельзя.
+trust_proxy_headers: "true"
+# Подсети VPN инженеров — только аудит в логе (пусто — без предупреждений)
+vpn_ip_prefixes: ""
+
+# Порт PowerHub (jeromeClass: new). Старые Jerome всегда на 2424 (в коде).
+jerome_port: "23"
+ves_port: "23"
+switch_port: "23"
+
+# Docker-хост, на который бэкенд ходит по SSH (docker exec, nft) — по
+# умолчанию тот же хост и учётка, что в inventory
+ssh_host: "{{ ansible_host }}"
+ssh_port: "{{ ansible_port | default(22) }}"
+ssh_username: "{{ ansible_user }}"
+# Куда ключ монтируется внутри контейнера backend
+ssh_key_container_path: "/root/.ssh/id_ed25519"
+# Где ключ лежит на docker-хосте (вне каталога приложения)
+ssh_key_host_path: "/home/{{ admin }}/ndsr-secrets/id_ed25519"
+
+# webtelnet: хост MOXA без порта — первый адрес из moxa_ips
+moxa_ip: "{{ (moxa_ips.split(',') | first).split(':') | first }}"
+
+# Образы приложения (собираются локально)
+image_frontend: "ndsr/frontend:v1"
+image_backend: "ndsr/backend:v1"
+image_webtelnet: "ndsr/webtelnet:v1"
+
+# Обязательные переменные стенда (inventory/<стенд>/group_vars/all/*.yml).
+# Без них роль останавливается до любых изменений на хосте.
+stand_required_vars:
+  # адреса контейнеров в docker-сети ndsr_default (создаётся стеком CFK)
+  - frontend_ip
+  - backend_ip
+  - webtelnet_ip
+  # оборудование стенда
+  - moxa_ips
+  - jerome_ips
+  - ves_ip
+  - switch_ips
+  - switch_wan_ips
+  # секреты (vault в inventory или vars/secrets.yml роли)
+  - password_ves
+  - password_switch
+  - login_ves
+  - login_switch
+  - ssh_key_src

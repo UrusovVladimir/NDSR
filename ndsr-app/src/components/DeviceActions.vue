@@ -2,6 +2,27 @@
     <div class="device-actions">
       <!-- Кнопки действий -->
       <div class="flex flex-wrap gap-1">
+        <!-- Устройство конкурента: только VNC и веб-интерфейс -->
+        <template v-if="rival">
+          <Button
+              v-if="device.vncUrl"
+              v-tooltip="'LAN VNC'"
+              icon="pi pi-desktop"
+              class="p-button-sm p-button-outlined p-button-secondary p-button-rounded modern-btn"
+              :disabled="!canOpenVnc"
+              @click="openVnc"
+          />
+          <Button
+              v-if="device.URL"
+              v-tooltip="'Open Device Interface'"
+              icon="bi bi-layout-sidebar"
+              class="p-button-sm p-button-outlined p-button-primary p-button-rounded modern-btn"
+              :disabled="!canOpenInterface"
+              @click="openDeviceInterface"
+          />
+        </template>
+
+        <template v-else>
           <!-- Reboot Button -->
           <Button
               v-tooltip="isRebooting ? 'Rebooting...' : 'Reboot Device'"
@@ -58,6 +79,7 @@
               :disabled="!canOpenVnc || isAnyOperationInProgress"
               @click="openVnc"
           />
+        </template>
 
           <!-- Индикатор статуса бронирования -->
           <div v-if="!isBookedByCurrentUser && device.statusCode === 200" class="booking-hint">
@@ -168,6 +190,7 @@
 
 <script setup>
 import { ref, computed, inject } from 'vue'
+import { isRival } from '@/utils/deviceFlags'
 import { storeToRefs } from 'pinia'
 import { useToast } from 'primevue/usetoast'
 import { useDeviceActionsStore } from '@/stores/useDeviceActionsStore'
@@ -222,6 +245,7 @@ const isBookedByCurrentUser = computed(() => {
 })
 
 const isOffline = computed(() => props.device.statusCode !== 200)
+const rival = computed(() => isRival(props.device))
 
 // ✅ Логика доступности кнопок
 const canInitialize = computed(() => isBookedByCurrentUser.value && !isOffline.value)

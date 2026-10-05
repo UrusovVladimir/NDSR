@@ -154,6 +154,7 @@
 
 <script setup>
 import { ref, computed, watch } from 'vue'
+import { isRival } from '@/utils/deviceFlags'
 import { useToast } from 'primevue/usetoast'
 import Dialog from 'primevue/dialog'
 import Button from 'primevue/button'
@@ -190,10 +191,12 @@ const isLoadingInterfaceIp = ref(false)
 const availableDevices = computed(() => {
   if (!deviceStore.devices || !deviceStore.currentUserId) return []
   
+  // TFTP-прошивка конкурентам недоступна
   return deviceStore.devices.filter(device => 
     device.booking?.isBooked && 
     device.booking?.bookedBy === deviceStore.currentUserId &&
-    device.statusCode === 200
+    device.statusCode === 200 &&
+    !isRival(device)
   )
 })
 
