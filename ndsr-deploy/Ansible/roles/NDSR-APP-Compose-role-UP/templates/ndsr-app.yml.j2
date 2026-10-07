@@ -11,6 +11,9 @@ services:
     build:
       context: {{ app_dir }}
       dockerfile: {{ build_dir }}/Dockerfile_frontend
+      # Сеть хоста для сборки: на стендах, где трафик docker0 идёт мимо
+      # MSS-clamping, npm/pip из сборочного контейнера зависают на загрузках
+      network: host
     hostname: ndsr-app-frontend
     container_name: ndsr-app-front
     restart: unless-stopped
@@ -33,6 +36,7 @@ services:
     build:
       context: {{ app_dir }}/api
       dockerfile: {{ build_dir }}/Dockerfile_backend
+      network: host
     hostname: ndsr-app-backend
     container_name: ndsr-app-back
     restart: unless-stopped
@@ -75,6 +79,7 @@ services:
     build:
       context: {{ build_dir }}/webtelnet-build
       dockerfile: {{ build_dir }}/Dockerfile_webtelnet
+      network: host
     hostname: webtelnet
     container_name: ndsr-webtelnet-console
     restart: unless-stopped

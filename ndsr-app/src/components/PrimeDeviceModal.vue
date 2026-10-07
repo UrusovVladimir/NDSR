@@ -1562,18 +1562,21 @@ const saveWanChanges = () => {
   const saveData = {
     value: valueToSave,
     type: 'wanTypes',
-    callback: (success, message) => {
+    callback: (success, message, severity = 'success') => {
       isLoading.value = false
       operationInProgress.value = false
       operationType.value = ''
       progressMessage.value = ''
       
       if (success) {
+        // 'warn' — применено частично (один из WAN-свичей недоступен):
+        // в сообщении по каждому порту, что применено, а что нет
+        const partial = severity === 'warn'
         toast.add({
-          severity: 'success',
-          summary: 'Success',
+          severity,
+          summary: partial ? 'WAN applied partially' : 'Success',
           detail: message,
-          life: 3000
+          life: partial ? 15000 : 3000
         })
         closeModal()
       } else {

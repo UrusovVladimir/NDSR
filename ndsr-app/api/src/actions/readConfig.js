@@ -4,7 +4,7 @@ import { getCronStatus } from '../state/runtime.js';
 import { Telnet } from "telnet-client";
 import { getDeviceById, devices } from "../devices.js";
 import cron from "node-cron";
-import { changeWanType } from './changeWanType.js';
+import { applyWanChange } from '../services/wanService.js';
 import { getManagmentID } from "./getManagmentID.js";
 
 function isDeviceBookedNow(deviceId) {
@@ -133,13 +133,11 @@ async function resetAllWanDevice() {
       console.log("Resetting WAN type for device:", device.id);
       console.log("Current WAN type:", currentWanTypes[device.id] || "unknown");
       
-      // Очищаем текущий WAN тип
-      if (currentWanTypes[device.id]) {
-        delete currentWanTypes[device.id];
-        console.log(`Cleared WAN type for device ${device.hwId}`);
+      // Выключение + сохранение фактического состояния портов
+      const wanResult = await applyWanChange(null, device.id, "4094");
+      if (wanResult.status === 'partial') {
+        console.warn(`WAN of ${device.hwId} turned off partially: ${wanResult.message}`);
       }
-      
-      await changeWanType(device.id, "4094");
       
       // Задержка между устройствами
       await new Promise(resolve => setTimeout(resolve, 3000));

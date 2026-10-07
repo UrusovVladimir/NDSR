@@ -1,31 +1,22 @@
 // services/resetService.js — заводской сброс устройства: общий для
 // device:resetConfig и ночного сброса (nightlyReset).
-import { getDeviceById, devices, saveConfig } from '../devices.js';
+import { getDeviceById } from '../devices.js';
 import { resetConfig } from '../actions/resetConfig.js';
-import { changeWanType } from '../actions/changeWanType.js';
-import { currentWanTypes } from '../state/wan.js';
+import { applyWanChange } from './wanService.js';
 import { currentModes } from '../state/modes.js';
 import { clearDevicePassword } from './bookingService.js';
 import { clearFirmwareCache } from './statusService.js';
 import { getActiveLink, releaseLinkInfrastructure } from './linkService.js';
 import { isRival } from '../utils/deviceFlags.js';
 
-const universalPromptRegex = /.*/i;
 const WAN_OFF = '4094';
 
 // WAN выключается на коммутаторе (оба порта у Dual WAN) — 4094 фронт
-// показывает как «Not configured»
+// показывает как «Not configured». Один из свичей недоступен — сохраняется
+// фактическое состояние, а сбой уходит в wanError.
 async function turnOffWan(io, deviceId) {
-  await changeWanType(deviceId, WAN_OFF, universalPromptRegex);
-
-  const device = getDeviceById(deviceId);
-  if (device) {
-    device.currentWanType = WAN_OFF;
-    saveConfig(process.env.DEVICES_CONFIG_PATH, devices);
-  }
-  currentWanTypes[deviceId] = { type: WAN_OFF, isDualWan: false, updatedAt: Date.now() };
-
-  io?.emit('device:wanTypeUpdated', { deviceId, type: WAN_OFF });
+  const result = await applyWanChange(io, deviceId, WAN_OFF);
+  if (result.status === 'partial') throw new Error(result.message);
 }
 
 // Порядок: MWS-связка → WAN → сброс → чистка состояния.

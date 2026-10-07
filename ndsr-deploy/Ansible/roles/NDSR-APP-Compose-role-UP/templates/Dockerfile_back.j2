@@ -1,6 +1,8 @@
 # Образ backend. Контекст сборки — {{ app_dir }}/api (см. .dockerignore там).
 # .env в образ не попадает: переменные приходят через env_file в compose.
-FROM node:20.13.1-alpine3.20
+# node:20-alpine — свежий 20.x: в npm из 20.13 ошибка «Exit handler never
+# called» обрывает установку на медленной сети
+FROM node:20-alpine
 WORKDIR /app
 # Зависимости отдельным слоем — пересобираются только при смене package*.json
 COPY package.json package-lock.json ./

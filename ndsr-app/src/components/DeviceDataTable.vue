@@ -729,14 +729,20 @@ const handleWanSave = async (deviceId, wanData) => {
         }
         
         // console.log(`✅ WAN configuration completed for ${deviceName}`);
-        resolve(message)
+        resolve({ message })
+      } else if (response?.status === 'partial') {
+        // Один из WAN-свичей недоступен: часть портов применена, таблица
+        // уже получила фактическое состояние через device:wanTypeUpdated
+        resolve({ message: response.message, partial: true })
       } else {
         reject(new Error(response?.message || 'Save failed'))
       }
     })
     
-    // Таймаут для Dual WAN может быть больше
-    const timeoutDuration = isDualWan ? 60000 : 30000
+    // Два WAN-порта (Dual WAN или гашение второго порта, возможно на другом
+    // свиче) настраиваются дольше
+    const hasSecondPort = isDualWan || !!deviceStore.devices.find(d => d.id === deviceId)?.switchPortWanSecondary
+    const timeoutDuration = hasSecondPort ? 60000 : 30000
     setTimeout(() => reject(new Error(`Switch configuration timeout - device may be slow (${timeoutDuration/1000}s)`)), timeoutDuration)
   })
 }
@@ -755,8 +761,8 @@ const handleModalSave = (data) => {
   if (type === 'wanTypes') {
     // value может быть строкой (обычный WAN) или объектом (Dual WAN)
     handleWanSave(selectedDevice.value?.id, value)
-      .then(message => {
-        callback(true, message);
+      .then(({ message, partial }) => {
+        callback(true, message, partial ? 'warn' : 'success');
       })
       .catch(error => {
         callback(false, error.message);

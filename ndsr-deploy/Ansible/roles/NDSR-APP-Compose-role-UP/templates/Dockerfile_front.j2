@@ -1,9 +1,13 @@
 # Образ frontend. Контекст сборки — {{ app_dir }} (см. .dockerignore там).
 # Vite читает .env (его рендерит роль) во время npm run build.
-FROM node:20.13.1-alpine3.20 AS builder
+# vite 7 требует Node >= 20.19; в npm из 20.13 ошибка «Exit handler never
+# called» обрывает установку на медленной сети (иногда с кодом 0)
+FROM node:20-alpine AS builder
 WORKDIR /app
 COPY package.json package-lock.json ./
-RUN npm ci
+# Проверка: без неё недоустановленные зависимости всплывали только как
+# «vite: not found» на следующем шаге
+RUN npm ci && test -x node_modules/.bin/vite
 COPY . .
 RUN npm run build
 

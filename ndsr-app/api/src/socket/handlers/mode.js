@@ -4,7 +4,7 @@ import { on } from '../wrap.js';
 import { getDeviceById, getParamRouter, getDevicePassword } from '../../devices.js';
 import { isApSwitchOn } from '../../utils/deviceFlags.js';
 import MWSConnectionManager from '../../actions/mwsConnectionManager.js';
-import { changeWanType } from '../../actions/changeWanType.js';
+import { applyWanChange } from '../../services/wanService.js';
 import { connectToMws } from '../../actions/connectToMws.js';
 import { makeAuthenticatedRequest } from '../../actions/athentication.js';
 import {
@@ -471,9 +471,13 @@ export function register(socket, io) {
         sendModeChangeProgress(io, deviceId, 35, 'wan_off');
         
         try {
-          // ✅ Вызываем changeWanType для выключения WAN
-          await changeWanType(deviceId, null, universalPromptRegex);
-          console.log(`✅ WAN интерфейс выключен для ${deviceId}`);
+          // Выключение WAN + сохранение фактического состояния портов
+          const wanResult = await applyWanChange(io, deviceId, null);
+          if (wanResult.status === 'partial') {
+            console.warn(`⚠️ WAN выключен частично для ${deviceId}: ${wanResult.message}`);
+          } else {
+            console.log(`✅ WAN интерфейс выключен для ${deviceId}`);
+          }
         } catch (wanError) {
           console.warn(`⚠️ Ошибка при выключении WAN: ${wanError.message}`);
         }

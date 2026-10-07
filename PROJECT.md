@@ -156,7 +156,7 @@ ndsr-deploy/
 |---|---|---|---|
 | Контроллер питания Jerome (old) / PowerHub (new) | `JEROME_IPS`, `JEROME_PORT` | `jeromeID`, `jeromeClass`, `rebootPort`, `resetPort` | old: telnet :2424 (`$KE,WR…`); new: TCP :23, CLI `channel N power/reset on/off` |
 | LAN-коммутаторы | `SWITCH_IPs`, `SWITCH_LOGIN/PASSWORD` | `switchID`, `switchPortLan`, `vlanLocal` | telnet :23 (Zyxel-подобный CLI) |
-| WAN-коммутаторы | `SWITCH_WAN_IPs` | `switchIDWan`, `switchPortWan`, `switchPortWanSecondary` | telnet :23 |
+| WAN-коммутаторы | `SWITCH_WAN_IPs` | `switchIDWan`, `switchPortWan`, `switchIDWanSecondary`, `switchPortWanSecondary` | telnet :23 |
 | DSLAM (VES) | `VES_IP/PORT/LOGIN/PASSWORD` | `dslPort` | telnet, prompt `ras>` |
 | Консоль-серверы MOXA | `MOXA_IPS` | `consoleID`, `consolePort` | ссылка `http://<moxa>/remote/telnet/telnet/<port>` |
 | Docker host | `SSH_HOST/PORT/USERNAME/SSH_PRIVATE_KEY_PATH` | `hwId` (= имя CFK-контейнера) | SSH (ssh2), `sudo docker exec`, nft/iptables |
@@ -398,6 +398,8 @@ WAN меняется **на порту WAN-коммутатора, а не на 
 
 - VLAN **4094** / `null` — «WAN выключен»: `pvid 4094` + `inactive`.
 - Dual WAN `{type:'dual_wan', wan1, wan2}` использует `switchPortWan` и `switchPortWanSecondary`.
+- Порты WAN могут быть на разных коммутаторах. `switchIDWan` / `switchIDWanSecondary` — номер в `SWITCH_WAN_IPs` с 1 (`SWITCH_WAN_IPs=192.168.77.220,192.168.77.221`: `"1"` → .220, `"2"` → .221). `switchIDWanSecondary` не задан или пуст — второй порт на том же свиче, что `switchIDWan` (так у NC-1013). Шаги группируются по адресу: один свич — одна telnet-сессия, порядок «основной порт → второй». Номера проверяются до первого подключения: неверный → `WAN switch #N (<поле>) is not in SWITCH_WAN_IPs`, ничего не меняется. При одиночном WAN и выключении второй порт гасится (`pvid 4094` + `inactive`) на своём свиче.
+- **Один свич недоступен.** Свичи обрабатываются независимо: сбой одного не останавливает другой. По каждому порту `changeWanType` даёт результат (`applied` / `not changed — switch unreachable` / `skipped` / `failed during configuration, port state unknown`). Хоть один сбой — `WanSwitchError` с `results`. Все вызовы идут через `services/wanService.js` `applyWanChange(io, deviceId, wanData)`: всё применено — `status:'ok'`; часть — `status:'partial'`, сохраняется и рассылается (`device:wanTypeUpdated`) **фактическое** состояние (неприменённый порт — прежнее значение; например, Dual WAN при недоступном втором свиче превращается в обычный WAN на первом порту), фронт показывает жёлтое предупреждение с разбором по портам; ничего не применено — ошибка, состояние не меняется. Через `applyWanChange` работают `device:wanTypes:save`, выключение WAN при сбросе (частичное → `wanError`), `wan_off` при смене режима и cron выключения WAN.
 
 Кто вызывает: `device:wanTypes:save`, смена режима с `wan_off`, отключение экстендера, **любой factory reset** (8.10).
 
@@ -836,8 +838,16 @@ sudo chmod 600 /etc/netplan/60-ndsr-vm-mgmt.yaml
 sudo netplan generate          # только проверка синтаксиса, без apply
 # 2. RDP из сети инженеров в mgmt + ответы от VM на адрес хоста
 sudo iptables -I FORWARD 1 -i internet -o vmmgmt -p tcp --dport 3389 -j ACCEPT
+sudo iptables -I FORWARD 1 -i vmmgmt -o internet -m state --state ESTABLISHED,RELATED -j ACCEPT
+# браузерный RDP: guacd (сеть приложения, мост br-<id> 10.10.18.0/24) → VM
+sudo iptables -I FORWARD 1 -i <мост сети приложения> -o vmmgmt -p tcp --dport 3389 -j ACCEPT
+sudo iptables -I FORWARD 1 -i vmmgmt -o <мост сети приложения> -m state --state ESTABLISHED,RELATED -j ACCEPT
 sudo iptables -t nat -A POSTROUTING -o vmmgmt -j MASQUERADE
 sudo netfilter-persistent save
+# Если правила хоста грузятся из своего nft-файла с `flush ruleset` (как на
+# проде: ~/new_with_rivals_nft_rules.rules), эти правила должны быть и в нём —
+# иначе после его применения/перезагрузки RDP к VM пропадёт. Динамические
+# DNAT ndsr-vm-* в файл не нужны: reconcileVms восстанавливает их сам.
 # 3. проверка (когда VM запущена и подготовлена скриптом)
 ping -c2 10.10.31.11; nc -vz 10.10.31.11 3389
 ```
@@ -915,7 +925,7 @@ ping -c2 10.10.31.11; nc -vz 10.10.31.11 3389
 - **доступ**: `ip`, `checkUrl`, `URL`, `vncUrl`, `checkDeviceMode`;
 - **консоль**: `consoleID`, `consolePort`;
 - **питание**: `jeromeID`, `jeromeClass` (`old`/`new`), `rebootPort`, `resetPort`;
-- **коммутация**: `vlanLocal`, `switchID`, `switchPortLan`, `switchIDWan`, `switchPortWan`, `switchPortWanSecondary`, `port` (для MWS-trunk роутера);
+- **коммутация**: `vlanLocal`, `switchID`, `switchPortLan`, `switchIDWan`, `switchPortWan`, `switchIDWanSecondary` (свич второго WAN-порта, пусто = тот же), `switchPortWanSecondary`, `port` (для MWS-trunk роутера);
 - **прочее**: `currentWanType`, `tftpInterfaceName`, `dslPort`, `hwType`, `rivals` (`true` — устройство конкурента, см. 8.11);
 - **пароль**: `devicePassword` — намеренно виден всем пользователям портала (см. 8.3).
 
@@ -1037,7 +1047,8 @@ cd ndsr-app/api && node --env-file=.env -e "import('./src/socketHandler.js')"
 | «Authentication failed» / cooldown | неверный пароль **или** сетевая ошибка (они не различаются); после рестарта потерян yesterday-пароль; после factory reset пароль сброшен | лог `🔑`/`🛡`; подождать 60 с; задать пароль через `device:setPassword` |
 | Reboot → `deviceStatus:'timeout'` | устройство не поднялось за 120 с, неверный `rebootPort`/`jeromeID`, `jeromeClass` | лог `[POWER]`; проверить реле вручную; для old-класса см. 12.3 |
 | Питание/reset не работают | Jerome/PowerHub недоступен, неверный индекс в `JEROME_IPS` | лог `Failed to … after 3 attempts`; `telnet <jerome> 23/2424` |
-| WAN не переключается | telnet к WAN-коммутатору, `switchIDWan`/`switchPortWan`, VLAN нет в `wan_types.json` | лог changeWanType; `telnet <switch>`; `show vlan` |
+| «WAN applied partially» | один из WAN-свичей недоступен / сбой на нём; в таблице — фактическое состояние | текст предупреждения или лог `❌ WAN <id>: …`; `nc -vz <switch> 23` |
+| WAN не переключается | telnet к WAN-коммутатору, `switchIDWan`/`switchPortWan` (`switchIDWanSecondary`/`switchPortWanSecondary` для второго порта), номер свича за пределами `SWITCH_WAN_IPs`, VLAN нет в `wan_types.json` | лог changeWanType (`🔌 WAN-коммутатор <ip>: …`); `telnet <switch>`; `show vlan` |
 | Сброс DSL всегда ошибка | у устройства нет `dslPort` | devices.json |
 | Смена режима висит | ожидание MWS-кандидата может длиться десятки минут; экстендер не видит роутер (VLAN) | лог changeModeType; `show mws candidate` на роутере; события `device:modeChangeProgress` |
 | Режим показан неверно | устаревший localStorage `deviceCurrentMode`; `current_modes.json` из старого деплоя | очистить localStorage; `current_modes.json`; «обновить режим» в UI |
@@ -1114,6 +1125,7 @@ cd ndsr-app/api && node --env-file=.env -e "import('./src/socketHandler.js')"
 - Роль приложения проверена прогоном в песочнице (октябрь 2026): сборка трёх образов, запуск, SPA, socket.io и загрузка файлов через nginx, повторный деплой, миграция `devices.json`. На реальном стенде после переделки ещё не запускалась.
 - При подключении к стенду **с самого docker-хоста** бэкенд видит IP шлюза docker-моста, а не клиента — для пользователей через VPN это не проявляется.
 - webtelnet собирается из GitHub (`flask-remote-terminal`) на Python 3.6 (EOL): без интернета на docker-хосте образ не соберётся.
+- На проде (US05Docker05) сборка из сети `docker0` зависает на больших загрузках (`npm ci` → «Exit handler never called!», в т.ч. с кодом 0 → потом «vite: not found»), с хоста те же загрузки идут нормально. Трафик `docker0` принимается в `DOCKER-FORWARD` раньше правила `tcp option maxseg size set rt mtu` (MSS-clamping). Обход — сборка с сетью хоста: `docker build --network host …`, в compose-шаблоне роли `build.network: host`. Образы на `node:20-alpine` (vite 7 требует Node ≥ 20.19), во фронте после `npm ci` — `test -x node_modules/.bin/vite`.
 - Ошибки в данных:
   - `VARS.env`: `DUO=KN-2210` против 2110, дубль порта 1811;
   - inventory: `KN-2111` против `KN-2211`;

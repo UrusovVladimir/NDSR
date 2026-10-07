@@ -109,7 +109,10 @@
       <div class="form-field"><label>Jerome Class</label><InputText v-model="newDevice.jeromeClass" class="w-full" /></div>
       <div class="form-field"><label>VLAN Local</label><InputText v-model="newDevice.vlanLocal" class="w-full" /></div>
       <div class="form-field"><label>Switch ID</label><InputText v-model="newDevice.switchID" class="w-full" /></div>
+      <div class="form-field"><label>Switch ID WAN</label><InputText v-model="newDevice.switchIDWan" class="w-full" /></div>
       <div class="form-field"><label>Switch Port WAN</label><InputText v-model="newDevice.switchPortWan" class="w-full" /></div>
+      <div class="form-field"><label>Switch ID WAN 2 (empty = same switch)</label><InputText v-model="newDevice.switchIDWanSecondary" class="w-full" /></div>
+      <div class="form-field"><label>Switch Port WAN 2</label><InputText v-model="newDevice.switchPortWanSecondary" class="w-full" /></div>
       <div class="form-field"><label>Switch Port LAN</label><InputText v-model="newDevice.switchPortLan" class="w-full" /></div>
       <div class="form-field"><label>Console ID</label><InputText v-model="newDevice.consoleID" class="w-full" /></div>
       <div class="form-field"><label>MAC Address</label><InputText v-model="newDevice.macAddress" class="w-full" /></div>
@@ -297,7 +300,7 @@ const newDevice = ref({
   shortName: '', checkUrl: '', URL: '', consolePort: '',
   resetPort: '', rebootPort: '', sshContainer: '', vncUrl: '',
   jeromeID: '', jeromeClass: '', vlanLocal: '', switchID: '', switchIDWan: '',
-  switchPortWan: '', switchPortLan: '', consoleID: '',
+  switchPortWan: '', switchIDWanSecondary: '', switchPortWanSecondary: '', switchPortLan: '', consoleID: '',
   macAddress: '', servicetag: '', serialNumber: '', tftpInterfaceName: ''
 })
 const openAddDeviceDialog = () => {
@@ -307,7 +310,7 @@ const openAddDeviceDialog = () => {
     shortName: '', checkUrl: '', URL: '', consolePort: '',
     resetPort: '', rebootPort: '', sshContainer: '', vncUrl: '',
     jeromeID: '', jeromeClass: '', vlanLocal: '', switchID: '', switchIDWan: '',
-    switchPortWan: '', switchPortLan: '', consoleID: '',
+    switchPortWan: '', switchIDWanSecondary: '', switchPortWanSecondary: '', switchPortLan: '', consoleID: '',
     macAddress: '', servicetag: '', serialNumber: '', tftpInterfaceName: '', hwId: ''
   }
   isSidebarOpen.value = false

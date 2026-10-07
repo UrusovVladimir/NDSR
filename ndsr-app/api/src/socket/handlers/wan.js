@@ -1,12 +1,8 @@
 // socket/handlers/wan.js — тип WAN: device:getAllWanTypes, device:wanTypes:save.
 import { on } from '../wrap.js';
-import { devices, getDeviceById, wanTypes, saveConfig } from '../../devices.js';
-import { changeWanType } from '../../actions/changeWanType.js';
-import { currentWanTypes } from '../../state/wan.js';
-import { getWanTypesSnapshot } from '../../services/wanService.js';
+import { getDeviceById, wanTypes } from '../../devices.js';
+import { getWanTypesSnapshot, applyWanChange } from '../../services/wanService.js';
 import { requireBooking, requireNotRival } from '../../services/bookingService.js';
-
-const universalPromptRegex = /.*/i;
 
 export function register(socket, io) {
   on(socket, 'device:getAllWanTypes', (callback) => {
@@ -66,34 +62,18 @@ export function register(socket, io) {
               }
           }
           
-          // Вызываем функцию настройки
-          await changeWanType(deviceId, wanData, universalPromptRegex);
-          
-          // ✅ СОХРАНЯЕМ В ОБА МЕСТА
-          const device = getDeviceById(deviceId);
-          if (device) {
-              // Сохраняем в устройство
-              device.currentWanType = wanData;
-              saveConfig(process.env.DEVICES_CONFIG_PATH, devices);
-              
-              // ✅ СОХРАНЯЕМ В currentWanTypes ДЛЯ СОВМЕСТИМОСТИ
-              currentWanTypes[deviceId] = {
-                  type: wanData,
-                  isDualWan: isDualWan,
-                  updatedAt: Date.now()
-              };
-              
-              console.log(`✅ WAN тип сохранен для устройства ${deviceId}:`, wanData);
+          // Настройка на коммутаторах + сохранение фактического состояния
+          // (при недоступном втором свиче — status 'partial' и что применилось)
+          const result = await applyWanChange(io, deviceId, wanData);
+
+          if (result.status === 'partial') {
+              return callback({ status: 'partial', type: result.type, results: result.results, message: result.message });
           }
-          
-          // Отправляем событие об обновлении WAN типа
-          io.emit('device:wanTypeUpdated', {
-              deviceId: deviceId,
-              type: wanData
-          });
-          
+          console.log(`✅ WAN тип сохранен для устройства ${deviceId}:`, wanData);
+
           callback({ 
               status: 'ok', 
+              type: result.type,
               message: isDualWan ? 'Dual WAN configured successfully' : 'WAN type updated successfully' 
           });
           

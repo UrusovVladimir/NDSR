@@ -19,6 +19,7 @@
     "switchID": "1",
     "switchIDWan": "1",
     "switchPortWan": "14",
+    "switchIDWanSecondary": "2",
     "switchPortWanSecondary": "15",
     "switchPortLan": "14",
     "consoleID": "1",

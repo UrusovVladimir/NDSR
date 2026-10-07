@@ -2301,6 +2301,8 @@ const copyAllDetails = (device) => {
         { label: 'VLAN Local', value: device.vlanLocal },
         { label: 'Switch ID', value: device.switchID },
         { label: 'WAN Port', value: device.switchPortWan },
+        { label: 'WAN Port 2', value: device.switchPortWanSecondary },
+        { label: 'WAN 2 Switch ID', value: device.switchIDWanSecondary },
         { label: 'LAN Port', value: device.switchPortLan },
         { label: 'Jerome ID', value: device.jeromeID },
         { label: 'Console ID', value: device.consoleID }
