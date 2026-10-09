@@ -912,6 +912,14 @@ ping -c2 10.10.31.11; nc -vz 10.10.31.11 3389
 
 ---
 
+### 8.13 Администратор: массовое питание и сброс
+
+Администраторы — IP из `ADMIN_IPS` (через запятую, env бэкенда; меняется без пересборки, нужен рестарт). Другого понятия «админ» в портале нет.
+
+- Фронт: `useAdminStore` спрашивает `admin:whoami` при каждом подключении сокета; админу в Sidebar → Device Management виден пункт **Bulk Power / Reset** → `AdminBulkPowerDialog` (смонтирован в `App.vue`): все устройства (наши и конкуренты) с галочками, фильтр, All/None, «Refresh power» (опрос PowerHub по выбранным), Power On / Power Off / Reboot / Factory Reset с подтверждением (в нём — чужие брони и пропущенные конкуренты).
+- Бэкенд (`socket/handlers/adminBulk.js`): `admin:bulkPower { deviceIds, action: status|on|off|reboot|reset }` — `requireAdmin`, **брони не проверяются**; одна операция одновременно; устройства по одному в фоне (`powerSetup` / `rebootDevice` / `factoryResetDevice` / `getPortPowerStatus`), ход — инициатору `admin:bulkProgress` и `admin:bulkDone`, статусы питания — всем `device:powerStatus`. Factory reset конкурентов запрещён (как и в 8.11), питание и перезагрузка — можно.
+- Лог: `[ADMIN] <ip>: bulk <action> for N devices`, итог `[ADMIN] bulk <action> finished: X ok, Y failed`.
+
 ## 9. Конфигурация и данные
 
 ### 9.1 Переменные бэкенда (`ndsr-app/api/.env`)
@@ -924,7 +932,7 @@ ping -c2 10.10.31.11; nc -vz 10.10.31.11 3389
 | Пути к данным | `DEVICES_CONFIG_PATH`, `WAN_TYPES_CONFIG_PATH`, `USER_CONFIG_PATH`, `BADGES_CONFIG_PATH`, `CURRENT_MODES_PATH`, `BOOKINGS_PATH`, `MWS_LINKS_PATH`, `VMS_CONFIG_PATH`, `VM_ATTACHMENTS_PATH` (относительные пути считаются от cwd) |
 | Тестовые VM | `VM_TRUNK_IFACE` (trunk-NIC хоста; по умолчанию определяется сам — родитель существующих VLAN-интерфейсов: в netplan стенда `int` — только id netplan, в системе имя ядра вроде `ens160`), `VM_RDP_IN_IFACE` (`internet`), `VM_RDP_PUBLIC_HOST` (адрес docker-хоста для RDP-клиента), `GUACD_HOST`/`GUACD_PORT`/`GUAC_WS_PORT`/`GUAC_TOKEN_TTL_MS` (RDP в браузере; пустой `GUACD_HOST` — выключено), `VM_RDP_SOURCE_OVERRIDE` (только dev: адрес-источник для RDP-правила вместо IP браузера — dev-бэкенд видит браузер по локальной сети, а mstsc приходит на хост с VPN-адреса) |
 | Логи | `LOG_DIR` (пусто — только stdout), `LOG_MAX_SIZE_MB`, `LOG_MAX_FILES` |
-| Клиенты | `TRUST_PROXY_HEADERS`, `VPN_IP_PREFIXES` |
+| Клиенты | `TRUST_PROXY_HEADERS`, `VPN_IP_PREFIXES`, `ADMIN_IPS` (8.13) |
 | Отладка | `DEBUG_BOOKINGS`, `DEBUG_PASSWORDS`, `DEBUG_WAN` |
 | Оборудование | `MOXA_IPS`, `JEROME_IPS`, `JEROME_PORT`, `VES_IP/PORT/LOGIN/PASSWORD`, `SWITCH_IPs`, `SWITCH_WAN_IPs`, `SWITCH_LOGIN/PASSWORD` |
 | Docker host | `SSH_HOST`, `SSH_PORT`, `SSH_USERNAME`, `SSH_PRIVATE_KEY_PATH` |

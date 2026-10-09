@@ -18,6 +18,7 @@ switch_wan_ips: "<ip,ip>"      # WAN-коммутаторы
 
 # Необязательное
 # vpn_ip_prefixes: "172.16."            # аудит клиентов из неожиданных подсетей
+# admin_ips: "10.0.0.10,10.0.0.11"      # администраторы портала: массовое питание/сброс
 # iperf_server: "<host> -p <port>"
 # iperf_server_public: "<host> -p <port>"
 # container_dns: ["<dns1>", "<dns2>"]   # иначе — резолвер docker-хоста

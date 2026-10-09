@@ -11,6 +11,7 @@ import { register as registerFirmware } from './socket/handlers/firmware.js';
 import { register as registerPasswords } from './socket/handlers/passwords.js';
 import { register as registerChat } from './socket/handlers/chat.js';
 import { register as registerVm } from './socket/handlers/vm.js';
+import { register as registerAdminBulk } from './socket/handlers/adminBulk.js';
 
 // 🔒 S4 (light): доверие к заголовкам прокси.
 // TRUST_PROXY_HEADERS=true ТОЛЬКО если перед сервером nginx, который
@@ -62,6 +63,7 @@ function setupEvents(socket, io) {
   registerPasswords(socket, io);
   registerChat(socket, io);
   registerVm(socket, io);
+  registerAdminBulk(socket, io);
 }
 
 export {

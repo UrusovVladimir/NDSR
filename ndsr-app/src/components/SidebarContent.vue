@@ -101,6 +101,18 @@
               </div>
             </Transition>
             
+            <!-- Только администратору (ADMIN_IPS на бэкенде) -->
+            <template v-if="adminStore.isAdmin">
+              <div class="dropdown-divider"></div>
+              <div class="dropdown-item tool-item" @click="adminStore.showBulkPower = true">
+                <i class="pi pi-bolt text-orange-500"></i>
+                <div class="tool-details">
+                  <span class="tool-label">Bulk Power / Reset</span>
+                  <span class="tool-desc">Power on/off, reboot, factory reset · admin</span>
+                </div>
+              </div>
+            </template>
+
             <!-- Управление пользователями -->
             <div class="dropdown-divider"></div>
             <div class="dropdown-item tool-item" @click="openAddUserForm">
@@ -146,6 +158,7 @@ import Button from 'primevue/button'
 import Checkbox from 'primevue/checkbox'
 import { useToast } from 'primevue/usetoast'
 import { useDeviceStore } from '@/stores/useDeviceStore'
+import { useAdminStore } from '@/stores/useAdminStore'
 
 const emit = defineEmits([
   'open-faq', 
@@ -157,6 +170,7 @@ const emit = defineEmits([
 
 const toast = useToast()
 const deviceStore = useDeviceStore()
+const adminStore = useAdminStore()
 
 const iperfServer = import.meta.env.VITE_IPERF_SERVER
 const iperfServerPublic = import.meta.env.VITE_IPERF_SERVER_PUBLIC

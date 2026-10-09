@@ -79,6 +79,8 @@ debug_wan: "false"
 trust_proxy_headers: "true"
 # Подсети VPN инженеров — только аудит в логе (пусто — без предупреждений)
 vpn_ip_prefixes: ""
+# IP администраторов портала (Bulk Power / Reset), через запятую; пусто — нет админов
+admin_ips: ""
 
 # Порт PowerHub (jeromeClass: new). Старые Jerome всегда на 2424 (в коде).
 jerome_port: "23"

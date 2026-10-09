@@ -2,6 +2,7 @@
   <div class="app-container">
     <Toast position="bottom-right" style="right:15px;" />
     <GlobalProgressDialog />
+    <AdminBulkPowerDialog v-if="adminStore.isAdmin" />
     <PrimeDeviceModal 
       ref="faqModal"
       :device="null"
@@ -190,6 +191,8 @@ import DeviceDataTable from '@/components/DeviceDataTable.vue'
 import SidebarContent from '@/components/SidebarContent.vue'
 import ChatWidget from '@/components/chat/ChatWidget.vue'
 import GlobalProgressDialog from '@/components/GlobalProgressDialog.vue' 
+import AdminBulkPowerDialog from '@/components/AdminBulkPowerDialog.vue'
+import { useAdminStore } from '@/stores/useAdminStore'
 import PrimeDeviceModal from './components/PrimeDeviceModal.vue'
 import InputText from 'primevue/inputtext'
 import { socket } from '@/socket'
@@ -415,6 +418,7 @@ const toast = useToast()
 // Инициализация stores
 const modeStore = useModeStore()
 const deviceStore = useDeviceStore()
+const adminStore = useAdminStore()
 const cronStore = useCronStore()
 const escapeStore = useEscapeStore()
 const clipboardStore = useClipboardStore()
@@ -549,6 +553,7 @@ watch(
 let timer
 
 onMounted(() => {
+  adminStore.init()
   console.log('📱 App mounted - starting initialization');
   
   initializeApp();
