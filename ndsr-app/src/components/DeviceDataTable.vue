@@ -420,8 +420,10 @@ const clearBulk = () => {
   bulkSelected.value = new Set()
 }
 
+// Кликабельные элементы строки, клик по которым — не выбор строки. Свои
+// кликабельные иконки (<i @click>) помечать data-row-action (и @click.stop).
 const ROW_INTERACTIVE = 'button, a, input, textarea, select, label, [role="button"], [role="switch"], ' +
-  '.p-togglebutton, .p-dropdown, .p-inputswitch, .p-slider'
+  '[data-row-action], .p-togglebutton, .p-dropdown, .p-inputswitch, .p-slider'
 
 const onRowClick = ({ originalEvent, data }) => {
   if (originalEvent?.target?.closest?.(ROW_INTERACTIVE)) return

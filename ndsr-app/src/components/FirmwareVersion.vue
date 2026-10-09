@@ -44,7 +44,9 @@
       <i 
         v-if="device.statusCode === 200 && !rival"
         class="pi pi-refresh details-inline refresh-small"
-        @click="refreshFirmware"
+        role="button"
+        data-row-action
+        @click.stop="refreshFirmware"
         v-tooltip.bottom="getRefreshTooltip"
       />
     </div>
