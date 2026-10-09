@@ -19,6 +19,7 @@
       @show-add-device="openAddDeviceDialog"
       @show-add-user="openAddUserDialog"
       @reload-users="handleReloadUsers"
+      @show-bulk-power="openBulkPower"
     />
     </Sidebar>
 
@@ -306,6 +307,12 @@ const newDevice = ref({
   switchPortWan: '', switchIDWanSecondary: '', switchPortWanSecondary: '', switchPortLan: '', consoleID: '',
   macAddress: '', servicetag: '', serialNumber: '', tftpInterfaceName: ''
 })
+// Сайдбар закрываем: его маска (z-index выше диалогов) перехватывала бы клики
+const openBulkPower = () => {
+  isSidebarOpen.value = false
+  adminStore.showBulkPower = true
+}
+
 const openAddDeviceDialog = () => {
   newDevice.value = {
     id: '',

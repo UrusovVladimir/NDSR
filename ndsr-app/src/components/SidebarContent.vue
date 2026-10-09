@@ -104,7 +104,7 @@
             <!-- Только администратору (ADMIN_IPS на бэкенде) -->
             <template v-if="adminStore.isAdmin">
               <div class="dropdown-divider"></div>
-              <div class="dropdown-item tool-item" @click="adminStore.showBulkPower = true">
+              <div class="dropdown-item tool-item" @click="emit('show-bulk-power')">
                 <i class="pi pi-bolt text-orange-500"></i>
                 <div class="tool-details">
                   <span class="tool-label">Bulk Power / Reset</span>
@@ -165,7 +165,8 @@ const emit = defineEmits([
   'show-remove-confirm', 
   'show-add-device', 
   'show-add-user', 
-  'reload-users'
+  'reload-users',
+  'show-bulk-power'
 ])
 
 const toast = useToast()

@@ -7,10 +7,7 @@
     class="admin-bulk-dialog"
   >
     <div class="bulk-toolbar">
-      <span class="p-input-icon-left bulk-filter">
-        <i class="pi pi-search" />
-        <InputText v-model="filter" placeholder="Filter devices..." class="w-full" />
-      </span>
+      <InputText v-model="filter" placeholder="Filter devices..." class="bulk-filter p-inputtext-sm" />
       <Button label="All" class="p-button-sm p-button-outlined" :disabled="adminStore.running" @click="selectAll" />
       <Button label="None" class="p-button-sm p-button-outlined" :disabled="adminStore.running" @click="selected = new Set()" />
       <Button
