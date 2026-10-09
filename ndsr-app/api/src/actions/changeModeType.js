@@ -106,7 +106,8 @@ export const checkDeviceMode = async (url, login, password) => {
         
     } catch (error) {
         console.error('🔧 Error in checkDeviceMode:', error.message);
-        return { success: false, message: error.message };
+        // Флаги входа (athentication.js) нужны перебору паролей в mode.js
+        return { success: false, message: error.message, isTransient: !!error.isTransient, isAuthError: !!error.isAuthError };
     }
 };
 

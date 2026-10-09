@@ -21,6 +21,27 @@ import {
 } from '../../services/statusService.js';
 import { keeneticAuth } from '../../actions/athentication.js';
 
+// Одна проверка на устройство. Событие «устройство снова в сети»
+// (device:checkFirmware) уходит во ВСЕ вкладки, и каждая присылает свою
+// проверку — раньше это давало N одновременных входов на только что
+// загрузившийся роутер; пара неудач подряд — и Keenetic блокирует адрес
+// портала до перезагрузки. Теперь параллельные запросы получают общий
+// результат, а свежий (FIRMWARE_FRESH_MS) отдаётся без входа.
+const FIRMWARE_FRESH_MS = 30 * 1000;
+const inflightFirmwareChecks = new Map(); // deviceId -> Promise<result>
+
+function checkFirmwareOnce(deviceId, run) {
+  const cached = currentFirmwareVersion.get(deviceId);
+  if (cached?.version && Date.now() - cached.timestamp < FIRMWARE_FRESH_MS) {
+    return Promise.resolve({ deviceId, success: true, version: cached.version });
+  }
+  const pending = inflightFirmwareChecks.get(deviceId);
+  if (pending) return pending;
+  const promise = run().finally(() => inflightFirmwareChecks.delete(deviceId));
+  inflightFirmwareChecks.set(deviceId, promise);
+  return promise;
+}
+
 const handleBatchFirmwareCheck = async (socket, io, data, callback) => {
   try {
     const { deviceIds, passwords = {} } = data;
@@ -33,7 +54,7 @@ const handleBatchFirmwareCheck = async (socket, io, data, callback) => {
       // (макс. 15 параллельных, общий семафор с проверками статусов).
       // Раньше map запускал ВСЕ auth-секвенции одновременно:
       // выбор 30 устройств = 30 одновременных ndw4-хендшейков = шторм на железках
-      executeWithLimit(async () => {
+      checkFirmwareOnce(deviceId, () => executeWithLimit(async () => {
         try {
           const device = getDeviceById(deviceId);
 
@@ -141,7 +162,7 @@ const handleBatchFirmwareCheck = async (socket, io, data, callback) => {
             error: error.message
           };
         }
-      })
+      }))
     );
 
     const results = await Promise.allSettled(checkPromises);

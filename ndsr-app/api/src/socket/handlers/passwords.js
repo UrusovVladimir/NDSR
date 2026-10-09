@@ -4,11 +4,12 @@
 // Все три события требуют активной брони владельцем (S2). Пароль брони
 // при этом виден всем через device:bookingUpdated — это by design.
 import { on } from '../wrap.js';
-import { getDevicePassword, setDevicePassword } from '../../devices.js';
+import { getDevicePassword, setDevicePassword, getDeviceById } from '../../devices.js';
 import { deviceBookings, saveBookings } from '../../state/bookings.js';
 import { currentModes } from '../../state/modes.js';
 import { emitBookingUpdate, requireBooking, requireNotRival, clearDevicePassword } from '../../services/bookingService.js';
-import { emitPasswordUpdate } from '../../services/passwordService.js';
+import { emitPasswordUpdate, clearAuthCooldown } from '../../services/passwordService.js';
+import { clearAuthFailures } from '../../actions/athentication.js';
 
 export function register(socket) {
   on(socket, 'device:getPassword', (deviceId, callback) => {
@@ -47,6 +48,11 @@ export function register(socket) {
         }
         // Фронт обновляет device.devicePassword немедленно, без F5
         emitPasswordUpdate(deviceId, password);
+        // Новый пароль — пауза входа (athentication.js) и cooldown по старым
+        // неудачам больше не нужны
+        const dev = getDeviceById(deviceId);
+        clearAuthFailures([dev?.URL, dev?.checkUrl]);
+        clearAuthCooldown(deviceId);
         // 🔑 MWS-PW: пароль мастера сменился → эффективные пароли всех
         // подключённых к нему слейвов изменились. Брони слейвов перечитают
         // payload через buildBookingPayload при следующем emitBookingUpdate.

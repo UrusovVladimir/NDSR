@@ -658,7 +658,7 @@ export function register(socket, io) {
         // неуспехи возвращаем как результат и отдаём сразу
         const { result: modeResult, lastError } = await tryWithPasswords(candidates, async (candidate) => {
             const res = await checkDeviceMode(checkUrl, login || 'admin', candidate);
-            if (!res.success && isAuthError({ message: res.message })) {
+            if (!res.success && isAuthError(res)) {
                 throw new Error(res.message || 'authentication failed');
             }
             return res;

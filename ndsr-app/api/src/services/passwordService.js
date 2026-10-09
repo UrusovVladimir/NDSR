@@ -85,6 +85,11 @@ function getPasswordCandidates(deviceId, userId, explicitPasswords = {}, order =
 // только текст. Распознаём auth-ошибку по сообщению.
 // TODO этап 3: прокинуть statusCode из athentication.js
 function isAuthError(error) {
+  // Явные признаки из athentication.js важнее текста: транзиентный сбой
+  // (пароль не проверялся / пауза против блокировки) — НЕ повод пробовать
+  // следующий пароль, иначе устройство заблокирует адрес портала
+  if (error?.isTransient) return false;
+  if (error?.isAuthError) return true;
   const msg = String(error?.message || '').toLowerCase();
   return msg.includes('401')
       || msg.includes('авторизац')

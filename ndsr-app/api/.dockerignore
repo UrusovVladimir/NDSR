@@ -12,3 +12,7 @@ uploads
 *.log
 vms.json
 vm_attachments.json
+# Рабочие devices.json/users.json живут в state (DEVICES_CONFIG_PATH и т.п.);
+# копия в образе (/app/devices.json) не читается и только путает при отладке
+devices.json
+users.json

@@ -144,9 +144,10 @@
 
           <Column field="booking.isBooked" header="Booking" class="booking-column">
             <template #body="{ data }">
-              <div v-if="data.booking?.isBooked && data.booking?.bookedBy !== deviceStore.currentUserId">
-                <Tag :value="deviceStore.getUserName(data.booking?.bookedBy)" severity="warning" /> 
-              </div>
+              <BookedByOther
+                v-if="data.booking?.isBooked && data.booking?.bookedBy !== deviceStore.currentUserId"
+                :booking="data.booking"
+              />
               <BookingStatus 
                 v-else
                 :device="data"
@@ -207,9 +208,10 @@
 
           <Column field="booking.isBooked" header="Booking" class="booking-column">
             <template #body="{ data }">
-              <div v-if="data.booking?.isBooked && data.booking?.bookedBy !== deviceStore.currentUserId">
-                <Tag :value="deviceStore.getUserName(data.booking?.bookedBy)" severity="warning" /> 
-              </div>
+              <BookedByOther
+                v-if="data.booking?.isBooked && data.booking?.bookedBy !== deviceStore.currentUserId"
+                :booking="data.booking"
+              />
               <BookingStatus 
                 v-else
                 :device="data"
@@ -287,6 +289,7 @@ import { useDeviceStore } from '@/stores/useDeviceStore'
 import { socket } from '@/socket'
 import StatusIndicator from './StatusIndicator.vue'
 import BookingStatus from './BookingStatus.vue'
+import BookedByOther from './BookedByOther.vue'
 import WanTypeDisplay from './WanTypeDisplay.vue'
 import DeviceActions from './DeviceActions.vue'
 import PrimeDeviceModal from './PrimeDeviceModal.vue'

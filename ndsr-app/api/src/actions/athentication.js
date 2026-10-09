@@ -20,6 +20,48 @@ function withAuthLock(ip, fn) {
 }
 
 
+// 🛡 Защита от блокировки. Keenetic после серии неудачных входов с одного
+// адреса перестаёт ему отвечать (запросы висят до тайм-аута) до перезагрузки.
+// Бэкенд и браузеры пользователей ходят к устройству через один контейнер —
+// блокируется всё сразу. Поэтому:
+//   • сбой, при котором пароль не проверялся (сеть, тайм-аут, ndw4 без
+//     X-NDM-Data сразу после загрузки), — «транзиентный» (isTransient): перебор
+//     паролей на нём останавливается, неверным паролем он не считается;
+//   • неверных паролей на устройство — не больше AUTH_MAX_FAILS за
+//     AUTH_FAIL_WINDOW_MS, дальше вход не пробуем до конца окна.
+// Замер (KN-1012/KN-3812, 5.02, октябрь 2026): бан адреса на 15 минут после
+// 5-го неверного входа; успешные входы и 401 на GET /auth не считаются.
+// Лимит 5 общий для бэкенда и всех браузеров (один адрес контейнера) —
+// бэкенд тратит не больше 2, окно = длительности бана.
+const AUTH_MAX_FAILS = Number(process.env.AUTH_MAX_FAILS) || 2;
+const AUTH_FAIL_WINDOW_MS = Number(process.env.AUTH_FAIL_WINDOW_MS) || 15 * 60 * 1000;
+const authFailures = new Map(); // ip -> [timestamps неверных паролей]
+
+function recentAuthFailures(ip) {
+  const since = Date.now() - AUTH_FAIL_WINDOW_MS;
+  const list = (authFailures.get(ip) || []).filter(t => t > since);
+  if (list.length) authFailures.set(ip, list); else authFailures.delete(ip);
+  return list;
+}
+
+// Пароль устройства поменяли в портале — прошлые неудачи к нему не относятся
+export function clearAuthFailures(deviceUrls = []) {
+  const origins = deviceUrls.filter(Boolean).map(u => { try { return new URL(u).origin; } catch { return null; } }).filter(Boolean);
+  for (const key of authFailures.keys()) {
+    try { if (origins.includes(new URL(key).origin)) authFailures.delete(key); } catch {}
+  }
+}
+
+function transientAuthError(message, cause = null) {
+  const err = new Error(message);
+  err.isTransient = true;
+  if (cause) {
+    err.cause = cause;
+    err.code = cause.code;   // ECONNREFUSED/ETIMEDOUT — их проверяют вызывающие
+  }
+  return err;
+}
+
 const isAuthenticated = async (ip, sessionCookie = null) => {
   try {
     const headers = {};
@@ -62,6 +104,11 @@ async function ndw4Auth(ip, login, password, sessionCookie) {
   // ── Фаза 1: запрос challenge ──
   const clientNonce = crypto.randomBytes(16).toString('base64');
   const r1 = await post({ login, nonce: clientNonce });
+  // Без X-NDM-Data на фазе 1 пароль ещё не проверялся — так отвечает
+  // устройство сразу после загрузки. Не «неверный пароль».
+  if (!r1.headers['x-ndm-data']) {
+    throw transientAuthError(`ndw4: device not ready (phase 1 status ${r1.status}, no X-NDM-Data)`);
+  }
   const d1 = readData(r1);
   if (d1.error || d1.e) throw new Error(`ndw4 phase1: ${d1.error || d1.e}`);
   if (!d1.nonce?.startsWith(clientNonce)) {
@@ -179,55 +226,84 @@ const _authenticateCore = async (ip, login, password) => {
       return 'ALREADY_AUTHENTICATED';
     }
 
-    console.log('🔐 Получаем challenge...');
-
-    const challengeRes = await axios.get(`${ip}/auth`, {
-      validateStatus: status => status === 401,
-      timeout: 10000
-    });
-
-    if (challengeRes.status === 200) {
-      console.log('✅ Устройство уже авторизовано (получили 200 на challenge)');
-      return 'ALREADY_AUTHENTICATED';
+    const failures = recentAuthFailures(ip);
+    if (failures.length >= AUTH_MAX_FAILS) {
+      const waitSec = Math.ceil((failures[0] + AUTH_FAIL_WINDOW_MS - Date.now()) / 1000);
+      throw transientAuthError(
+        `Login to ${ip} paused for ${waitSec}s: ${failures.length} wrong passwords recently (protects the device from locking out the portal)`);
     }
 
-    const sessionCookie = challengeRes.headers['set-cookie']?.[0]?.split(';')[0];
-    if (!sessionCookie) {
-      throw new Error('Не удалось получить session cookie');
+    // ndw4 сразу после загрузки — одна повторная попытка через паузу
+    for (let attempt = 1; ; attempt++) {
+      try {
+        return await _authenticateOnce(ip, login, password);
+      } catch (error) {
+        if (error.isTransient && attempt < 2 && String(error.message).startsWith('ndw4: device not ready')) {
+          console.log(`⏳ ${error.message} — retrying in 3s`);
+          await new Promise(resolve => setTimeout(resolve, 3000));
+          continue;
+        }
+        throw error;
+      }
     }
-
-    const wa = challengeRes.headers['www-authenticate'] || '';
-
-    // Приоритет ndw4 (по документации Netcraze), fallback ndw2
-    if (wa.includes('x-ndw4-interactive')) {
-      console.log('🔐 Схема: x-ndw4-interactive (SCRAM-SHA3-512 + Argon2id)');
-      const cookie = await ndw4Auth(ip, login, password, sessionCookie);
-      sessionManager.setSession(ip, login, cookie);
-      console.log('✅ Авторизация успешна (ndw4)!');
-      return cookie;
-    }
-
-    if (wa.includes('x-ndw2-interactive')) {
-      console.log('🔐 Схема: x-ndw2-interactive (классический хэш)');
-      const cookie = await ndw2Auth(ip, login, password, challengeRes);
-      sessionManager.setSession(ip, login, cookie);
-      console.log('✅ Авторизация успешна (ndw2)!');
-      return cookie;
-    }
-
-    throw new Error(`Неизвестная схема авторизации: ${wa}`);
-    
   } catch (error) {
-    console.error('❌ Ошибка аутентификации:', error.message);
-
     if (error.response?.status === 200) {
       // Гонка: между isAuthenticated и challenge-GET устройство «открылось»
       return 'ALREADY_AUTHENTICATED';
     }
 
-    return null;
+    if (error.isAuthError) {
+      // Устройство проверило пароль и отвергло его
+      const failures = recentAuthFailures(ip);
+      failures.push(Date.now());
+      authFailures.set(ip, failures);
+      console.error(`❌ Ошибка аутентификации: ${error.message} (неверных паролей за окно: ${failures.length}/${AUTH_MAX_FAILS})`);
+      return null;
+    }
+
+    // Сеть, тайм-аут, устройство не готово, пауза — пароль не проверялся
+    console.error('❌ Вход не выполнен (пароль не проверялся):', error.message);
+    throw error.isTransient ? error : transientAuthError(`Login to ${ip} failed: ${error.message}`, error);
   }
 };
+
+async function _authenticateOnce(ip, login, password) {
+  console.log('🔐 Получаем challenge...');
+
+  const challengeRes = await axios.get(`${ip}/auth`, {
+    validateStatus: status => status === 401 || status === 200,
+    timeout: 10000
+  });
+
+  if (challengeRes.status === 200) {
+    console.log('✅ Устройство уже авторизовано (получили 200 на challenge)');
+    return 'ALREADY_AUTHENTICATED';
+  }
+
+  const sessionCookie = challengeRes.headers['set-cookie']?.[0]?.split(';')[0];
+  if (!sessionCookie) {
+    throw transientAuthError('Не удалось получить session cookie');
+  }
+
+  const wa = challengeRes.headers['www-authenticate'] || '';
+
+  // Приоритет ndw4 (по документации Netcraze), fallback ndw2
+  let cookie;
+  if (wa.includes('x-ndw4-interactive')) {
+    console.log('🔐 Схема: x-ndw4-interactive (SCRAM-SHA3-512 + Argon2id)');
+    cookie = await ndw4Auth(ip, login, password, sessionCookie);
+  } else if (wa.includes('x-ndw2-interactive')) {
+    console.log('🔐 Схема: x-ndw2-interactive (классический хэш)');
+    cookie = await ndw2Auth(ip, login, password, challengeRes);
+  } else {
+    throw transientAuthError(`Неизвестная схема авторизации: ${wa}`);
+  }
+
+  sessionManager.setSession(ip, login, cookie);
+  authFailures.delete(ip);
+  console.log('✅ Авторизация успешна!');
+  return cookie;
+}
 
 // Публичная authenticate — сериализованная через per-device лок
 const authenticate = (ip, login, password) =>
@@ -312,7 +388,9 @@ export const makeAuthenticatedRequest = async (ip, login, password, endpoint, me
           throw new Error(`Запрос не удался после аутентификации: ${retryResponse.status}`);
         }
       } else {
-        throw new Error('Не удалось аутентифицироваться');
+        const err = new Error('Не удалось аутентифицироваться');
+        err.isAuthError = true;
+        throw err;
       }
     }
 
@@ -353,6 +431,8 @@ export const verifyAndRefreshSession = async (ip, login, password) => {
     console.log(`🔐 Сессия валидна`);
     return sessionCookie;
   } catch (error) {
+    // Пароль не проверялся — не превращаем в «неверный пароль»
+    if (error.isTransient) throw error;
     console.error(`❌ Ошибка проверки сессии:`, error.message);
     return null;
   }
@@ -366,7 +446,9 @@ async function keeneticAuth(KEENETIC_IP, LOGIN, PASSWORD) {
     const sessionCookie = await verifyAndRefreshSession(KEENETIC_IP, LOGIN, PASSWORD);
     
     if (!sessionCookie) {
-      throw new Error('Ошибка авторизации');
+      const err = new Error('Ошибка авторизации');
+      err.isAuthError = true;
+      throw err;
     }
 
     const headers = {};
