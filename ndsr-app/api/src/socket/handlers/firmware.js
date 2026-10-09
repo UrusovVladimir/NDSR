@@ -11,6 +11,7 @@ import {
   setAuthCooldown,
   clearAuthCooldown,
   getPasswordCandidates,
+  getEffectiveDevicePassword,
   tryWithPasswords
 } from '../../services/passwordService.js';
 import {
@@ -42,6 +43,122 @@ function checkFirmwareOnce(deviceId, run) {
   return promise;
 }
 
+// Проверка версии одного устройства — общая для device:checkMultipleFirmwares
+// и device:getCurrentFW (через checkFirmwareOnce: одна на устройство).
+// Пароль, присланный браузером, используется, только если у бэкенда нет
+// своего: копия в браузере бывает устаревшей, а каждый неверный пароль
+// тратит общий лимит Keenetic (5 → бан адреса портала на 15 минут).
+async function checkOneFirmware(deviceId, userId, passwords) {
+  try {
+    const device = getDeviceById(deviceId);
+
+    if (!device) {
+      return {
+        deviceId,
+        success: false,
+        error: 'Device not found'
+      };
+    }
+
+    // Конкурент: версию не определяем (авторизация Keenetic не подходит)
+    if (isRival(device)) {
+      return {
+        deviceId,
+        success: false,
+        error: 'N/A for rival devices'
+      };
+    }
+
+    const deviceStatus = await getDeviceStatusWithMode(deviceId);
+    if (deviceStatus !== 200) {
+      return {
+        deviceId,
+        success: false,
+        error: 'Device is offline'
+      };
+    }
+
+    // 🛡cooldown после полного провала авторизации —
+    // не долбим устройство ndw4-хендшейками
+    if (isAuthCoolingDown(deviceId)) {
+      return {
+        deviceId,
+        success: false,
+        error: 'Auth cooldown — retry later'
+      };
+    }
+
+    // 🔑 Перебор кандидатов: устройство может иметь индивидуальный пароль,
+    // отличный от daily. Первая успешная авторизация побеждает.
+    const authUrl = getDeviceUrl(deviceId, 'auth');
+    const explicit = getEffectiveDevicePassword(deviceId) ? {} : passwords;
+    const candidates = getPasswordCandidates(deviceId, userId, explicit, 'background');
+
+    if (candidates.length === 0) {
+      return {
+        deviceId,
+        success: false,
+        error: 'No password available'
+      };
+    }
+
+    // 🔒 S5: в лог только источники, не сами пароли
+    if (process.env.DEBUG_PASSWORDS === 'true') {
+      console.log(`🔑 Password candidates for ${deviceId}:`, candidates.map(c => c.source));
+    }
+
+    // сеть/таймаут tryWithPasswords пробрасывает — это не пароль
+    const { result: versionData, source: usedSource, lastError } = await tryWithPasswords(
+      candidates,
+      (password) => keeneticAuth(authUrl, 'admin', password)
+    );
+
+    if (!versionData) {
+      // 🛡 все кандидаты отвергнуты — включаем cooldown для этого устройства
+      setAuthCooldown(deviceId);
+      return {
+        deviceId,
+        success: false,
+        error: `Authentication failed: ${lastError?.message || 'no password candidate worked'}`
+      };
+    }
+
+    // 🛡 успех — сбрасываем cooldown, если был
+    clearAuthCooldown(deviceId);
+
+    if (!versionData.release) {
+      return {
+        deviceId,
+        success: false,
+        error: 'Invalid firmware response'
+      };
+    }
+
+    console.log(`🔑 Auth success for ${deviceId} (source: ${usedSource})`);
+
+    const firmwareVersion = versionData.release;
+
+    currentFirmwareVersion.set(deviceId, {
+      version: firmwareVersion,
+      timestamp: Date.now()
+    });
+
+    return {
+      deviceId,
+      success: true,
+      version: firmwareVersion
+    };
+
+  } catch (error) {
+    console.error(`Error checking firmware for device ${deviceId}:`, error);
+    return {
+      deviceId,
+      success: false,
+      error: error.message
+    };
+  }
+}
+
 const handleBatchFirmwareCheck = async (socket, io, data, callback) => {
   try {
     const { deviceIds, passwords = {} } = data;
@@ -54,115 +171,7 @@ const handleBatchFirmwareCheck = async (socket, io, data, callback) => {
       // (макс. 15 параллельных, общий семафор с проверками статусов).
       // Раньше map запускал ВСЕ auth-секвенции одновременно:
       // выбор 30 устройств = 30 одновременных ndw4-хендшейков = шторм на железках
-      checkFirmwareOnce(deviceId, () => executeWithLimit(async () => {
-        try {
-          const device = getDeviceById(deviceId);
-
-          if (!device) {
-            return {
-              deviceId,
-              success: false,
-              error: 'Device not found'
-            };
-          }
-
-          // Конкурент: версию не определяем (авторизация Keenetic не подходит)
-          if (isRival(device)) {
-            return {
-              deviceId,
-              success: false,
-              error: 'N/A for rival devices'
-            };
-          }
-
-          const deviceStatus = await getDeviceStatusWithMode(deviceId);
-          if (deviceStatus !== 200) {
-            return {
-              deviceId,
-              success: false,
-              error: 'Device is offline'
-            };
-          }
-
-          // 🛡cooldown после полного провала авторизации —
-          // не долбим устройство ndw4-хендшейками
-          if (isAuthCoolingDown(deviceId)) {
-            return {
-              deviceId,
-              success: false,
-              error: 'Auth cooldown — retry later'
-            };
-          }
-
-          // 🔑 Перебор кандидатов: устройство может иметь индивидуальный пароль,
-          // отличный от daily. Первая успешная авторизация побеждает.
-          const authUrl = getDeviceUrl(deviceId, 'auth');
-          const candidates = getPasswordCandidates(deviceId, userId, passwords, 'background');
-
-          if (candidates.length === 0) {
-            return {
-              deviceId,
-              success: false,
-              error: 'No password available'
-            };
-          }
-
-          // 🔒 S5: в лог только источники, не сами пароли
-          if (process.env.DEBUG_PASSWORDS === 'true') {
-            console.log(`🔑 Password candidates for ${deviceId}:`, candidates.map(c => c.source));
-          }
-
-          // сеть/таймаут tryWithPasswords пробрасывает — это не пароль
-          const { result: versionData, source: usedSource, lastError } = await tryWithPasswords(
-            candidates,
-            (password) => keeneticAuth(authUrl, 'admin', password)
-          );
-
-          if (!versionData) {
-            // 🛡 все кандидаты отвергнуты — включаем cooldown для этого устройства
-            setAuthCooldown(deviceId);
-            return {
-              deviceId,
-              success: false,
-              error: `Authentication failed: ${lastError?.message || 'no password candidate worked'}`
-            };
-          }
-
-          // 🛡 успех — сбрасываем cooldown, если был
-          clearAuthCooldown(deviceId);
-
-          if (!versionData.release) {
-            return {
-              deviceId,
-              success: false,
-              error: 'Invalid firmware response'
-            };
-          }
-
-          console.log(`🔑 Auth success for ${deviceId} (source: ${usedSource})`);
-
-          const firmwareVersion = versionData.release;
-
-          currentFirmwareVersion.set(deviceId, {
-            version: firmwareVersion,
-            timestamp: Date.now()
-          });
-
-          return {
-            deviceId,
-            success: true,
-            version: firmwareVersion
-          };
-
-        } catch (error) {
-          console.error(`Error checking firmware for device ${deviceId}:`, error);
-          return {
-            deviceId,
-            success: false,
-            error: error.message
-          };
-        }
-      }))
+      checkFirmwareOnce(deviceId, () => executeWithLimit(() => checkOneFirmware(deviceId, userId, passwords)))
     );
 
     const results = await Promise.allSettled(checkPromises);
@@ -251,46 +260,15 @@ export function register(socket, io) {
         throw new Error('Device ID and password are required');
       }
 
-      const device = getDeviceById(deviceId);
-      if (!device) {
-        throw new Error(`Device ${deviceId} not found`);
+      const check = await checkFirmwareOnce(deviceId, () =>
+        executeWithLimit(() => checkOneFirmware(deviceId, socket.clientIp, { [deviceId]: password })));
+      if (!check.success) {
+        throw new Error(check.error || 'Failed to get firmware version');
       }
-
-      const deviceStatus = await getDeviceStatusWithMode(deviceId);
-      if (deviceStatus !== 200) {
-        throw new Error('Device is offline');
-      }
-
-      // 🔑 Цепочка кандидатов: явный пароль + сохранённые
-      const authUrl = getDeviceUrl(deviceId, 'auth');
-      const explicit = password ? { [deviceId]: password } : {};
-      const candidates = getPasswordCandidates(deviceId, socket.clientIp, explicit);
-
-      if (candidates.length === 0) {
-        throw new Error('No password available');
-      }
-
-      const { result: versionData } = await tryWithPasswords(
-        candidates,
-        (candidate) => keeneticAuth(authUrl, login || 'admin', candidate)
-      );
-
-      if (!versionData) {
-        // слово 'Authentication failed' попадёт в вашу таксономию ошибок ниже → auth_error
-        throw new Error('Authentication failed - no password candidate worked');
-      }
-
-      if (!versionData.release) {
-        throw new Error('Invalid firmware version response');
-      }
+      const versionData = { release: check.version };
 
       const firmwareVersion = versionData.release;
       
-      currentFirmwareVersion.set(deviceId, {
-        version: firmwareVersion,
-        timestamp: Date.now()
-      });
-
       io.emit('device:currentFW', deviceId, { 
         FW: { release: firmwareVersion } 
       });
