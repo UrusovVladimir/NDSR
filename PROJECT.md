@@ -551,7 +551,11 @@ App.vue
 ├─ DeviceDataTable — таблица устройств (не мои): вкладки Our Devices / Rival Devices в шапке, поиск, модалки, сохранение WAN/MWS
 │   ├─ BookedDevicesTable — «мои устройства»: основное рабочее место (питание, reset, режимы,
 │   │                        консоль, VNC, веб, Skip Wizard, продление, релиз, FW Check All)
-│   ├─ BookingStatus — бронирование (слайдер длительности от 10 мин до 7 дней)
+│   ├─ BookingStatus — бронирование/продление одного устройства; длительность — BookingDurationDialog
+│   ├─ BookingDurationDialog — выбор длительности (слайдер 10 мин … 7 дней + быстрые кнопки), общий для одиночной и массовой брони
+│   ├─ массовая бронь (в DeviceDataTable): клик по строке свободного устройства отмечает его — вместо статуса галочка
+│   │   (клики по кнопкам/переключателям строки не считаются), панель «Selected: N · Book selected · Clear» внизу,
+│   │   бронь — тем же device:book по очереди; неудачные остаются отмеченными, Esc сбрасывает выбор
 │   ├─ BookedByOther — чужая бронь: имя пользователя + «сколько осталось» (из `booking.expiresAt`, общие часы `composables/useNow.js`, тик 30 с; подсказка — время окончания)
 │   ├─ PrimeDeviceModal — выбор WAN / MWS-подключение / FAQ
 │   ├─ ChangeModeModal — смена режима
@@ -560,6 +564,8 @@ App.vue
 ├─ SidebarContent — счётчики, iPerf, reload configs, добавить/удалить устройство и пользователя
 └─ ChatWidget (components/chat/*)
 ```
+
+**Модальные окна и прокрутка.** Модальный `Dialog` PrimeVue 3 вешает на `body` класс `p-overflow-hidden`, а `src/assets/main.css` делает его `overflow: hidden` — страница под модалкой не прокручивается. Чтобы страница не «прыгала» при пропадании полосы прокрутки, у `html` стоит `scrollbar-gutter: stable`. Не возвращать `body.p-overflow-hidden { overflow-y: scroll }` — раньше именно оно разрешало прокрутку под модалками.
 
 ---
 

@@ -33,6 +33,8 @@
         :removable-sort="false"
         responsive-layout="scroll"
         class="full-width-table"
+        :row-class="bulkRowClass"
+        @row-click="onRowClick"
       >
         <template #header>
           <div class="table-header">
@@ -103,7 +105,16 @@
         <template v-if="tableView === 'rival'">
           <Column field="statusCode" header="Status" :sortable="true" class="status-column">
             <template #body="{ data }">
-              <StatusIndicator :status="data.statusCode" :type="data.type" />
+              <!-- Массовая бронь: пока есть выбор, у свободных устройств вместо
+                   статуса галочка (клик по строке переключает её) -->
+              <Checkbox
+                v-if="bulkMode && isBulkSelectable(data)"
+                :model-value="isBulkSelected(data)"
+                binary
+                class="bulk-checkbox"
+                v-tooltip.bottom="'Click the row to select / deselect'"
+              />
+              <StatusIndicator v-else :status="data.statusCode" :type="data.type" />
             </template>
           </Column>
 
@@ -169,7 +180,16 @@
         <template v-else>
           <Column field="statusCode" header="Status" :sortable="true" class="status-column">
             <template #body="{ data }">
-              <StatusIndicator :status="data.statusCode" :type="data.type" />
+              <!-- Массовая бронь: пока есть выбор, у свободных устройств вместо
+                   статуса галочка (клик по строке переключает её) -->
+              <Checkbox
+                v-if="bulkMode && isBulkSelectable(data)"
+                :model-value="isBulkSelected(data)"
+                binary
+                class="bulk-checkbox"
+                v-tooltip.bottom="'Click the row to select / deselect'"
+              />
+              <StatusIndicator v-else :status="data.statusCode" :type="data.type" />
             </template>
           </Column>
 
@@ -256,6 +276,43 @@
         </template>
       </DataTable>
 
+      <!-- Массовая бронь: панель с выбранными устройствами -->
+      <transition name="bulk-bar">
+        <div v-if="bulkMode && !showBulkBooking" class="bulk-booking-bar">
+          <i class="pi pi-check-square"></i>
+          <span>Selected: <strong>{{ bulkSelectedDevices.length }}</strong></span>
+          <Button
+            label="Book selected"
+            icon="pi pi-lock"
+            class="p-button-sm"
+            @click="showBulkBooking = true"
+          />
+          <Button
+            label="Clear"
+            icon="pi pi-times"
+            class="p-button-sm p-button-text bulk-clear-btn"
+            @click="clearBulk"
+          />
+        </div>
+      </transition>
+
+      <BookingDurationDialog
+        v-model:visible="showBulkBooking"
+        :header="`Book ${bulkSelectedDevices.length} device${bulkSelectedDevices.length === 1 ? '' : 's'}`"
+        action-label="Book"
+        :loading="bulkBooking"
+        @confirm="bookSelected"
+      >
+        <div class="bulk-device-list">
+          <Tag
+            v-for="d in bulkSelectedDevices"
+            :key="d.id"
+            :value="d.shortName ? `${d.hwId} · ${d.shortName}` : d.hwId"
+            severity="info"
+          />
+        </div>
+      </BookingDurationDialog>
+
       <PrimeDeviceModal
         ref="deviceModal"
         :device="selectedDevice"
@@ -290,6 +347,8 @@ import { socket } from '@/socket'
 import StatusIndicator from './StatusIndicator.vue'
 import BookingStatus from './BookingStatus.vue'
 import BookedByOther from './BookedByOther.vue'
+import BookingDurationDialog from './BookingDurationDialog.vue'
+import Checkbox from 'primevue/checkbox'
 import WanTypeDisplay from './WanTypeDisplay.vue'
 import DeviceActions from './DeviceActions.vue'
 import PrimeDeviceModal from './PrimeDeviceModal.vue'
@@ -323,6 +382,99 @@ const changeModeModal = ref(null)
 const progressModal = ref(null)
 const sortField = ref('statusCode')
 const sortOrder = ref(-1)
+
+// ========== МАССОВАЯ БРОНЬ ==========
+// Клик по строке свободного устройства отмечает его (вместо статуса —
+// галочка), панель внизу бронирует все отмеченные на одно время — тем же
+// device:book, что и одиночная бронь. Клики по кнопкам/переключателям строки
+// выбор не трогают. Esc — сбросить выбор.
+const bulkSelected = ref(new Set())
+const showBulkBooking = ref(false)
+const bulkBooking = ref(false)
+
+const isBulkSelectable = (device) => !device?.booking?.isBooked
+const isBulkSelected = (device) => bulkSelected.value.has(String(device.id))
+
+// Только ещё свободные: занятое кем-то за время выбора выпадает само
+const bulkSelectedDevices = computed(() =>
+  deviceStore.devices.filter(d => bulkSelected.value.has(String(d.id)) && isBulkSelectable(d))
+)
+const bulkMode = computed(() => bulkSelectedDevices.value.length > 0)
+
+watch(bulkSelectedDevices, (list) => {
+  if (list.length !== bulkSelected.value.size) {
+    bulkSelected.value = new Set(list.map(d => String(d.id)))
+  }
+})
+
+const toggleBulk = (device) => {
+  if (!isBulkSelectable(device)) return
+  const next = new Set(bulkSelected.value)
+  const id = String(device.id)
+  if (next.has(id)) next.delete(id)
+  else next.add(id)
+  bulkSelected.value = next
+}
+
+const clearBulk = () => {
+  bulkSelected.value = new Set()
+}
+
+const ROW_INTERACTIVE = 'button, a, input, textarea, select, label, [role="button"], [role="switch"], ' +
+  '.p-togglebutton, .p-dropdown, .p-inputswitch, .p-slider'
+
+const onRowClick = ({ originalEvent, data }) => {
+  if (originalEvent?.target?.closest?.(ROW_INTERACTIVE)) return
+  // Выделили текст мышью — это не выбор строки
+  if (window.getSelection?.()?.toString()) return
+  toggleBulk(data)
+}
+
+const bulkRowClass = (device) => ({
+  'bulk-selectable': isBulkSelectable(device),
+  'bulk-selected': isBulkSelected(device) && isBulkSelectable(device)
+})
+
+const bookSelected = async (seconds) => {
+  const list = bulkSelectedDevices.value
+  if (!list.length) return
+  bulkBooking.value = true
+  const failed = []
+  // По очереди: каждая бронь на сервере ещё и запрашивает статус питания
+  for (const device of list) {
+    try {
+      await deviceStore.bookDevice(String(device.id), seconds)
+    } catch (error) {
+      failed.push({ device, reason: error.message })
+    }
+  }
+  bulkBooking.value = false
+  showBulkBooking.value = false
+
+  const booked = list.length - failed.length
+  if (booked > 0) {
+    toast.add({
+      severity: 'success',
+      summary: 'Devices booked',
+      detail: `Booked ${booked} of ${list.length}`,
+      life: 4000
+    })
+  }
+  if (failed.length) {
+    toast.add({
+      severity: 'error',
+      summary: `Not booked: ${failed.length}`,
+      detail: failed.map(f => `${f.device.hwId}: ${f.reason}`).join('; '),
+      life: 10000
+    })
+  }
+  // В выборе остаются только неудачные — можно повторить
+  bulkSelected.value = new Set(failed.map(f => String(f.device.id)))
+}
+
+const onBulkKeydown = (event) => {
+  if (event.key === 'Escape' && bulkMode.value && !showBulkBooking.value) clearBulk()
+}
 
 // Our Devices / Rival Devices (rivals: true в devices.json). Выбор помним
 // в localStorage — удобство, без него просто открывается Our Devices.
@@ -804,6 +956,7 @@ const handleModalSave = (data) => {
 
 // ========== LIFECYCLE ==========
 onMounted(async () => {
+  window.addEventListener('keydown', onBulkKeydown)
   // Загружаем состояние свернутой секции
   deviceStore.loadCollapsedState()
   
@@ -855,6 +1008,7 @@ onMounted(async () => {
 
 onBeforeUnmount(() => {
   // ✅ ОЧИЩАЕМ ВСЕ СЛУШАТЕЛИ
+  window.removeEventListener('keydown', onBulkKeydown)
   window.removeEventListener('firmware:batchUpdated', handleBatchFirmwareUpdated)
   socket.off('device:firmwareUpdated', handleFirmwareUpdated)
   socket.off('device:batchFirmwareUpdated', handleBatchFirmwareUpdated)
@@ -1069,5 +1223,66 @@ watch(() => deviceStore.availableDevices, (newDevices) => {
 }
 :deep(.p-datatable) {
   border: none;
+}
+
+/* ========== Массовая бронь ========== */
+:deep(.p-datatable-tbody > tr.bulk-selectable) {
+  cursor: pointer;
+}
+
+:deep(.p-datatable-tbody > tr.bulk-selected > td) {
+  background: var(--primary-50, #eef2ff) !important;
+}
+
+:deep(.p-datatable-tbody > tr.bulk-selected) {
+  box-shadow: inset 3px 0 0 var(--primary-color);
+}
+
+/* Галочка только показывает состояние — переключает клик по строке */
+.bulk-checkbox {
+  pointer-events: none;
+}
+
+.bulk-booking-bar {
+  position: fixed;
+  left: 50%;
+  bottom: 1.5rem;
+  transform: translateX(-50%);
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.6rem 1rem;
+  background: var(--surface-0, #fff);
+  border: 1px solid var(--surface-300, #dee2e6);
+  border-radius: 12px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
+  white-space: nowrap;
+}
+
+.bulk-booking-bar > .pi {
+  color: var(--primary-color);
+  font-size: 1.1rem;
+}
+
+.bulk-bar-enter-active,
+.bulk-bar-leave-active {
+  transition: opacity 0.2s, transform 0.2s;
+}
+
+.bulk-bar-enter-from,
+.bulk-bar-leave-to {
+  opacity: 0;
+  transform: translate(-50%, 1rem);
+}
+
+.bulk-device-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  max-height: 120px;
+  overflow-y: auto;
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid var(--surface-200);
 }
 </style>

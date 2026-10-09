@@ -36,8 +36,14 @@ html, body {
   backdrop-filter: blur(0.5px) !important;
   z-index: var(--z-index-modal) !important;
 }
-/* Предотвращаем дерганье скролла при открытии модалок */
+/* Под открытой модалкой страница не прокручивается: Dialog с block-scroll
+   вешает на body .p-overflow-hidden. Место под полосу прокрутки зарезервировано
+   (scrollbar-gutter), поэтому при открытии/закрытии страница не «прыгает». */
+html {
+  scrollbar-gutter: stable;
+}
 body.p-overflow-hidden {
+  overflow: hidden !important;
   padding-right: 0 !important;
 }
 
@@ -50,10 +56,6 @@ body.p-overflow-hidden {
 .p-dropdown-panel {
   position: fixed !important;
   z-index: 10000 !important;
-}
-body.p-overflow-hidden {
-    overflow-y: scroll !important;
-    padding-right: 0 !important;
 }
 /* Стили для Progress Dialog */
 .operation-dialog-overlay .p-dialog {
@@ -281,11 +283,6 @@ body.p-overflow-hidden {
     position: fixed !important;
 }
 
-/* Предотвращаем добавление overflow:hidden к body от Dropdown */
-body.p-overflow-hidden {
-    overflow-y: scroll !important;
-    padding-right: 0 !important;
-}
 
 /* Отключаем блокировку прокрутки для Dropdown в модалках */
 .p-dialog .p-dropdown-panel {
