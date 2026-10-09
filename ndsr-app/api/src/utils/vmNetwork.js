@@ -2,7 +2,8 @@
 //
 // LAN-адаптер каждой VM висит на своей port group ESXi с VLAN `vm.vlan`; на
 // docker-хосте этому VLAN соответствует сабинтерфейс ndsr-vm<vlan> на trunk-NIC
-// (VM_TRUNK_IFACE, в netplan стенда это `int`). Атач = он входит в мост LAN
+// (VM_TRUNK_IFACE, в netplan стенда это `int`) — или уже существующий там
+// VLAN-интерфейс с тем же VID, например vlan4051 (findVlanIf). Атач = он входит в мост LAN
 // устройства — мост, в котором на хосте сидит VLAN `vlanLocal` устройства
 // (у CFK-моделей это kn2610 с vlan1904), а если такого нет — мост
 // ndsr-lan<vlan>, который создаётся здесь и удаляется с последней VM.
@@ -130,9 +131,29 @@ async function bridgeExists(ssh, bridge) {
     return res.code === 0 && res.stdout.includes(bridge);
 }
 
+// VLAN-интерфейс VM на транке. Если там уже есть интерфейс с этим VID
+// (заведён под VM заранее, например vlan4051 из netplan) — берём его: второй
+// интерфейс с тем же VID на одном родителе ядро не создаст (EEXIST).
+// null — интерфейса нет (будет создан ndsr-vm<vlan>).
+async function findVlanIf(ssh, vlan) {
+    const vid = vlanId(vlan);
+    const parent = await resolveTrunk(ssh);
+    const res = await run(ssh, 'ip -d -o link show type vlan', { allowFail: true });
+    const found = [];
+    for (const line of (res.stdout || '').split('\n')) {
+        const m = line.match(/^\d+:\s+([^@:\s]+)@([^:\s]+):.*\bvlan protocol 802\.1Q id (\d+)\b/);
+        if (m && m[2] === parent && Number(m[3]) === vid) found.push(m[1]);
+    }
+    // Свой ndsr-vm<vlan> предпочтительнее (на случай если их несколько на разных путях)
+    const name = found.find(n => n === vlanIfName(vlan)) || found[0] || null;
+    if (name) assertSafe(name, SAFE_NAME, 'VLAN interface');
+    return name;
+}
+
 // Мост, в котором сейчас сабинтерфейс VM (null — не подключён / не существует)
 async function getVlanMaster(ssh, vlan) {
-    const ifname = vlanIfName(vlan);
+    const ifname = await findVlanIf(ssh, vlan);
+    if (!ifname) return null;
     const res = await run(ssh, `ip -o link show dev ${ifname}`, { allowFail: true });
     if (res.code !== 0) return null;
     const m = res.stdout.match(/\bmaster (\S+)/);
@@ -141,10 +162,10 @@ async function getVlanMaster(ssh, vlan) {
 
 // Сабинтерфейс создаётся по требованию — netplan для VM не нужен
 async function ensureVlanIf(ssh, vlan) {
-    const ifname = vlanIfName(vlan);
-    const parent = await resolveTrunk(ssh);
-    const exists = await run(ssh, `ip -o link show dev ${ifname}`, { allowFail: true });
-    if (exists.code !== 0) {
+    let ifname = await findVlanIf(ssh, vlan);
+    if (!ifname) {
+        const parent = await resolveTrunk(ssh);
+        ifname = vlanIfName(vlan);
         await run(ssh, `ip link add link ${parent} name ${ifname} type vlan id ${vlanId(vlan)}`);
     }
     await run(ssh, `ip link set dev ${ifname} up`);
@@ -159,9 +180,8 @@ async function attachVlanToBridge(ssh, vlan, bridge) {
 
 // Парковка: вне мостов VLAN VM ни с чем не связан
 async function detachVlan(ssh, vlan) {
-    const ifname = vlanIfName(vlan);
-    const exists = await run(ssh, `ip -o link show dev ${ifname}`, { allowFail: true });
-    if (exists.code !== 0) return;
+    const ifname = await findVlanIf(ssh, vlan);
+    if (!ifname) return;
     await run(ssh, `ip link set dev ${ifname} nomaster`);
 }
 
@@ -228,6 +248,7 @@ export {
     bridgeExists,
     getVlanMaster,
     ensureVlanIf,
+    findVlanIf,
     attachVlanToBridge,
     detachVlan,
     setRdpAccess,
