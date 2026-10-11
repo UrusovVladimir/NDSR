@@ -1,4 +1,4 @@
-import { getParamRouter, getDeviceById, getDeviceStatusCode } from "../devices.js";
+import { getParamRouter, getDeviceById, getDeviceStatusCode, devices, saveConfig } from "../devices.js";
 import { makeAuthenticatedRequest } from "./athentication.js";
 import axios from "axios";
 import { connectToMws } from "./connectToMws.js"; 
@@ -187,13 +187,15 @@ async function pollNeighbors(routerUrl, login, routerPassword, targetMac, maxAtt
   
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     try {
-      const neighborsData = await makeAuthenticatedRequest(
-        routerUrl,
-        login,
-        routerPassword,
-        '/rci/show/ip/neighbor',
-        'GET'
-      );
+      let neighborsData;
+      try {
+        neighborsData = await makeAuthenticatedRequest(routerUrl, login, routerPassword, '/rci/show/ip/neighbor', 'GET');
+      } catch (err) {
+        // На части прошивок (5.02) show/ip/neighbor нет — ARP-таблица роутера
+        if (!String(err.message).includes('404')) throw err;
+        const arp = await makeAuthenticatedRequest(routerUrl, login, routerPassword, '/rci/show/ip/arp', 'GET');
+        neighborsData = Array.isArray(arp?.ip) ? arp.ip : [];
+      }
       
       if (neighborsData && Array.isArray(neighborsData)) {
         const foundDevice = neighborsData.find(neighbor => {
@@ -224,7 +226,35 @@ async function pollNeighbors(routerUrl, login, routerPassword, targetMac, maxAtt
   
   return null;
 }
+const normMac = (mac) => String(mac || '').replace(/[^0-9a-f]/gi, '').toLowerCase();
+
+// MAC экстендера — по нему он ищется у роутера (MWS-кандидаты, ARP). Это MAC
+// LAN экстендера (Bridge0; совпадает с macAddress прод-конфигов). Пусто в
+// devices.json — читаем с самого устройства (пока оно ещё в режиме роутера)
+// и сохраняем. Не вышло — ошибка ДО любых изменений: раньше подключение
+// ждало пустой MAC ~26 минут и падало.
+export async function ensureExtenderMac(device, url, password) {
+  if (normMac(device.macAddress).length === 12) return device.macAddress;
+  let mac = null;
+  try {
+    const bridge = await makeAuthenticatedRequest(url, 'admin', password, '/rci/show/interface/Bridge0', 'GET');
+    mac = bridge?.mac || null;
+  } catch (err) {
+    console.warn(`⚠️ ${device.hwId}: cannot read MAC from device: ${err.message}`);
+  }
+  if (normMac(mac).length !== 12) {
+    throw new Error(`${device.hwId}: macAddress is empty in devices.json and could not be read from the device — set it in devices.json and retry`);
+  }
+  device.macAddress = String(mac).toLowerCase();
+  saveConfig(process.env.DEVICES_CONFIG_PATH, devices);
+  console.log(`🔧 ${device.hwId}: macAddress ${device.macAddress} read from device (Bridge0) and saved`);
+  return device.macAddress;
+}
+
 async function waitForExtenderInMwsCandidates(routerId, extenderMac, routerPassword, maxAttempts = 60, delay = 5000) {
+  if (normMac(extenderMac).length !== 12) {
+    throw new Error(`Extender MAC is not set (got "${extenderMac || ''}") — cannot find it on the router`);
+  }
   try {
     console.log(`🔍 Ожидание появления extender'а ${extenderMac} в MWS кандидатах`);
     
@@ -562,6 +592,10 @@ export const changeSystemMode = async (deviceId, routerId, mode, password, route
         const finalRouterPassword = routerPassword;
 
         const login = 'admin';
+
+        if (mode === 'extender' && routerId) {
+            await ensureExtenderMac(device, url, password);
+        }
 
         // ✅ ШАГ 1: Проверяем текущий режим
         const currentModeResult = await checkDeviceMode(url, login, password);

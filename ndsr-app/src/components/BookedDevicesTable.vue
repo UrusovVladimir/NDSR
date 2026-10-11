@@ -999,7 +999,18 @@
                         <div class="field-group" v-if="selectedDevice.switchPortWan">
                             <label class="field-label">WAN Port</label>
                             <div class="field-value-group">
-                                <span class="field-value">{{ selectedDevice.switchPortWan }}</span>
+                                <span class="field-value">
+                                    {{ selectedDevice.switchPortWan }}<template v-if="selectedDevice.switchIDWan"> (switch {{ selectedDevice.switchIDWan }})</template>
+                                </span>
+                            </div>
+                        </div>
+                        <!-- Второй WAN-порт (Dual WAN); свич пуст — тот же, что у первого -->
+                        <div class="field-group" v-if="selectedDevice.switchPortWanSecondary">
+                            <label class="field-label">WAN Port 2</label>
+                            <div class="field-value-group">
+                                <span class="field-value">
+                                    {{ selectedDevice.switchPortWanSecondary }}<template v-if="selectedDevice.switchIDWanSecondary || selectedDevice.switchIDWan"> (switch {{ selectedDevice.switchIDWanSecondary || selectedDevice.switchIDWan }})</template>
+                                </span>
                             </div>
                         </div>
                         <div class="field-group" v-if="selectedDevice.switchPortLan">

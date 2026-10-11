@@ -641,7 +641,7 @@ App.vue
 6. `changeSystemMode`: `POST /rci/system/mode` → через 2 с `POST /rci/system/reboot`.
 7. Для экстендера с `routerId`:
    - `connectToMws` — VLAN роутера на LAN-порт экстендера;
-   - ожидание экстендера в `show/mws/candidate` / `show/ip/neighbor` — **до десятков минут**;
+   - ожидание экстендера в `show/mws/candidate` / `show/ip/neighbor` (нет на прошивке — 404 → `show/ip/arp`) — **до десятков минут**; ищется по `macAddress` экстендера. Пустой `macAddress` — до любых изменений (до WAN off) MAC читается с экстендера (`/rci/show/interface/Bridge0`, это MAC его LAN) и сохраняется в `devices.json` (`ensureExtenderMac`); не прочитался — подключение сразу отклоняется. Раньше пустой MAC давал ~26 минут ожидания и ошибку;
    - проброс портов (`DockerManager.setupPortForwarding`, пишет `mwsLinks`).
 8. Ожидание загрузки → `currentModes.set` (только при успехе) → `waitForOnline` → события `device:modeUpdated`, `device:mwsStatusUpdated` и `device:modeChangeResult`.
 
@@ -964,7 +964,7 @@ ping -c2 10.10.31.11; nc -vz 10.10.31.11 3389
 
 Чего не хватает сейчас:
 
-- `macAddress` обязателен для MWS и поиска IP экстендера;
+- `macAddress` нужен для MWS и поиска IP экстендера (MAC LAN/Bridge0; при подключении экстендера с пустым — читается с устройства и сохраняется);
 - без `dslPort` сброс DSL всегда падает;
 - без `port` у роутера trunk для MWS настраивается только на одном порту.
 
@@ -1084,7 +1084,7 @@ cd ndsr-app/api && node --env-file=.env -e "import('./src/socketHandler.js')"
 | «WAN applied partially» | один из WAN-свичей недоступен / сбой на нём; в таблице — фактическое состояние | текст предупреждения или лог `❌ WAN <id>: …`; `nc -vz <switch> 23` |
 | WAN не переключается | telnet к WAN-коммутатору, `switchIDWan`/`switchPortWan` (`switchIDWanSecondary`/`switchPortWanSecondary` для второго порта), номер свича за пределами `SWITCH_WAN_IPs`, VLAN нет в `wan_types.json` | лог changeWanType (`🔌 WAN-коммутатор <ip>: …`); `telnet <switch>`; `show vlan` |
 | Сброс DSL всегда ошибка | у устройства нет `dslPort` | devices.json |
-| Смена режима висит | ожидание MWS-кандидата может длиться десятки минут; экстендер не видит роутер (VLAN) | лог changeModeType; `show mws candidate` на роутере; события `device:modeChangeProgress` |
+| Смена режима висит | ожидание MWS-кандидата может длиться десятки минут; экстендер не видит роутер (VLAN); у экстендера неверный `macAddress` (в логе `Ожидание появления extender'а <MAC>`) | лог changeModeType; `show mws candidate` на роутере; события `device:modeChangeProgress` |
 | Режим показан неверно | устаревший localStorage `deviceCurrentMode`; `current_modes.json` из старого деплоя | очистить localStorage; `current_modes.json`; «обновить режим» в UI |
 | Веб экстендера через роутер не открывается | нет DNAT на хосте/в контейнере; IP экстендера не найден (нет `macAddress`); экстендер сменил IP по DHCP | `mws_links.json` (`extenderIp`); `nft list table ip nat`; `docker exec <router hwId> iptables -t nat -S` |
 | После отключения/сброса экстендер всё ещё в сети роутера или веб открывается через роутер | связка разобрана не до конца (см. 8.5, «Что создаёт подключение…») | пройти по таблице в 8.5; повторить отключение или factory reset экстендера — снятие идемпотентно |

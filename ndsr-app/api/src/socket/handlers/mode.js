@@ -10,7 +10,8 @@ import { makeAuthenticatedRequest } from '../../actions/athentication.js';
 import {
   changeSystemMode,
   checkDeviceMode,
-  disconnectAndChangeToRouter
+  disconnectAndChangeToRouter,
+  ensureExtenderMac
 } from '../../actions/changeModeType.js';
 import { DisconnectManager } from '../../utils/disconnectManager.js';
 import { currentModes } from '../../state/modes.js';
@@ -431,6 +432,9 @@ export function register(socket, io) {
       if (mode === 'extender_connect') {
         try {
           finalRouterPassword = await resolveRouterPassword(routerId, socket.clientIp, routerPassword || null);
+          // MAC экстендера нужен, чтобы найти его у роутера; проверяем до WAN off
+          const ext = getDeviceById(deviceId);
+          await ensureExtenderMac(ext, ext.checkDeviceMode || ext.checkUrl || ext.URL, workingPassword);
         } catch (err) {
           console.warn(`🔑 Mode change aborted for ${deviceId}: ${err.message}`);
           callback({ success: false, error: err.message });
