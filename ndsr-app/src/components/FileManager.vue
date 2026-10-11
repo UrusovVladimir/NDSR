@@ -299,7 +299,9 @@ const handleCloseFiles = () => {
 }
 
 // URL для API
-const API_BASE_URL = import.meta.env.VITE_API_URL
+// Пусто/не задано — тот же адрес, что у страницы (nginx проксирует /api/ на
+// бэкенд). Без «|| ''» в URL попадала строка "undefined": /undefined/api/…
+const API_BASE_URL = import.meta.env.VITE_API_URL || ''
 
 const getFileSize = (fileName) => {
   if (!fileName) return ''
@@ -408,7 +410,8 @@ const uploadAllFiles = async () => {
             reject(new Error('Invalid response format'))
           }
         } else if (xhr.status === 413) {
-          reject(new Error('File too large (max 100MB)'))
+          // 413 отдаёт nginx/бэкенд по своему лимиту — не придумываем цифру
+          reject(new Error('File is too large for the server (HTTP 413)'))
         } else {
           reject(new Error(`Upload failed (status ${xhr.status})`))
         }
