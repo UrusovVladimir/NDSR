@@ -1,6 +1,13 @@
 // Окно RDP к тестовой VM в браузере (Guacamole). Открывается из VmAttachDialog:
 // /rdp.html#vm=<id>&t=<token>&name=<имя>. Токен короткоживущий и одноразовый
 // по смыслу — при переподключении берётся новый через socket.io (vm:getRdpToken).
+//
+// Буфер обмена → VM. Портал открыт по http, браузер не даёт странице читать
+// системный буфер, а Ctrl+V перехватывает клавиатура Guacamole (событие paste
+// не возникает). Поэтому: пароль устройства (из vm:getRdpToken) кладётся в
+// буфер VM при подключении и кнопкой «Device password → VM»; любой текст —
+// через поле в панели (вставить туда Ctrl+V → Enter/Send). Пока фокус в поле,
+// клавиши в VM не уходят. Дальше в VM — обычный Ctrl+V.
 import Guacamole from 'guacamole-common-js'
 import { socket } from '@/socket'
 import './rdp.css'
@@ -15,7 +22,12 @@ history.replaceState(null, '', location.pathname)
 document.title = `RDP — ${vmName}`
 document.getElementById('rdp-title').textContent = vmName
 
+let devicePassword = null
+let deviceName = null
+
 const statusEl = document.getElementById('rdp-status')
+const passBtn = document.getElementById('rdp-pass')
+const clipInput = document.getElementById('rdp-clip')
 const screenEl = document.getElementById('rdp-screen')
 const reconnectBtn = document.getElementById('rdp-reconnect')
 const setStatus = (text, isError = false) => {
@@ -36,14 +48,33 @@ const screenSize = () => ({
   height: Math.max(480, screenEl.clientHeight)
 })
 
+// Токен + пароль устройства, к которому подключена VM
 const fetchToken = () => new Promise((resolve, reject) => {
   const timer = setTimeout(() => reject(new Error('No response from server')), 15000)
   socket.emit('vm:getRdpToken', { vmId }, (res) => {
     clearTimeout(timer)
-    if (res?.success) resolve(res.token)
-    else reject(new Error(res?.error || 'Cannot get RDP token'))
+    if (!res?.success) return reject(new Error(res?.error || 'Cannot get RDP token'))
+    devicePassword = res.devicePassword || null
+    deviceName = res.deviceName || null
+    passBtn.hidden = !devicePassword
+    if (deviceName) passBtn.title = `Put the password of ${deviceName} into the VM clipboard, then press Ctrl+V inside the VM`
+    resolve(res.token)
   })
 })
+
+// Текст → буфер обмена VM (вставка в VM — Ctrl+V уже внутри неё)
+const sendToVmClipboard = (text, what = 'Text') => {
+  if (!client || !text) return false
+  const stream = client.createClipboardStream('text/plain')
+  const writer = new Guacamole.StringWriter(stream)
+  writer.sendText(text)
+  writer.sendEnd()
+  setStatus(`${what} is in the VM clipboard — press Ctrl+V inside the VM`)
+  return true
+}
+
+// Фокус в поле панели — клавиши остаются браузеру, в VM не уходят
+const typingLocally = () => !!document.activeElement?.closest?.('#rdp-toolbar input')
 
 const STATE_TEXT = {
   1: 'Connecting…',
@@ -65,7 +96,11 @@ function connect() {
 
   client.onstatechange = (state) => {
     setStatus(STATE_TEXT[state] || '')
-    if (state === 3) screenEl.focus()
+    if (state === 3) {
+      screenEl.focus()
+      // Сразу кладём пароль устройства — в веб роутера внутри VM просто Ctrl+V
+      if (devicePassword) sendToVmClipboard(devicePassword, `Password of ${deviceName || 'the device'}`)
+    }
     if (state === 5) reconnectBtn.hidden = false
   }
   client.onerror = (status) => {
@@ -114,17 +149,39 @@ function connect() {
 
 // Клавиатура — на весь документ, но только когда окно в фокусе
 keyboard = new Guacamole.Keyboard(document)
-keyboard.onkeydown = (keysym) => { client?.sendKeyEvent(1, keysym) }
-keyboard.onkeyup = (keysym) => { client?.sendKeyEvent(0, keysym) }
+// true — клавиша остаётся браузеру (ввод в поле панели)
+keyboard.onkeydown = (keysym) => {
+  if (typingLocally()) return true
+  client?.sendKeyEvent(1, keysym)
+  return false
+}
+keyboard.onkeyup = (keysym) => {
+  if (typingLocally()) return
+  client?.sendKeyEvent(0, keysym)
+}
 
-// Вставка из локального буфера → VM
-document.addEventListener('paste', (e) => {
-  const text = e.clipboardData?.getData('text/plain')
-  if (!text || !client) return
-  const stream = client.createClipboardStream('text/plain')
-  const writer = new Guacamole.StringWriter(stream)
-  writer.sendText(text)
-  writer.sendEnd()
+// Поле панели: вставка (Ctrl+V) или ввод + Enter/Send → буфер VM
+const sendClipInput = () => {
+  if (sendToVmClipboard(clipInput.value, 'Text')) {
+    clipInput.value = ''
+    screenEl.focus()
+  }
+}
+clipInput.addEventListener('paste', () => setTimeout(sendClipInput, 0))
+clipInput.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') sendClipInput()
+  if (e.key === 'Escape') { clipInput.value = ''; screenEl.focus() }
+})
+document.getElementById('rdp-clip-send').addEventListener('click', sendClipInput)
+
+passBtn.addEventListener('click', () => {
+  sendToVmClipboard(devicePassword, `Password of ${deviceName || 'the device'}`)
+  screenEl.focus()
+})
+
+// Клик по экрану возвращает клавиатуру в VM
+screenEl.addEventListener('mousedown', () => {
+  if (document.activeElement !== screenEl) screenEl.focus()
 })
 
 document.getElementById('rdp-cad').addEventListener('click', () => {
@@ -158,5 +215,9 @@ window.addEventListener('beforeunload', () => client?.disconnect())
 if (!vmId || !token) {
   setStatus('Open this window from the portal (Test VMs → Open in browser)', true)
 } else {
-  connect()
+  // Свежий токен вместе с паролем устройства; не вышло — токен из адреса
+  fetchToken()
+    .then((fresh) => { token = fresh })
+    .catch(() => {})
+    .finally(connect)
 }

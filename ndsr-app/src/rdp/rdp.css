@@ -50,6 +50,20 @@ body {
   background: #474747;
 }
 
+#rdp-clip {
+  width: 15rem;
+  background: #1e1e1e;
+  color: #e5e5e5;
+  border: 1px solid #4b4b4b;
+  border-radius: 4px;
+  padding: 0.2rem 0.5rem;
+  font: inherit;
+}
+
+#rdp-clip:focus {
+  outline: 1px solid #60a5fa;
+}
+
 #rdp-screen {
   flex: 1 1 auto;
   position: relative;

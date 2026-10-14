@@ -15,8 +15,10 @@
 // подключена тем же пользователем.
 import { createRequire } from 'module';
 import { randomBytes } from 'crypto';
-import { getVmById } from '../devices.js';
+import { getVmById, getDeviceById } from '../devices.js';
 import { vmAttachments } from '../state/vmAttachments.js';
+import { deviceBookings } from '../state/bookings.js';
+import { getEffectiveDevicePassword } from './passwordService.js';
 
 const require = createRequire(import.meta.url);
 const GuacamoleLite = require('guacamole-lite');
@@ -93,7 +95,18 @@ function getRdpTokenFor(socket, vmId) {
     if (!vm) throw new Error(`VM ${vmId} not found`);
     const a = vmAttachments.get(String(vm.id));
     if (!a || a.attachedBy !== socket.clientIp) throw new Error('VM is not attached by you.');
-    return { token: createRdpToken(vm, socket.clientIp), name: vm.name || String(vm.id) };
+    // Пароль устройства, к которому подключена VM — страница RDP кладёт его в
+    // буфер обмена VM (Ctrl+V при входе в веб устройства). Пароли устройств
+    // видны всем пользователям портала by design; здесь — только владельцу VM.
+    const device = getDeviceById(a.deviceId);
+    const booking = deviceBookings.get(String(a.deviceId));
+    return {
+        token: createRdpToken(vm, socket.clientIp),
+        name: vm.name || String(vm.id),
+        deviceName: device ? (device.shortName ? `${device.hwId} · ${device.shortName}` : device.hwId) : null,
+        devicePassword: getEffectiveDevicePassword(a.deviceId) ||
+            (booking && !booking.passwordInvalidated ? booking.accessPassword : null) || null
+    };
 }
 
 export { isBrowserRdpEnabled, startBrowserRdp, getRdpTokenFor };

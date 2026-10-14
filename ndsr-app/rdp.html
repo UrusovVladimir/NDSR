@@ -11,6 +11,10 @@
     <div id="rdp-toolbar">
         <span id="rdp-title">RDP</span>
         <span id="rdp-status">Connecting…</span>
+        <button type="button" id="rdp-pass" hidden title="Put the device password into the VM clipboard, then press Ctrl+V inside the VM">Device password → VM</button>
+        <input type="text" id="rdp-clip" autocomplete="off" spellcheck="false"
+               placeholder="Paste text here → VM clipboard" title="Paste (Ctrl+V) or type text and press Enter — it goes to the VM clipboard, then Ctrl+V inside the VM">
+        <button type="button" id="rdp-clip-send" title="Send the text to the VM clipboard">Send</button>
         <button type="button" id="rdp-cad" title="Send Ctrl+Alt+Del">Ctrl+Alt+Del</button>
         <button type="button" id="rdp-reconnect" title="Reconnect" hidden>Reconnect</button>
     </div>
