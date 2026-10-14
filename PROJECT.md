@@ -565,6 +565,8 @@ App.vue
 └─ ChatWidget (components/chat/*)
 ```
 
+**Кеш HTML.** nginx фронта отдаёт `*.html` (`index.html`, `rdp.html`, SPA-fallback) с `Cache-Control: no-cache` (`location ~ \.html$` в `nginx.conf.j2`): после обновления портала браузер сразу берёт новую страницу и новые ассеты (их имена с хешем кешируются как обычно). Без этого после деплоя открывалась старая `rdp.html` («ничего не поменялось»). На стендах конфиг — смонтированный `nginx.conf.j2` (77: `~/nginx.conf.j2`, 78: `/home/uvs/NDSR_PROJECT/nginx.conf.j2`), применяется `docker exec ndsr-app-front nginx -s reload`.
+
 **Модальные окна и прокрутка.** Модальный `Dialog` PrimeVue 3 вешает на `body` класс `p-overflow-hidden`, а `src/assets/main.css` делает его `overflow: hidden` — страница под модалкой не прокручивается. Чтобы страница не «прыгала» при пропадании полосы прокрутки, у `html` стоит `scrollbar-gutter: stable`. Не возвращать `body.p-overflow-hidden { overflow-y: scroll }` — раньше именно оно разрешало прокрутку под модалками.
 
 ---

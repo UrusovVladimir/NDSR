@@ -9,6 +9,14 @@ server {
         try_files $uri $uri/ /index.html;
     }
 
+    # HTML (index.html, rdp.html) не кешировать: после обновления портала браузер
+    # сразу берёт новую страницу (а с ней новые ассеты; их имена с хешем
+    # кешируются как обычно). Без этого открывалась старая rdp.html.
+    location ~ \.html$ {
+        root /usr/share/nginx/html;
+        add_header Cache-Control "no-cache";
+    }
+
     # socket.io — на бэкенд. X-Real-IP = адрес инженера: бэкенд по нему
     # идентифицирует пользователя (TRUST_PROXY_HEADERS=true)
     location /socket.io/ {
