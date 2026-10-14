@@ -224,7 +224,10 @@ const openInBrowser = async (vm) => {
   try {
     const { token } = await vmStore.getRdpToken(vm.id)
     const hash = new URLSearchParams({ vm: vm.id, t: token, name: vm.name }).toString()
-    const url = `${import.meta.env.BASE_URL}rdp.html#${hash}`
+    // ?v= — всегда новый адрес: окно не возьмёт старую rdp.html из кеша и
+    // перезагрузится, даже если уже открыто (смена одного #hash страницу не
+    // перезагружает — оставалась старая версия и старая сессия)
+    const url = `${import.meta.env.BASE_URL}rdp.html?v=${Date.now()}#${hash}`
     if (win) win.location.href = url
     else window.open(url, `rdp-${vm.id}`)
   } catch (err) {
