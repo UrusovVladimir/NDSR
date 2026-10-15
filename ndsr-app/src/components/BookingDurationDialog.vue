@@ -4,7 +4,6 @@
     modal
     :header="header"
     :style="{ width: '450px' }"
-    :closable="false"
     @update:visible="v => !v && cancel()"
   >
     <!-- Над ползунком: например, список устройств массовой брони -->

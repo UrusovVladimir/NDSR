@@ -9,7 +9,6 @@
     :contentStyle="{ padding: mobileView ? '1rem' : '1.5rem' }"
     :closable="!isLoading && !operationInProgress && !showDualWanConfirm"
     :closeOnEscape="!isLoading && !operationInProgress && !showDualWanConfirm"
-    :dismissableMask="!isLoading && !operationInProgress && !showDualWanConfirm"
     class="optimized-modal mws-connection-modal"
   >
     <div v-if="isLoading || operationInProgress" class="operation-progress">

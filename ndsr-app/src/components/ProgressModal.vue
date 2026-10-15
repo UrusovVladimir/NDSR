@@ -4,7 +4,6 @@
       :modal="true" 
       :closable="userCanClose"
       :closeOnEscape="userCanClose"
-      :dismissableMask="userCanClose"
       :header="modalHeader"
       :style="{ width: mobileView ? '95vw' : '550px' }"
       class="universal-progress-modal"

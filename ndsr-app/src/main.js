@@ -12,9 +12,14 @@ import 'primevue/resources/primevue.min.css'
 import 'primeicons/primeicons.css'
 import 'primeflex/primeflex.css'
 
+import { installDialogOutsideClose } from './utils/dialogOutsideClose'
+
 // Кастомные стили
 import './assets/main.css'
 import './assets/common-table-styles.css'
+
+// Модальные окна закрываются кликом по затемнению (не при выделении текста)
+installDialogOutsideClose()
 
 const app = createApp(App)
 const pinia = createPinia()
