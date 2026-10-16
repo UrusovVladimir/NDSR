@@ -201,10 +201,12 @@ ndsr-deploy/
 
 | Метод и путь | Назначение |
 |---|---|
-| `POST /api/upload` | Загрузка файлов (поле `files`, до 50 шт, до 100 МБ, только `.bin`/`.txt`), имя санитизируется |
-| `GET /api/files` | Список файлов в `UPLOAD_DIR` |
+| `POST /api/upload` | Загрузка файлов (поле `files`, до 50 шт, до 100 МБ, только `.bin`/`.txt`), имя санитизируется; кто загрузил (IP клиента) и когда — в `uploads_meta.json` |
+| `GET /api/files` | Список файлов в `UPLOAD_DIR`; у каждого `uploadedBy` (IP, `null` — загружен до учёта или положен в каталог вручную) |
 | `GET /api/files/:filename` | Скачивание (защита от path traversal) |
-| `DELETE /api/files/:filename` | Удаление |
+| `DELETE /api/files/:filename` | Удаление (и записи о загрузившем) |
+
+IP клиента для HTTP и для socket.io определяется одинаково — `src/utils/clientIp.js` (`TRUST_PROXY_HEADERS` → `X-Real-IP` от nginx). Метаданные загрузок — `src/state/uploadsMeta.js`, файл `UPLOADS_META_PATH` (по умолчанию `uploads_meta.json` рядом с `devices.json`, на стендах это каталог состояния), не в `UPLOAD_DIR`: тот отдаётся по TFTP и показывается списком. Записи файлов, убранных из каталога мимо портала, удаляются при показе списка. Файловый менеджер показывает имя загрузившего по `users.json` (`getUserName`), для неизвестных — «—».
 
 Всё остальное идёт через socket.io (раздел 6).
 
@@ -935,7 +937,7 @@ ping -c2 10.10.31.11; nc -vz 10.10.31.11 3389
 
 | Группа | Переменные |
 |---|---|
-| Сервер | `WS_PORT`, `UPLOAD_DIR`, `STATUS_CHECK_INTERVAL` (с, ≥5), `STATUS_CHECK_TIMEOUT` (с) |
+| Сервер | `WS_PORT`, `UPLOAD_DIR`, `UPLOADS_META_PATH` (кто загрузил файлы; по умолчанию рядом с `devices.json`), `STATUS_CHECK_INTERVAL` (с, ≥5), `STATUS_CHECK_TIMEOUT` (с) |
 | Пути к данным | `DEVICES_CONFIG_PATH`, `WAN_TYPES_CONFIG_PATH`, `USER_CONFIG_PATH`, `BADGES_CONFIG_PATH`, `CURRENT_MODES_PATH`, `BOOKINGS_PATH`, `MWS_LINKS_PATH`, `VMS_CONFIG_PATH`, `VM_ATTACHMENTS_PATH` (относительные пути считаются от cwd) |
 | Тестовые VM | `VM_TRUNK_IFACE` (trunk-NIC хоста; по умолчанию определяется сам — родитель существующих VLAN-интерфейсов: в netplan стенда `int` — только id netplan, в системе имя ядра вроде `ens160`), `VM_RDP_IN_IFACE` (`internet`), `VM_RDP_PUBLIC_HOST` (адрес docker-хоста для RDP-клиента), `GUACD_HOST`/`GUACD_PORT`/`GUAC_WS_PORT`/`GUAC_TOKEN_TTL_MS` (RDP в браузере; пустой `GUACD_HOST` — выключено), `VM_RDP_SOURCE_OVERRIDE` (только dev: адрес-источник для RDP-правила вместо IP браузера — dev-бэкенд видит браузер по локальной сети, а mstsc приходит на хост с VPN-адреса) |
 | Логи | `LOG_DIR` (пусто — только stdout), `LOG_MAX_SIZE_MB`, `LOG_MAX_FILES` |

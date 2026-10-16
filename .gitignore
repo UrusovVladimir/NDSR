@@ -10,6 +10,7 @@ bookings.json
 current_modes.json
 mws_links.json
 vm_attachments.json
+uploads_meta.json
 vms.json
 # Переменные окружения
 .env

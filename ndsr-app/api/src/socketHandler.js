@@ -1,6 +1,7 @@
 import { broadcastDevicesStatus } from './services/statusService.js';
 import { sendInitData } from './services/initData.js';
 import { startBackgroundTasks, initPasswordSystem } from './bootstrap.js';
+import { resolveClientIp } from './utils/clientIp.js';
 import { register as registerAdmin } from './socket/handlers/admin.js';
 import { register as registerPower } from './socket/handlers/power.js';
 import { register as registerWan } from './socket/handlers/wan.js';
@@ -20,16 +21,8 @@ import { register as registerAdminBulk } from './socket/handlers/adminBulk.js';
 const TRUST_PROXY_HEADERS = process.env.TRUST_PROXY_HEADERS === 'true';
 const VPN_IP_PREFIXES = (process.env.VPN_IP_PREFIXES || '172.16.').split(',');
 
-function resolveClientIp(handshake) {
-    if (TRUST_PROXY_HEADERS) {
-        const xff = handshake.headers['x-forwarded-for'];
-        return handshake.headers['x-real-ip']
-            || (xff ? xff.split(',')[0].trim() : null)
-            || 'unknown';
-    }
-    // Прямое подключение: только реальный адрес сокета
-    return handshake.address?.replace(/^::ffff:/, '') || 'unknown';
-}
+// Общий с HTTP API (server.js) — utils/clientIp.js
+const resolveSocketClientIp = (handshake) => resolveClientIp(handshake.headers, handshake.address);
 
 startBackgroundTasks();
 
@@ -37,7 +30,7 @@ function setupEvents(socket, io) {
   // 🔒 S4 (light): идентификация клиента через resolveClientIp.
   // При TRUST_PROXY_HEADERS=false заголовкам x-real-ip/x-forwarded-for
   // не доверяем — берём только реальный адрес сокета.
-  socket.clientIp = resolveClientIp(socket.handshake);
+  socket.clientIp = resolveSocketClientIp(socket.handshake);
 
   // Аудит: подключение из неожиданной подсети
   if (!VPN_IP_PREFIXES.some(p => socket.clientIp.startsWith(p))) {

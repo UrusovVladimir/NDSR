@@ -207,6 +207,10 @@
                   <i class="pi pi-calendar"></i>
                   {{ formatDate(file.modified) }}
                 </span>
+                <span class="file-uploader" v-tooltip.bottom="file.uploadedBy ? `Uploaded from ${file.uploadedBy}` : 'Uploader unknown (uploaded before this was tracked)'">
+                  <i class="pi pi-user"></i>
+                  {{ uploaderName(file) }}
+                </span>
               </div>
             </div>
             <div class="file-actions">
@@ -269,6 +273,7 @@ import ConfirmDialog from 'primevue/confirmdialog'
 import Message from 'primevue/message'
 import Badge from 'primevue/badge'
 import DeviceSelector from './DeviceSelector.vue'
+import { useDeviceStore } from '@/stores/useDeviceStore'
 
 const toast = useToast()
 const confirm = useConfirm()
@@ -654,6 +659,10 @@ const formatFileSize = (bytes) => {
   const i = Math.floor(Math.log(bytes) / Math.log(k))
   return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i]
 }
+
+// Кто загрузил: имя из users.json по IP (как в бронях); старые файлы — «—»
+const deviceStore = useDeviceStore()
+const uploaderName = (file) => file.uploadedBy ? deviceStore.getUserName(file.uploadedBy) : '—'
 
 const formatDate = (timestamp) => {
   if (!timestamp) return ''

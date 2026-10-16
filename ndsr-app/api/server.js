@@ -8,6 +8,8 @@ import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
+import { resolveClientIp } from './src/utils/clientIp.js';
+import { uploadsMeta } from './src/state/uploadsMeta.js';
 
 // ✅ Получаем текущую директорию
 const __filename = fileURLToPath(import.meta.url);
@@ -164,7 +166,12 @@ app.post('/api/upload', (req, res) => {
             savedName: file.filename
         }));
 
-        console.log(`✅ Uploaded ${uploadedFiles.length} file(s):`, uploadedFiles.map(f => f.name).join(', '));
+        // Кто загрузил — для файлового менеджера (uploadedBy в /api/files)
+        const uploadedBy = resolveClientIp(req.headers, req.socket?.remoteAddress);
+        const uploadedAt = Date.now();
+        for (const f of uploadedFiles) uploadsMeta.set(f.savedName, { uploadedBy, uploadedAt });
+
+        console.log(`✅ Uploaded ${uploadedFiles.length} file(s) by ${uploadedBy}:`, uploadedFiles.map(f => f.name).join(', '));
 
         // Если загружен один файл
         if (uploadedFiles.length === 1) {
@@ -195,11 +202,14 @@ app.get('/api/files', (req, res) => {
             const filePath = path.join(UPLOAD_DIR, file);
             try {
                 const stats = fs.statSync(filePath);
+                const meta = uploadsMeta.get(file);
                 return {
                     name: file,
                     size: stats.size,
                     modified: stats.mtime,
-                    type: path.extname(file).substring(1)
+                    type: path.extname(file).substring(1),
+                    // null — файл загружен до учёта загрузивших или положен в каталог вручную
+                    uploadedBy: meta?.uploadedBy || null
                 };
             } catch (statError) {
                 console.error(`Failed to stat file ${file}:`, statError);
@@ -208,6 +218,11 @@ app.get('/api/files', (req, res) => {
         }).filter(file => file !== null);
 
         fileList.sort((a, b) => new Date(b.modified) - new Date(a.modified));
+
+        // Файл убрали из каталога мимо портала — его запись больше не нужна
+        for (const name of [...uploadsMeta.keys()]) {
+            if (!files.includes(name)) uploadsMeta.delete(name);
+        }
 
         res.json({ files: fileList });
     });
@@ -241,7 +256,8 @@ app.delete('/api/files/:filename', (req, res) => {
             console.error(`Failed to delete file:`, err);
             return res.status(500).json({ error: 'Failed to delete file' });
         }
-        console.log(`✅ File deleted: ${path.basename(safePath)}`);
+        uploadsMeta.delete(path.basename(safePath));
+        console.log(`✅ File deleted: ${path.basename(safePath)} by ${resolveClientIp(req.headers, req.socket?.remoteAddress)}`);
         res.json({ success: true });
     });
 });
