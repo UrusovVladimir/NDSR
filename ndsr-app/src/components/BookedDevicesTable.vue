@@ -406,6 +406,15 @@
                         @click="executeQuickAction('initialize')"
                     />
                     
+                    <!-- Тестовые VM — как бирюзовая кнопка в Actions (и у конкурентов) -->
+                    <Button
+                        v-if="vmStore.vms.length"
+                        :label="vmStore.vmsForDevice(quickActionDevice.id).length ? `VMs (${vmStore.vmsForDevice(quickActionDevice.id).length})` : 'VMs'"
+                        icon="bi bi-pc-display"
+                        class="p-button-sm p-button-outlined quick-action-btn vm-action-btn"
+                        @click="executeQuickAction('vms')"
+                    />
+
                     <Button
                         label="Details"
                         icon="pi pi-info-circle"
@@ -1316,6 +1325,9 @@ const executeQuickAction = (action) => {
             break
         case 'wanSettings':
             handleOpenWanModal(device)
+            break
+        case 'vms':
+            openVmDialog(device)
             break
     }
 }

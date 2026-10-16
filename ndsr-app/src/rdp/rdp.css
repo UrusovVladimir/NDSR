@@ -64,6 +64,37 @@ body {
   outline: 1px solid #60a5fa;
 }
 
+/* Только что ушло в буфер VM */
+#rdp-clip.sent {
+  border-color: #22c55e;
+  background: rgba(34, 197, 94, 0.15);
+}
+
+#rdp-clip.sent::placeholder {
+  color: #86efac;
+}
+
+/* Подтверждение «в буфере VM» поверх экрана */
+#rdp-toast {
+  position: fixed;
+  top: 3.2rem;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 10;
+  padding: 0.55rem 1rem;
+  border-radius: 6px;
+  background: #14532d;
+  border: 1px solid #22c55e;
+  color: #dcfce7;
+  font-size: 0.9rem;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.45);
+  pointer-events: none;
+  max-width: 90vw;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 #rdp-screen {
   flex: 1 1 auto;
   position: relative;

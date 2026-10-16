@@ -28,6 +28,23 @@ let deviceName = null
 const statusEl = document.getElementById('rdp-status')
 const passBtn = document.getElementById('rdp-pass')
 const clipInput = document.getElementById('rdp-clip')
+const toastEl = document.getElementById('rdp-toast')
+const CLIP_PLACEHOLDER = clipInput.placeholder
+
+// Заметное подтверждение поверх экрана VM
+let toastTimer = null
+const showToast = (text) => {
+  toastEl.textContent = text
+  toastEl.hidden = false
+  clearTimeout(toastTimer)
+  toastTimer = setTimeout(() => { toastEl.hidden = true }, 6000)
+}
+
+// Короткий фрагмент вставленного текста — чтобы было видно, что именно ушло
+const preview = (text) => {
+  const oneLine = text.replace(/\s+/g, ' ').trim()
+  return oneLine.length > 24 ? `${oneLine.slice(0, 24)}…` : oneLine
+}
 const screenEl = document.getElementById('rdp-screen')
 const reconnectBtn = document.getElementById('rdp-reconnect')
 const setStatus = (text, isError = false) => {
@@ -63,13 +80,19 @@ const fetchToken = () => new Promise((resolve, reject) => {
 })
 
 // Текст → буфер обмена VM (вставка в VM — Ctrl+V уже внутри неё)
+// what — что показать пользователю (для пароля — имя устройства, не сам пароль)
 const sendToVmClipboard = (text, what = 'Text') => {
-  if (!client || !text) return false
+  if (!text) return false
+  if (!client) {
+    showToast('Not connected to the VM yet — try again after it connects')
+    return false
+  }
   const stream = client.createClipboardStream('text/plain')
   const writer = new Guacamole.StringWriter(stream)
   writer.sendText(text)
   writer.sendEnd()
   setStatus(`${what} is in the VM clipboard — press Ctrl+V inside the VM`)
+  showToast(`✓ ${what} is in the VM clipboard — press Ctrl+V inside the VM`)
   return true
 }
 
@@ -161,9 +184,20 @@ keyboard.onkeyup = (keysym) => {
 }
 
 // Поле панели: вставка (Ctrl+V) или ввод + Enter/Send → буфер VM
+// После отправки поле на несколько секунд зелёное с подсказкой, что дальше
+let clipSentTimer = null
 const sendClipInput = () => {
-  if (sendToVmClipboard(clipInput.value, 'Text')) {
+  const text = clipInput.value
+  if (!text) return
+  if (sendToVmClipboard(text, `«${preview(text)}» (${text.length} chars)`)) {
     clipInput.value = ''
+    clipInput.classList.add('sent')
+    clipInput.placeholder = '✓ Sent — Ctrl+V in the VM'
+    clearTimeout(clipSentTimer)
+    clipSentTimer = setTimeout(() => {
+      clipInput.classList.remove('sent')
+      clipInput.placeholder = CLIP_PLACEHOLDER
+    }, 6000)
     screenEl.focus()
   }
 }

@@ -44,7 +44,7 @@
             </div>
             <div class="upload-hint">
               <i class="pi pi-info-circle"></i>
-              <span>Supported: .bin files up to 100MB</span>
+              <span>Supported: .bin, .txt files up to 100MB</span>
             </div>
           </div>
         </div>

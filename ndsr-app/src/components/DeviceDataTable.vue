@@ -77,6 +77,8 @@
                       <i class="pi pi-bookmark booked-icon"></i>
                       {{ viewStats.bookedByOthers }} booked by others
                       </span>
+                    <!-- Общие VM: свободно/всего, по клику — кто занял и на сколько -->
+                    <SharedVmsStatus />
                 </span>
 
                 <div class="common-search-wrapper">
@@ -347,6 +349,7 @@ import { socket } from '@/socket'
 import StatusIndicator from './StatusIndicator.vue'
 import BookingStatus from './BookingStatus.vue'
 import BookedByOther from './BookedByOther.vue'
+import SharedVmsStatus from './SharedVmsStatus.vue'
 import BookingDurationDialog from './BookingDurationDialog.vue'
 import Checkbox from 'primevue/checkbox'
 import WanTypeDisplay from './WanTypeDisplay.vue'
