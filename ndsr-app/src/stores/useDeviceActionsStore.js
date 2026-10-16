@@ -5,6 +5,7 @@ import { useToast } from 'primevue/usetoast'
 import { useClipboardStore } from './useClipboardStore'
 import { useDeviceStore } from './useDeviceStore'
 import { useModeStore } from './useModeStore' 
+import { useConsoleLogStore } from './useConsoleLogStore'
 
 export const useDeviceActionsStore = defineStore('deviceActions', () => {
   const clipboardStore = useClipboardStore()
@@ -335,6 +336,10 @@ export const useDeviceActionsStore = defineStore('deviceActions', () => {
 
     startOperation(device.id, operationType)
 
+    // Перезагрузка и сброс — с выводом консоли в окне прогресса
+    const withConsole = ['rebooting', 'resetting'].includes(operationType)
+    if (withConsole) useConsoleLogStore().begin(device.id)
+
     try {
       const progressInterval = setInterval(() => {
         const currentProgress = getDeviceProgress(device.id)
@@ -369,9 +374,11 @@ export const useDeviceActionsStore = defineStore('deviceActions', () => {
       })
 
       await finishOperationWithModeRefresh(device.id)
+      if (withConsole) useConsoleLogStore().finish(device.id)
       return result
 
     } catch (error) {
+      if (withConsole) useConsoleLogStore().finish(device.id)
       console.error(`❌ ${operationType} failed for ${device.hwId}:`, error)
       const newOperations = new Map(activeOperations.value)
       newOperations.delete(device.id)

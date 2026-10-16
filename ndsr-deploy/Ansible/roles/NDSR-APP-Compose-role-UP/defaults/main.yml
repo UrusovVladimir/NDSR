@@ -81,6 +81,8 @@ trust_proxy_headers: "true"
 vpn_ip_prefixes: ""
 # IP администраторов портала (Bulk Power / Reset), через запятую; пусто — нет админов
 admin_ips: ""
+# Хосты консолей устройств через запятую, порядок как у moxa (consoleID 1 — первый); пусто — без вывода консоли
+console_hosts: ""
 
 # Порт PowerHub (jeromeClass: new). Старые Jerome всегда на 2424 (в коде).
 jerome_port: "23"
