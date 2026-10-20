@@ -5,7 +5,7 @@ import { devices, getDeviceById } from '../../devices.js';
 import { getManagmentID } from '../../actions/getManagmentID.js';
 import { consoleUrlCache } from '../../state/consoleUrlCache.js';
 import { requireBooking, requireNotRival } from '../../services/bookingService.js';
-import { isRival } from '../../utils/deviceFlags.js';
+import { isRival, containerNameOf } from '../../utils/deviceFlags.js';
 import { getDeviceStatusWithMode } from '../../services/statusService.js';
 import { sendOperationProgress } from '../../services/progress.js';
 import { initializeDockerManager } from '../../services/docker.js';
@@ -26,8 +26,8 @@ export function register(socket, io) {
               throw new Error('Not available for rival devices.');
           }
           
-          // Имя контейнера - это hwId устройства (например, "KN-2710")
-          const containerName = device.hwId;
+          // Имя контейнера — hwId устройства (например, "KN-2710") или поле container
+          const containerName = containerNameOf(device);
           
           console.log(`🔧 Container name: ${containerName}, Interface: ${tftpInterfaceName}`);
           

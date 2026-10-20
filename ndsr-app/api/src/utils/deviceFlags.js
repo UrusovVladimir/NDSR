@@ -9,3 +9,8 @@ export const isApSwitchOn = (device) =>
 // ночной сброс его не трогает.
 export const isRival = (device) =>
   device?.rivals === true || String(device?.rivals ?? '').toLowerCase() === 'true'
+
+// Имя CFK-контейнера устройства на docker-хосте. Обычно совпадает с hwId, но
+// бывает другим (на 77 устройство NC-1013 живёт в контейнере KN-1013 — имя
+// осталось от прежней модели) — тогда в devices.json задаётся "container".
+export const containerNameOf = (device) => String(device?.container || device?.hwId || '')

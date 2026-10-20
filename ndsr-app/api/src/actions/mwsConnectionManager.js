@@ -4,6 +4,7 @@ import { getSSHConfig } from "../utils/hostConfig.js";
 import { getDeviceById, getParamRouter } from "../devices.js";
 import { IpDiscoveryService } from "../utils/ipDiscovery.js"; 
 import { saveMwsLink, getMwsLink, dropMwsLink } from "../state/mwsLinks.js";
+import { containerNameOf } from "../utils/deviceFlags.js";
 
 export class MWSConnectionManager {
     static async getExtenderIpFromRouter(routerId, extenderMac, routerPassword = null, maxAttempts = 10, delay = 5000) {
@@ -105,7 +106,7 @@ export class MWSConnectionManager {
             // ✅ ШАГ 2: НАСТРАИВАЕМ ПРОБРОС В КОНТЕЙНЕРЕ
             console.log(`🔧 Настраиваем проброс портов в контейнере роутера...`);
             console.log(`   → Контейнер: порт ${extenderId} -> ${containerTargetIp}:80`);
-            await dockerManager.manageContainerFirewall(router.hwId, extenderId, containerTargetIp, 'setup');
+            await dockerManager.manageContainerFirewall(containerNameOf(router), extenderId, containerTargetIp, 'setup');
 
             // ✅ СОХРАНЯЕМ НА ДИСК — по этим IP правила будут сняты при отключении
             saveMwsLink(extenderId, { routerId, routerIp: hostTargetIp, extenderIp: containerTargetIp });
@@ -121,7 +122,7 @@ export class MWSConnectionManager {
                 containerTargetIp: containerTargetIp,
                 routerIp: router.ip,
                 port: extenderId,
-                routerContainer: router.hwId,
+                routerContainer: containerNameOf(router),
                 isAPDevice: isAPDevice
             };
     
@@ -239,7 +240,7 @@ static async removeMWSConnection(extenderId, routerId) {
             }
         }
         
-        await dockerManager.manageContainerFirewall(router.hwId, extenderId, deviceIpForContainer, 'remove');
+        await dockerManager.manageContainerFirewall(containerNameOf(router), extenderId, deviceIpForContainer, 'remove');
 
         // ✅ ШАГ 2: УДАЛЯЕМ ПРАВИЛА ПРОБРОСА НА ХОСТЕ (ТОЛЬКО ДЛЯ РОУТЕРА)
         console.log(`🔧 Удаляем правила проброса на хосте (только для роутера ${router.ip})...`);
@@ -251,7 +252,7 @@ static async removeMWSConnection(extenderId, routerId) {
         return {
             success: true,
             port: extenderId,
-            routerContainer: router.hwId
+            routerContainer: containerNameOf(router)
         };
 
     } catch (error) {
@@ -381,7 +382,7 @@ static async removeMWSConnection(extenderId, routerId) {
             // ✅ ПРОВЕРЯЕМ ПРАВИЛА В КОНТЕЙНЕРЕ
             let containerRuleExists = false;
             try {
-                const checkCommand = `docker exec ${router.hwId} iptables -t nat -L PREROUTING -n | grep ":${extenderId} "`;
+                const checkCommand = `docker exec ${containerNameOf(router)} iptables -t nat -L PREROUTING -n | grep ":${extenderId} "`;
                 const checkResult = await sshManager.executeCommand(checkCommand);
                 containerRuleExists = checkResult.stdout.length > 0;
             } catch (error) {

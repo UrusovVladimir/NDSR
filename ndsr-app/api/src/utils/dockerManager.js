@@ -2,6 +2,7 @@ import { UniversalFirewallManager } from './UniversalFirewallManager.js';
 import { getParamRouter } from '../devices.js';
 import { makeAuthenticatedRequest } from '../actions/athentication.js';
 import { saveMwsLink, getMwsLink, dropMwsLink } from '../state/mwsLinks.js';
+import { containerNameOf } from './deviceFlags.js';
 
 export class DockerManager {
     constructor(sshManager) {
@@ -167,7 +168,13 @@ export class DockerManager {
             const isContainerRunning = containerCheck.stdout.trim() === containerName;
             
             if (!isContainerRunning) {
-                throw new Error(`Контейнер ${containerName} не запущен`);
+                // Снятие правил не должно срывать откат (VLAN, правила хоста,
+                // запись связки): нет контейнера — нет и правил в нём
+                if (action === 'remove') {
+                    console.warn(`⚠️ Контейнер ${containerName} не запущен — правил в нём нет, пропускаем`);
+                    return true;
+                }
+                throw new Error(`Контейнер ${containerName} не запущен (имя контейнера — поле "container" или hwId в devices.json)`);
             }
     
             if (action === 'setup') {
@@ -344,11 +351,11 @@ export class DockerManager {
     
             // ✅ 3. НАСТРАИВАЕМ ПРОБРОС В КОНТЕЙНЕРЕ НА РЕАЛЬНЫЙ IP УСТРОЙСТВА
             console.log(`🔧 КОНТЕЙНЕР: порт ${deviceId} -> ${extenderIp}:80`);
-            await this.manageContainerFirewall(router.hwId, deviceId, extenderIp, 'setup');
+            await this.manageContainerFirewall(containerNameOf(router), deviceId, extenderIp, 'setup');
     
             console.log(`✅ Пробросы настроены:`);
             console.log(`   🏠 ХОСТ: ${deviceId} -> ${routerIp}`);
-            console.log(`   🐳 КОНТЕЙНЕР ${router.hwId}: ${deviceId} -> ${extenderIp}:80`);
+            console.log(`   🐳 КОНТЕЙНЕР ${containerNameOf(router)}: ${deviceId} -> ${extenderIp}:80`);
             console.log(`   📡 ТИП: ${isAPDevice ? 'AP (динамический IP)' : 'Standard'}`);
             
             return extenderIp;
@@ -446,7 +453,7 @@ export class DockerManager {
     
             // ✅ УДАЛЯЕМ ПРАВИЛА В КОНТЕЙНЕРЕ ТОЛЬКО ДЛЯ IP EXTENDER'А
             console.log(`🔧 Удаляем в КОНТЕЙНЕРЕ: порт ${deviceId} -> ${extenderIp}`);
-            await this.manageContainerFirewall(router.hwId, deviceId, extenderIp, 'remove');
+            await this.manageContainerFirewall(containerNameOf(router), deviceId, extenderIp, 'remove');
     
             // ✅ УДАЛЯЕМ СОХРАНЕННЫЕ IP
             dropMwsLink(deviceId);

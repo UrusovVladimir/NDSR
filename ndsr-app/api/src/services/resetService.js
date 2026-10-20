@@ -7,6 +7,7 @@ import { currentModes } from '../state/modes.js';
 import { clearDevicePassword } from './bookingService.js';
 import { clearFirmwareCache } from './statusService.js';
 import { getActiveLink, releaseLinkInfrastructure } from './linkService.js';
+import { getMwsLink } from '../state/mwsLinks.js';
 import { isRival } from '../utils/deviceFlags.js';
 
 const WAN_OFF = '4094';
@@ -29,6 +30,14 @@ async function factoryResetDevice(io, deviceId) {
   // Устройства конкурентов не сбрасываем никогда (ни вручную, ни ночью)
   if (isRival(getDeviceById(deviceId))) {
     throw new Error('Not available for rival devices.');
+  }
+
+  // Связка из currentModes; нет — незавершённое подключение (mwsLinks есть,
+  // а режим не записан: подключение упало после переключения свича)
+  const pending = getActiveLink(deviceId) ? null : getMwsLink(deviceId);
+  if (pending?.routerId) {
+    console.log(`🔗 ${deviceId}: unfinished link to ${pending.routerId} — reverting switch and NAT before reset`);
+    await releaseLinkInfrastructure(deviceId, pending.routerId);
   }
 
   const link = getActiveLink(deviceId);

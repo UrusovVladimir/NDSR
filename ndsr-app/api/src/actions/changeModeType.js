@@ -665,7 +665,23 @@ export const changeSystemMode = async (deviceId, routerId, mode, password, route
                 
             } catch (mwsError) {
                 console.error(`❌ Ошибка MWS подключения:`, mwsError);
-                throw new Error(`MWS подключение не удалось: ${mwsError.message}`);
+                // Откат: порт экстендера на свиче → его VLAN, пробросы и запись
+                // связки — снять. Иначе экстендер остаётся в VLAN роутера, а
+                // связка в портале не записана (сброс её не откатит): после
+                // сброса в сети роутера оказывается второй 192.168.1.1.
+                let rolledBack = false;
+                try {
+                    await DisconnectManager.reconfigureSwitchWithLocalVlan(deviceId, routerId);
+                    await DisconnectManager.removeIptablesRulesOnly(deviceId, routerId);
+                    rolledBack = true;
+                    console.log(`↩️ MWS ${deviceId}: switch and port forwarding rolled back`);
+                } catch (rollbackError) {
+                    console.error(`❌ MWS ${deviceId}: rollback failed: ${rollbackError.message}`);
+                }
+                throw new Error(`MWS подключение не удалось: ${mwsError.message}. ` +
+                    (rolledBack
+                        ? 'Свич и пробросы откатаны; устройство осталось в режиме extender — верните его в router или сбросьте.'
+                        : 'Откат свича/пробросов не удался — проверьте порт устройства на свиче.'));
             }
         } else if (mode === 'extender' && !routerId) {
             console.log(`🔧 Переход в режим extender без подключения к роутеру`);

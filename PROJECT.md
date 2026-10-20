@@ -159,7 +159,7 @@ ndsr-deploy/
 | WAN-коммутаторы | `SWITCH_WAN_IPs` | `switchIDWan`, `switchPortWan`, `switchIDWanSecondary`, `switchPortWanSecondary` | telnet :23 |
 | DSLAM (VES) | `VES_IP/PORT/LOGIN/PASSWORD` | `dslPort` | telnet, prompt `ras>` |
 | Консоль-серверы MOXA | `MOXA_IPS` | `consoleID`, `consolePort` | ссылка `http://<moxa>/remote/telnet/telnet/<port>` |
-| Docker host | `SSH_HOST/PORT/USERNAME/SSH_PRIVATE_KEY_PATH` | `hwId` (= имя CFK-контейнера) | SSH (ssh2), `sudo docker exec`, nft/iptables |
+| Docker host | `SSH_HOST/PORT/USERNAME/SSH_PRIVATE_KEY_PATH` | `container` или `hwId` (= имя CFK-контейнера, `containerNameOf`) | SSH (ssh2), `sudo docker exec`, nft/iptables |
 
 ---
 
@@ -650,7 +650,8 @@ App.vue
 7. Для экстендера с `routerId`:
    - `connectToMws` — VLAN роутера на LAN-порт экстендера;
    - ожидание экстендера в `show/mws/candidate` / `show/ip/neighbor` (нет на прошивке — 404 → `show/ip/arp`) — **до десятков минут**; ищется по `macAddress` экстендера. Пустой `macAddress` — до любых изменений (до WAN off) MAC читается с экстендера (`/rci/show/interface/Bridge0`, это MAC его LAN) и сохраняется в `devices.json` (`ensureExtenderMac`); не прочитался — подключение сразу отклоняется. Раньше пустой MAC давал ~26 минут ожидания и ошибку;
-   - проброс портов (`DockerManager.setupPortForwarding`, пишет `mwsLinks`).
+   - проброс портов (`DockerManager.setupPortForwarding`, пишет `mwsLinks`; контейнер роутера — `containerNameOf`: поле `container` или hwId).
+   - **сбой любого шага после переключения свича** — откат: порт экстендера → его `vlanLocal`, снятие пробросов и записи `mwsLinks` (`reconfigureSwitchWithLocalVlan` + `removeIptablesRulesOnly`); устройство остаётся в extender — вернуть в router или сбросить. Раньше отката не было: экстендер оставался в VLAN роутера, а связка в `currentModes` не записывалась — сброс её не откатывал, и после сброса в сети роутера появлялся второй 192.168.1.1 (так было на 77 20.10.2026 с 2312 и 4110 при NC-1013). Factory reset теперь откатывает и незавершённую связку из `mwsLinks`.
 8. Ожидание загрузки → `currentModes.set` (только при успехе) → `waitForOnline` → события `device:modeUpdated`, `device:mwsStatusUpdated` и `device:modeChangeResult`.
 
 **Отключение обычного экстендера** (`extender_disconnect` → `disconnectAndChangeToRouter`; `device:disconnectExtender` → сразу шаг 2):
@@ -972,7 +973,7 @@ ping -c2 10.10.31.11; nc -vz 10.10.31.11 3389
 
 Поля `devices.json`:
 
-- **идентификация**: `id` (он же порт проброса для MWS), `hwId` (= имя CFK-контейнера), `type`, `shortName`, `country`, `macAddress`, `serialNumber`, `servicetag`;
+- **идентификация**: `id` (он же порт проброса для MWS), `hwId` (= имя CFK-контейнера, если не задан `container`), `container` (имя CFK-контейнера, когда оно не совпадает с hwId — на 77 у NC-1013 это `KN-1013`), `type`, `shortName`, `country`, `macAddress`, `serialNumber`, `servicetag`;
 - **доступ**: `ip`, `checkUrl`, `URL`, `vncUrl`, `checkDeviceMode`;
 - **консоль**: `consoleID`, `consolePort`;
 - **питание**: `jeromeID`, `jeromeClass` (`old`/`new`), `rebootPort`, `resetPort`;
@@ -1104,6 +1105,7 @@ cd ndsr-app/api && node --env-file=.env -e "import('./src/socketHandler.js')"
 | Сброс DSL всегда ошибка | у устройства нет `dslPort` | devices.json |
 | Смена режима висит | ожидание MWS-кандидата может длиться десятки минут; экстендер не видит роутер (VLAN); у экстендера неверный `macAddress` (в логе `Ожидание появления extender'а <MAC>`) | лог changeModeType; `show mws candidate` на роутере; события `device:modeChangeProgress` |
 | Режим показан неверно | устаревший localStorage `deviceCurrentMode`; `current_modes.json` из старого деплоя | очистить localStorage; `current_modes.json`; «обновить режим» в UI |
+| Подключение экстендера: «Контейнер … не запущен» | имя CFK-контейнера роутера ≠ hwId (`docker ps`) | задать `"container": "<имя>"` у роутера в devices.json; при ошибке подключения портал сам откатывает свич (порт экстендера → его VLAN) и пробросы, устройство остаётся в extender — вернуть в router или сбросить |
 | Веб экстендера через роутер не открывается | нет DNAT на хосте/в контейнере; IP экстендера не найден (нет `macAddress`); экстендер сменил IP по DHCP | `mws_links.json` (`extenderIp`); `nft list table ip nat`; `docker exec <router hwId> iptables -t nat -S` |
 | После отключения/сброса экстендер всё ещё в сети роутера или веб открывается через роутер | связка разобрана не до конца (см. 8.5, «Что создаёт подключение…») | пройти по таблице в 8.5; повторить отключение или factory reset экстендера — снятие идемпотентно |
 | Сброс подключённого экстендера: «Router is booked by another user» | роутер в чужой брони, связку трогать нельзя | дождаться освобождения роутера или попросить владельца отключить экстендер |
