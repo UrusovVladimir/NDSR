@@ -477,7 +477,9 @@ Telnet-клиент (`telnetClassEthernet.js`) при обрыве перепо�
 | `device:disconnectExtender` | `{deviceId, routerId, password}` | отключить экстендер от роутера | связка |
 | `device:mwsConnected` | `{deviceId, routerId, action:'connect'/'disconnect', routerPassword?}` → `{status:'ok'}` или `{status:'error', error}` | MWS для AP с аппаратным переключателем | связка |
 | `device:getMwsConnection`, `device:getModeInfo` | `deviceId` | информация о режиме и MWS | — |
-| `device:getConsoleUrl` | `deviceId` → `{success, url}` | ссылка на MOXA (кэш 5 мин) | — |
+| `device:getConsoleUrl` | `deviceId` → `{success, builtin: true}` или `{success, url}` | окно консоли портала / ссылка на webtelnet (кэш 5 мин) | — |
+| `console:open` | `{deviceId, replay?}` → `{success, deviceName, target, devicePassword}` | окно консоли (`console.html`): подписка на общее подключение к порту консоли; затем `console:data {deviceId, data: Buffer}`, `console:note`, `console:end` | бронь |
+| `console:input` / `console:close` | `{deviceId, data, binary?}` / `{deviceId}` | ввод в консоль / закрыть окно | бронь |
 | `tftp:getInterfaceIp` | `{tftpInterfaceName, deviceId}` → `{success, interfaceIp}` | IP TFTP в CFK-контейнере | — |
 | `device:reloadConfigs` | `()` | перечитать JSON-конфиги, очистить кэши, разослать всем | — |
 | `device:add` / `device:remove` | объект / `deviceId` | CRUD devices.json | — |
@@ -540,7 +542,7 @@ Telnet-клиент (`telnetClassEthernet.js`) при обрыве перепо�
 | `useDeviceActionsStore` | Питание, reboot, reset, DSL, init. `executeDeviceAction` не даёт запустить вторую операцию, пока идёт первая; **прогресс имитируется** (+5 % каждые 3 с до 80 %); ждёт ack (таймаут 130 с). Кэш TFTP-IP |
 | `useModeStore` | Режим устройств, кэш в localStorage `deviceCurrentMode` (TTL 4 ч); `changeMode` ждёт `device:modeChangeResult` до 180 с |
 | `useFirmwareStore` | Версии прошивок, кэш 5 мин, пакетная проверка |
-| `useConsoleStore` | Попап консоли MOXA, cooldown 60 с (sessionStorage) |
+| `useConsoleStore` | Окно консоли: `console.html` (builtin) или попап webtelnet с cooldown 60 с (sessionStorage); `isLegacyConsoleOpen` — открыт webtelnet |
 | `useCronStore` | Переключатель ночных задач |
 | `useChatStore` | Чат, упоминания, онлайн-пользователи |
 | `useClipboardStore`, `useEscapeStore` | Буфер обмена (fallback для не-HTTPS), обработка Esc |
@@ -551,7 +553,7 @@ Telnet-клиент (`telnetClassEthernet.js`) при обрыве перепо�
 App.vue
 ├─ AppHeader — часы (МСК), суточный пароль, переключатель cron, FileManager
 ├─ DeviceDataTable — таблица устройств (не мои): вкладки Our Devices / Rival Devices в шапке, поиск, модалки, сохранение WAN/MWS
-│   ├─ SharedVmsStatus — в строке счётчиков (online/offline/total) «N/M VMs free»; по клику список VM: свободна / кто занял, к какому устройству, сколько осталось (до booking.expiresAt устройства — VM отключается вместе с бронью). Данные: vm:list (всем) + брони из deviceStore; нет VM — скрыт
+│   ├─ SharedVmsStatus — в строке счётчиков (online/offline/total) «N/M VMs free»; по клику список VM: свободна / кто занял, к какому устройству, сколько осталось (до booking.expiresAt устройства — VM отключается вместе с бронью). Данные: vm:list (всем) + брони из deviceStore; панель закрывается при прокрутке страницы (кроме прокрутки своего списка); нет VM — скрыт
 │   ├─ BookedDevicesTable — «мои устройства»: основное рабочее место (питание, reset, режимы,
 │   │                        консоль, VNC, веб, Skip Wizard, продление, релиз, FW Check All;
 │   │                        меню по клику на Device дублирует Actions, в т.ч. кнопку VMs)
@@ -706,7 +708,7 @@ App.vue
 
 ### 8.8 Консоль, VNC, веб
 
-- **Консоль** — `device:getConsoleUrl` → `http://<MOXA>/remote/telnet/telnet/<consolePort>`, открывается попапом. Доступна только владельцу брони, после открытия действует cooldown 60 с.
+- **Консоль** — `device:getConsoleUrl`: если для устройства задан хост консоли (`CONSOLE_HOSTS`) и не `CONSOLE_WEB=webtelnet` → `{builtin: true}`, открывается окно портала `console.html` (8.15); иначе `http://<MOXA>/remote/telnet/telnet/<consolePort>` (webtelnet), попапом, после открытия cooldown 60 с. Доступна только владельцу брони.
 - **VNC** — `device.vncUrl` (noVNC в CFK).
 - **Веб** — `device.URL`.
 
@@ -926,10 +928,20 @@ ping -c2 10.10.31.11; nc -vz 10.10.31.11 3389
 
 В окне прогресса (`GlobalProgressDialog`) у каждого перезагружаемого/сбрасываемого устройства — свёрнутый блок **Console output**; раскрытый — окно шире (~960px), лог прокручивается вниз (если не отмотать наверх); свёрнутый — окно прежнего размера. Пока вывод раскрыт, окно не закрывается само по окончании операции («Operation Finished», закрыть крестиком).
 
-- Бэкенд `services/consoleCapture.js`: telnet `<хост консоли>:<consolePort>`, хост по `consoleID` из `CONSOLE_HOSTS` (через запятую, порядок как у `MOXA_IPS`; на 77 — `172.16.77.252,172.16.77.252`, на 78 — `172.16.78.252,,172.16.78.253` — это `domain` в config.py контейнеров webtelnet). Telnet-переговоры — отказом (только чтение), текст очищается от ANSI/`\r`, пачками раз в 250 мс событием `device:consoleLog` только запросившему сокету. Стоп: `device:consoleCapture:stop`, отключение браузера, лимит `CONSOLE_CAPTURE_MAX_MS` (6 мин), закрытие порта.
+- Бэкенд `services/consoleCapture.js`: telnet `<хост консоли>:<consolePort>`, хост по `consoleID` из `CONSOLE_HOSTS` (через запятую, порядок как у `MOXA_IPS`; на 77 — `172.16.77.252,172.16.77.252`, на 78 — `172.16.78.252,,172.16.78.253` — это `domain` в config.py контейнеров webtelnet). Подключение — общее с окном консоли портала (`services/consoleHub.js`, 8.15), текст очищается от ANSI/`\r`, пачками раз в 250 мс событием `device:consoleLog` только запросившему сокету. Стоп: `device:consoleCapture:stop`, отключение браузера, лимит `CONSOLE_CAPTURE_MAX_MS` (6 мин), закрытие порта.
 - `device:consoleCapture:start/stop` (`socket/handlers/consoleCapture.js`) — только владелец брони, не для конкурентов. Фронт (`useConsoleLogStore`) запрашивает захват в `executeDeviceAction` для `rebooting`/`resetting` и останавливает через 20 с после конца операции.
-- **Порт консоли пускает одного клиента: последнее подключение выбивает предыдущее** (проверено на 78: из двух telnet-клиентов закрывается первый). Поэтому при открытом окне консоли этого устройства захват не запрашивается (блок «in console window»); окно консоли, открытое во время захвата, забирает порт — захват завершается с пометкой.
+- **Порт консоли пускает одного клиента: последнее подключение выбивает предыдущее** (проверено на 78: из двух telnet-клиентов закрывается первый). Окно консоли портала и захват сидят на одном подключении и не мешают друг другу. Окно webtelnet держит своё: при открытом webtelnet захват не запрашивается (блок «in console window»); webtelnet, открытый во время захвата, забирает порт — захват завершается с пометкой.
 - Не настроено (`CONSOLE_HOSTS` пуст / у устройства нет `consoleID`/`consolePort`) — блок «unavailable» с причиной. Массовые операции администратора и ночной сброс консоль не захватывают.
+
+### 8.15 Окно консоли в портале (замена webtelnet)
+
+Окно консоли — отдельная страница Vite `console.html` (`src/console/main.js`, xterm.js `@xterm/xterm` + `@xterm/addon-fit`), открывается `useConsoleStore` по `{builtin: true}` от `device:getConsoleUrl` (адрес `console.html?v=<время>#device=<id>`). Данные — через socket.io портала, без контейнеров webtelnet.
+
+- **Бэкенд** `services/consoleHub.js`: на устройство одно TCP-подключение к `<хост из CONSOLE_HOSTS>:<consolePort>`, общее для всех окон консоли и захвата вывода (8.14); открывается первым подписчиком, закрывается с последним. Хвост вывода 64 КБ — новое окно сразу показывает последнее. Telnet: соглашаемся на ECHO/SGA/BINARY, остальное отклоняем; ввод — IAC удваивается, CR без BINARY → CR NUL.
+- `socket/handlers/consoleTerminal.js`: `console:open/input/close`. Только владелец брони, не для конкурентов; бронь перепроверяется на каждый ввод и раз в 15 с — закончилась → `console:end` «booking ended». Отключение браузера / закрытие окна — отписка.
+- **Окно**: Password (вводит пароль устройства, без Enter), Copy, Save log (.txt), Clear, Reconnect (после `console:end`). Копирование — выделение + Copy / Ctrl+C при выделении / Ctrl+Shift+C (через `execCommand`, по http `navigator.clipboard` нет); вставка — Ctrl+V / Ctrl+Shift+V; Ctrl+C без выделения уходит в консоль (^C). Обрыв socket.io — окно переподключается само, без повторной выдачи хвоста.
+- Выбить подключение может только клиент не из портала (telnet напрямую, webtelnet) — окно покажет «console connection closed».
+- Откат на webtelnet — `CONSOLE_WEB=webtelnet` в env бэкенда (или пустой `CONSOLE_HOSTS`). Cooldown 60 с — только для webtelnet.
 
 ### 8.13 Администратор: массовое питание и сброс
 
@@ -1112,7 +1124,7 @@ cd ndsr-app/api && node --env-file=.env -e "import('./src/socketHandler.js')"
 | Сброс подключённого экстендера падает сразу, устройство не сбрасывается | не удалось откатить коммутатор или NAT (telnet к LAN-коммутатору, SSH к docker-хосту) | лог `reconfigureSwitchWithLocalVlan` / `removeIptablesRulesOnly`; `SWITCH_*`, `SSH_*` |
 | TFTP IP не показывается | нет SSH до docker-хоста (`SSH_*`, ключ), нет `tftpInterfaceName`, контейнер `hwId` не найден | лог `DockerManager`; `ssh <SSH_HOST> docker exec <hwId> ip addr` |
 | Загрузка файлов не работает | неверный `VITE_API_URL`, нет прав на `UPLOAD_DIR`, лимит 100 МБ / расширение | Network → `/api/upload`; лог `📁` |
-| Консоль не открывается | cooldown 60 с, блокировщик попапов, MOXA/webtelnet недоступны | sessionStorage `consoleCooldown_<id>`; `docker logs ndsr-webtelnet-console` |
+| Консоль не открывается | блокировщик попапов; окно портала: нет хоста в `CONSOLE_HOSTS` / `consoleID`/`consolePort`, консоль-сервер недоступен; webtelnet: cooldown 60 с, контейнер недоступен | статус в окне консоли, лог бэкенда `🖥️ Console`; sessionStorage `consoleCooldown_<id>`; `docker logs ndsr-webtelnet-console` |
 | Утром сброшены устройства / выключен WAN | включён cron (04:00: отключение экстендеров, затем WAN off + reset незабронированных) | переключатель cron в шапке |
 | Утром часть устройств не сброшена | забронированы; роутер связки забронирован; отключение экстендера не удалось (тогда пропущены и экстендер, и роутер) | лог `Skipping …`, `Failed to disconnect extender …` (8.10) |
 | Ошибка «Not available for rival devices.» | у устройства `rivals: true` — операция запрещена намеренно (8.11) | `devices.json`; если устройство наше — убрать поле и `device:reloadConfigs` |

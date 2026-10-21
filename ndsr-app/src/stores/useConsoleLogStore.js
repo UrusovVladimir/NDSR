@@ -2,10 +2,11 @@
 // и сброса (окно прогресса, раскрывающийся блок «Console output»).
 //
 // Захват ведёт бэкенд (services/consoleCapture.js) по device:consoleCapture:start.
-// Порт консоли пускает одного клиента — новое подключение выбивает прежнее,
-// поэтому при открытом окне консоли этого устройства захват НЕ запрашиваем
-// (иначе выкинули бы пользователя из консоли); окно консоли, открытое во время
-// захвата, заберёт порт — бэкенд пришлёт ended с пометкой.
+// Подключение к порту консоли у захвата и окна консоли портала (console.html)
+// общее — они друг другу не мешают. Окно webtelnet (CONSOLE_WEB=webtelnet)
+// держит своё подключение, а порт пускает одного клиента: при открытом окне
+// webtelnet захват НЕ запрашиваем (иначе выкинули бы пользователя из консоли);
+// окно webtelnet, открытое во время захвата, заберёт порт — бэкенд пришлёт ended.
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import { socket } from '@/socket'
@@ -53,7 +54,7 @@ export const useConsoleLogStore = defineStore('consoleLog', () => {
   const begin = (deviceId) => {
     const id = String(deviceId)
     clearTimeout(stopTimers.get(id))
-    if (consoleStore.isConsoleOpen(id)) {
+    if (consoleStore.isLegacyConsoleOpen(id)) {
       update(id, { text: '', state: 'console-open', message: 'Console is open in a separate window — the output is there' })
       return
     }

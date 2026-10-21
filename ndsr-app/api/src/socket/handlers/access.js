@@ -9,6 +9,7 @@ import { isRival, containerNameOf } from '../../utils/deviceFlags.js';
 import { getDeviceStatusWithMode } from '../../services/statusService.js';
 import { sendOperationProgress } from '../../services/progress.js';
 import { initializeDockerManager } from '../../services/docker.js';
+import { consoleTarget } from '../../services/consoleHub.js';
 
 export function register(socket, io) {
   on(socket, 'tftp:getInterfaceIp', async (data, callback) => {
@@ -303,6 +304,13 @@ export function register(socket, io) {
       const device = getDeviceById(deviceId);
       if (!device) {
         return callback({ success: false, error: 'Device not found' });
+      }
+
+      // Консоль в портале (console.html → console:open), если для устройства
+      // настроен хост консоли (CONSOLE_HOSTS). CONSOLE_WEB=webtelnet — по-старому
+      // ссылкой на контейнер webtelnet.
+      if (process.env.CONSOLE_WEB !== 'webtelnet' && consoleTarget(device)) {
+        return callback({ success: true, builtin: true, deviceName: device.hwId });
       }
       
       const consoleBaseUrl = consoleIPs[device.consoleID];

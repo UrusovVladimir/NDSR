@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8"/>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link rel="icon" href="/favicon.ico">
+    <title>Console</title>
+    <script type="module" src="/src/console/main.js"></script>
+</head>
+<body>
+    <div id="con-toolbar">
+        <span id="con-title">Console</span>
+        <span id="con-status">Connecting…</span>
+        <button type="button" id="con-pass" hidden title="Type the device password into the console (no Enter)">Password</button>
+        <button type="button" id="con-copy" title="Copy the selected text (also Ctrl+C with a selection, Ctrl+Shift+C)">Copy</button>
+        <button type="button" id="con-save" title="Save the console output to a .txt file">Save log</button>
+        <button type="button" id="con-clear" title="Clear the screen (the device is not affected)">Clear</button>
+        <button type="button" id="con-reconnect" hidden title="Connect to the console again">Reconnect</button>
+    </div>
+    <div id="con-toast" role="status" aria-live="polite" hidden></div>
+    <div id="con-screen"></div>
+</body>
+</html>

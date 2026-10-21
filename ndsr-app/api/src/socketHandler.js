@@ -14,6 +14,7 @@ import { register as registerChat } from './socket/handlers/chat.js';
 import { register as registerVm } from './socket/handlers/vm.js';
 import { register as registerAdminBulk } from './socket/handlers/adminBulk.js';
 import { register as registerConsoleCapture } from './socket/handlers/consoleCapture.js';
+import { register as registerConsoleTerminal } from './socket/handlers/consoleTerminal.js';
 
 // 🔒 S4 (light): доверие к заголовкам прокси.
 // TRUST_PROXY_HEADERS=true ТОЛЬКО если перед сервером nginx, который
@@ -59,6 +60,7 @@ function setupEvents(socket, io) {
   registerVm(socket, io);
   registerAdminBulk(socket, io);
   registerConsoleCapture(socket);
+  registerConsoleTerminal(socket);
 }
 
 export {

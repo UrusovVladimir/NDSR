@@ -12,6 +12,9 @@ export const useConsoleStore = defineStore('console', () => {
   let consoleTimers = new Map()
   let consoleWindows = new Map()
   let consoleCooldowns = new Map()
+  // Устройства, у которых окно консоли — webtelnet (отдельное подключение к
+  // порту консоли, выбивает захват вывода при перезагрузке)
+  const legacyConsoles = new Set()
   
   // ✅ РЕАКТИВНЫЕ ДАННЫЕ ТОЛЬКО ДЛЯ СТАТУСОВ (без ссылок на окна)
   const cooldownEndTimes = ref(new Map())
@@ -34,6 +37,9 @@ export const useConsoleStore = defineStore('console', () => {
   const isConsoleOpen = (deviceId) => {
     return consoleOpenStates.value.get(deviceId) === true
   }
+
+  // Открыто окно webtelnet — захват вывода консоли его выбил бы
+  const isLegacyConsoleOpen = (deviceId) => isConsoleOpen(deviceId) && legacyConsoles.has(deviceId)
 
   const handleOpenConsole = async (device) => {
     try {
@@ -78,8 +84,17 @@ export const useConsoleStore = defineStore('console', () => {
         setTimeout(() => reject(new Error('Request timeout')), 5000)
       })
 
-      const params = `scrollbars=no,resizable=no,status=no,location=no,toolbar=no,menubar=no,width=900,height=600,left=200,top=100`
-      const openWindow = window.open(response.url, `console_${device.id}`, params)
+      // builtin — окно консоли портала (console.html, xterm.js через socket.io);
+      // иначе — ссылка на контейнер webtelnet (CONSOLE_WEB=webtelnet или
+      // для устройства не задан хост консоли в CONSOLE_HOSTS).
+      // ?v= — новый адрес каждый раз: окно не возьмёт старую страницу из кеша.
+      const url = response.builtin
+        ? `${import.meta.env.BASE_URL}console.html?v=${Date.now()}#device=${encodeURIComponent(device.id)}`
+        : response.url
+      const params = response.builtin
+        ? 'resizable=yes,width=1000,height=640,left=200,top=100'
+        : `scrollbars=no,resizable=no,status=no,location=no,toolbar=no,menubar=no,width=900,height=600,left=200,top=100`
+      const openWindow = window.open(url, `console_${device.id}`, params)
       
       if (!openWindow) {
         throw new Error('Popup blocked. Please allow popups for this site.')
@@ -92,8 +107,13 @@ export const useConsoleStore = defineStore('console', () => {
       // Сохраняем в localStorage
       localStorage.setItem(`consoleOpen_${device.id}`, 'true')
 
-      // ✅ ЗАПУСКАЕМ БЛОКИРОВКУ НА 1 МИНУТУ
-      startConsoleCooldown(device.id)
+      // ✅ ЗАПУСКАЕМ БЛОКИРОВКУ НА 1 МИНУТУ — только для webtelnet (частое
+      // переоткрытие его ломало); консоль портала можно открывать сразу
+      if (response.builtin) legacyConsoles.delete(device.id)
+      else {
+        legacyConsoles.add(device.id)
+        startConsoleCooldown(device.id)
+      }
 
       toast.add({
         severity: 'success',
@@ -295,6 +315,7 @@ export const useConsoleStore = defineStore('console', () => {
     
     // Getters
     isConsoleOpen,
+    isLegacyConsoleOpen,
     isConsoleOnCooldown,
     getRemainingCooldown,
     

@@ -13,7 +13,7 @@
       {{ free }}/{{ total }} VMs free
     </span>
 
-    <OverlayPanel ref="panel" class="shared-vms-panel">
+    <OverlayPanel ref="panel" class="shared-vms-panel" @show="onPanelShow" @hide="onPanelHide">
       <div class="shared-vms-title">
         VMs: {{ free }} of {{ total }} free
       </div>
@@ -47,7 +47,7 @@
 // к какому устройству и на сколько. VM отключается вместе с окончанием брони
 // устройства, поэтому «осталось» — время до booking.expiresAt этого устройства.
 // Данные — vm:list (рассылается всем) и брони из deviceStore; бэкенд не нужен.
-import { ref, computed } from 'vue'
+import { ref, computed, onBeforeUnmount } from 'vue'
 import OverlayPanel from 'primevue/overlaypanel'
 import { useVmStore } from '@/stores/useVmStore'
 import { useDeviceStore } from '@/stores/useDeviceStore'
@@ -57,6 +57,17 @@ const vmStore = useVmStore()
 const deviceStore = useDeviceStore()
 const now = useNow()
 const panel = ref(null)
+
+// OverlayPanel привязан к счётчику и сам при прокрутке не закрывается —
+// панель уезжала под шапку. Закрываем на любую прокрутку (capture: и окна,
+// и контейнеров таблицы), кроме прокрутки собственного списка панели.
+const onScroll = (e) => {
+  if (e.target?.closest?.('.shared-vms-panel')) return
+  panel.value?.hide()
+}
+const onPanelShow = () => window.addEventListener('scroll', onScroll, true)
+const onPanelHide = () => window.removeEventListener('scroll', onScroll, true)
+onBeforeUnmount(onPanelHide)
 
 const total = computed(() => vmStore.vms.length)
 const free = computed(() => vmStore.vms.filter(vm => !vm.attachment).length)

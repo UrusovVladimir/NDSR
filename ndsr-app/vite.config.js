@@ -10,12 +10,14 @@ export default defineConfig({
       '@': fileURLToPath(new URL('./src', import.meta.url)),
     },
   },
-  // Вторая страница — окно RDP к тестовой VM в браузере (src/rdp/main.js)
+  // Доп. страницы: окно RDP к тестовой VM (src/rdp/main.js) и окно консоли
+  // устройства (src/console/main.js)
   build: {
     rollupOptions: {
       input: {
         main: fileURLToPath(new URL('./index.html', import.meta.url)),
         rdp: fileURLToPath(new URL('./rdp.html', import.meta.url)),
+        console: fileURLToPath(new URL('./console.html', import.meta.url)),
       },
     },
   },
