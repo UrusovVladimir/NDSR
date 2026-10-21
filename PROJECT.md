@@ -57,7 +57,7 @@ NDSR — стенд техподдержки Keenetic. Инженеры чере
 | Коммутаторы | Переключают тип WAN: VLAN на WAN-порту — это «провайдер». Соединяют экстендер с роутером для MWS. |
 | Jerome / PowerHub | Реле питания (`rebootPort`) и «кнопки» сброса (`resetPort`). |
 | CFK-контейнеры | Точка входа к конкретному Keenetic: DNAT на его веб, SSH, noVNC с Firefox, TFTP. |
-| MOXA | Серийная консоль устройства (через webtelnet). |
+| MOXA | Серийная консоль устройства: окно консоли портала (`console.html`, 8.15) — бэкенд ходит telnet на `CONSOLE_HOSTS`; запасной путь — webtelnet. |
 
 ---
 
@@ -145,7 +145,7 @@ ndsr-deploy/
 |---|---|---|---|
 | ndsr-app-front | 10.10.19.254 | 80 | nginx + собранный Vue; проксирует `/socket.io/` и `/api/` на бэкенд, выставляет `X-Real-IP` |
 | ndsr-app-back | 10.10.19.253 | 3000 (только внутри `ndsr_default`, наружу не публикуется) | `node server.js` (node:20 alpine), env через `env_file` |
-| ndsr-webtelnet-console | 10.10.19.252 | 5005→5000 | Flask-терминал к MOXA (github UrusovVladimir/flask-remote-terminal) |
+| ndsr-webtelnet-console | 10.10.19.252 | 5005→5000 | Flask-терминал к MOXA (github UrusovVladimir/flask-remote-terminal). С октября 2026 не используется — окно консоли в портале (8.15); оставлен для отката `CONSOLE_WEB=webtelnet` |
 | ndsr-guacd | 10.10.19.251 | 4822 (внутри сети) | guacd для RDP к тестовым VM в браузере (если `browser_rdp_enabled`) |
 
 ### 3.4 Внешнее оборудование
@@ -557,6 +557,13 @@ App.vue
 │   ├─ BookedDevicesTable — «мои устройства»: основное рабочее место (питание, reset, режимы,
 │   │                        консоль, VNC, веб, Skip Wizard, продление, релиз, FW Check All;
 │   │                        меню по клику на Device дублирует Actions, в т.ч. кнопку VMs)
+│   │   └─ массовые reboot / reset: чекбоксы в первой колонке (в заголовке — выбрать все свои,
+│   │      кроме конкурентов) → в шапке секции «Selected: N · Reboot (N) · Reset (N) · ×» →
+│   │      подтверждение со списком. Каждое устройство — обычная одиночная операция
+│   │      (useDeviceActionsStore.rebootDevice / resetConfig: строка в окне прогресса, вывод
+│   │      консоли, тост), запуск с шагом 6 с (reboot) / 13 с (reset), чтобы telnet-сессии
+│   │      к Jerome/PowerHub не пересекались (сброс держит кнопку ~10 с); занятые операцией
+│   │      пропускаются. Бэкенд не менялся — права проверяет как для одиночных
 │   ├─ BookingStatus — бронирование/продление одного устройства; длительность — BookingDurationDialog
 │   ├─ BookingDurationDialog — выбор длительности (слайдер 10 мин … 7 дней + быстрые кнопки), общий для одиночной и массовой брони
 │   ├─ массовая бронь (в DeviceDataTable): клик по строке свободного устройства отмечает его — вместо статуса галочка
@@ -630,13 +637,17 @@ App.vue
 
 Значения режима: `router`, `extender`, `extender_connect` (экстендер подключён к `routerId` по MWS), `extender_disconnect` (операция, которая заканчивается в router или extender). Источник истины — `currentModes` на сервере (`current_modes.json`); фронт держит копию в localStorage.
 
-Если у устройства `hwType` = `true/yes/1` (`utils/deviceFlags.isApSwitchOn`), режим задаётся аппаратным переключателем: программная смена режима запрещена, после ребута устройство всегда в `extender`.
+Если у устройства `hwType` = `true/yes/1` (`utils/deviceFlags.isApSwitchOn` — одинаково на бэкенде и фронте, `src/utils/deviceFlags.js`), режим задаётся аппаратным переключателем: программная смена режима запрещена, после ребута устройство всегда в `extender`. Тип не важен: на 77 так помечены KN-4010, KN-3411 (`type: AP`) и KN-4310 Atlas SE (`type: router`).
+
+- **В интерфейсе**: у имени устройства (основная таблица и «мои брони») — тег **HW switch** с подсказкой; кнопки Change Mode нет, вместо неё **MWS Connect** (`canMwsConnectType`: `type: AP` или переключатель). Если `ChangeModeModal` всё же открыт — действий нет, только пояснение «используйте MWS Connect».
+- **Сервер** `device:changeMode` для такого устройства отказывает («Mode is set by the hardware switch…»). Отказы до старта операции (переключатель, нет брони) идут и в ack, и событием `device:modeChangeResult` — окно прогресса уже открыто и закрывается с ошибкой (раньше висело на первом шаге).
+- До октября 2026 фронт сравнивал `hwType === 'true'`, а в конфигах `yes` — устройства с переключателем шли обычной сменой режима и упирались в отказ сервера.
 
 Какой путь выбирает фронт (`PrimeDeviceModal.saveChanges`):
 
 | Устройство | Подключение / отключение |
 |---|---|
-| `hwType` = true (AP-переключатель) | `device:mwsConnected` `connect` / `disconnect` |
+| `hwType` = true/yes/1 (переключатель) | `device:mwsConnected` `connect` / `disconnect` |
 | остальные | `device:changeMode` `extender_connect` / `extender_disconnect` |
 
 **`device:changeMode`** (`socket/handlers/mode.js` → `actions/changeModeType.js`):
@@ -928,7 +939,7 @@ ping -c2 10.10.31.11; nc -vz 10.10.31.11 3389
 
 В окне прогресса (`GlobalProgressDialog`) у каждого перезагружаемого/сбрасываемого устройства — свёрнутый блок **Console output**; раскрытый — окно шире (~960px), лог прокручивается вниз (если не отмотать наверх); свёрнутый — окно прежнего размера. Пока вывод раскрыт, окно не закрывается само по окончании операции («Operation Finished», закрыть крестиком).
 
-- Бэкенд `services/consoleCapture.js`: telnet `<хост консоли>:<consolePort>`, хост по `consoleID` из `CONSOLE_HOSTS` (через запятую, порядок как у `MOXA_IPS`; на 77 — `172.16.77.252,172.16.77.252`, на 78 — `172.16.78.252,,172.16.78.253` — это `domain` в config.py контейнеров webtelnet). Подключение — общее с окном консоли портала (`services/consoleHub.js`, 8.15), текст очищается от ANSI/`\r`, пачками раз в 250 мс событием `device:consoleLog` только запросившему сокету. Стоп: `device:consoleCapture:stop`, отключение браузера, лимит `CONSOLE_CAPTURE_MAX_MS` (6 мин), закрытие порта.
+- Бэкенд `services/consoleCapture.js`: telnet `<хост консоли>:<consolePort>`, хост по `consoleID` из `CONSOLE_HOSTS` (через запятую, порядок как у `MOXA_IPS`; на 77 — `172.16.77.252,172.16.77.252`, на 78 — `172.16.78.252,172.16.78.253` — это `domain` в config.py контейнеров webtelnet). Подключение — общее с окном консоли портала (`services/consoleHub.js`, 8.15), текст очищается от ANSI/`\r`, пачками раз в 250 мс событием `device:consoleLog` только запросившему сокету. Стоп: `device:consoleCapture:stop`, отключение браузера, лимит `CONSOLE_CAPTURE_MAX_MS` (6 мин), закрытие порта.
 - `device:consoleCapture:start/stop` (`socket/handlers/consoleCapture.js`) — только владелец брони, не для конкурентов. Фронт (`useConsoleLogStore`) запрашивает захват в `executeDeviceAction` для `rebooting`/`resetting` и останавливает через 20 с после конца операции.
 - **Порт консоли пускает одного клиента: последнее подключение выбивает предыдущее** (проверено на 78: из двух telnet-клиентов закрывается первый). Окно консоли портала и захват сидят на одном подключении и не мешают друг другу. Окно webtelnet держит своё: при открытом webtelnet захват не запрашивается (блок «in console window»); webtelnet, открытый во время захвата, забирает порт — захват завершается с пометкой.
 - Не настроено (`CONSOLE_HOSTS` пуст / у устройства нет `consoleID`/`consolePort`) — блок «unavailable» с причиной. Массовые операции администратора и ночной сброс консоль не захватывают.
@@ -942,6 +953,8 @@ ping -c2 10.10.31.11; nc -vz 10.10.31.11 3389
 - **Окно**: Password (вводит пароль устройства, без Enter), Copy, Save log (.txt), Clear, Reconnect (после `console:end`). Копирование — выделение + Copy / Ctrl+C при выделении / Ctrl+Shift+C (через `execCommand`, по http `navigator.clipboard` нет); вставка — Ctrl+V / Ctrl+Shift+V; Ctrl+C без выделения уходит в консоль (^C). Обрыв socket.io — окно переподключается само, без повторной выдачи хвоста.
 - Выбить подключение может только клиент не из портала (telnet напрямую, webtelnet) — окно покажет «console connection closed».
 - Откат на webtelnet — `CONSOLE_WEB=webtelnet` в env бэкенда (или пустой `CONSOLE_HOSTS`). Cooldown 60 с — только для webtelnet.
+- **Почему заменили webtelnet** (контейнеры `ndsr-webtelnet-console_*`, flask-remote-terminal на Python 3.6 / Flask 1.1 / Flask-SocketIO 4): вывод опрашивался раз в 0,15 с (задержка на каждую клавишу, рывки при загрузке), на каждое окно — отдельный `telnet` в pty на dev-сервере Flask, `decode()` без потокового декодера ломался на разрезанных UTF-8 символах (`***AQUI WEB TERM ERR***`), адрес `…:5005/remote/telnet/telnet/<порт>` открывал консоль любого устройства без брони, хост консоли зашит в Dockerfile. Окно webtelnet и захват вывода при перезагрузке выбивали друг друга с порта.
+- **Выкачено 2026-10-21** на 77 и 78 (`a53c136`). `CONSOLE_HOSTS`: 77 — `172.16.77.252,172.16.77.252`; 78 — `172.16.78.252,172.16.78.253` (consoleID 1 — .252, consoleID 2 — .253, у NC-1013; было `172.16.78.252,,172.16.78.253`, из-за пустого второго NC-1013 открывался через webtelnet). Контейнеры webtelnet на стендах пока не удалены.
 
 ### 8.13 Администратор: массовое питание и сброс
 
@@ -1190,7 +1203,7 @@ cd ndsr-app/api && node --env-file=.env -e "import('./src/socketHandler.js')"
 
 - Роль приложения проверена прогоном в песочнице (октябрь 2026): сборка трёх образов, запуск, SPA, socket.io и загрузка файлов через nginx, повторный деплой, миграция `devices.json`. На реальном стенде после переделки ещё не запускалась.
 - При подключении к стенду **с самого docker-хоста** бэкенд видит IP шлюза docker-моста, а не клиента — для пользователей через VPN это не проявляется.
-- webtelnet собирается из GitHub (`flask-remote-terminal`) на Python 3.6 (EOL): без интернета на docker-хосте образ не соберётся.
+- webtelnet (запасной путь консоли, 8.15) собирается из GitHub (`flask-remote-terminal`) на Python 3.6 (EOL): без интернета на docker-хосте образ не соберётся.
 - На проде (US05Docker05) сборка из сети `docker0` зависает на больших загрузках (`npm ci` → «Exit handler never called!», в т.ч. с кодом 0 → потом «vite: not found»), с хоста те же загрузки идут нормально. Трафик `docker0` принимается в `DOCKER-FORWARD` раньше правила `tcp option maxseg size set rt mtu` (MSS-clamping). Обход — сборка с сетью хоста: `docker build --network host …`, в compose-шаблоне роли `build.network: host`. Образы на `node:20-alpine` (vite 7 требует Node ≥ 20.19), во фронте после `npm ci` — `test -x node_modules/.bin/vite`.
 - Ошибки в данных:
   - `VARS.env`: `DUO=KN-2210` против 2110, дубль порта 1811;

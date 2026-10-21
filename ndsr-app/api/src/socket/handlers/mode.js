@@ -315,6 +315,13 @@ export function register(socket, io) {
     try {
       const { deviceId: id, mode, routerId, password, routerPassword, action } = data;
       deviceId = id;
+
+      // Отказ до старта: ack + итог событием — окно прогресса (ProgressModal)
+      // уже открыто и ждёт modeChangeResult, без него висело на первом шаге
+      const refuse = (error) => {
+        callback({ success: false, error });
+        io.emit('device:modeChangeResult', { deviceId, success: false, error, timestamp: Date.now() });
+      };
       
       console.log(`🔄 Processing mode change: ${mode} for device ${deviceId}, action: ${action}`);
 
@@ -327,7 +334,7 @@ export function register(socket, io) {
         });
       } catch (err) {
         console.warn(`🔒 Mode change denied for ${deviceId}: ${err.message}`);
-        return callback({ success: false, error: err.message });
+        return refuse(err.message);
       }
       
       // 🛡 Guard: аппаратный AP-переключатель — софт-смена режима невозможна
@@ -336,11 +343,8 @@ export function register(socket, io) {
       const guardDevice = getDeviceById(deviceId);
       if (guardDevice && isApSwitchOn(guardDevice)) {
         console.warn(`🛡 Mode change blocked for ${deviceId}: hardware switch controls mode`);
-        callback({
-          success: false,
-          error: 'Mode is controlled by hardware switch — software mode change is not possible'
-        });
-        return;
+        return refuse('Mode is set by the hardware switch — software mode change is not possible. ' +
+          'To connect it to a router use MWS Connect.');
       }
       
       // 🛡 B18: cooldown после полного провала авторизации — не долбим устройство,

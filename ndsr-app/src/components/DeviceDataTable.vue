@@ -202,7 +202,10 @@
                   <i :class="deviceIcon(data.type)" class="common-device-icon"></i>
                 </div>
                 <div class="common-device-info">
-                  <div class="common-device-name">{{ data.shortName }}</div>
+                  <div class="common-device-name">{{ data.shortName }}
+                    <Tag v-if="isApSwitchOn(data)" value="HW switch" icon="pi pi-lock" severity="info" class="hw-switch-tag"
+                      v-tooltip="'Hardware mode switch: the mode is set by the physical switch and cannot be changed from the portal. Connect it to a router with MWS Connect.'" />
+                  </div>
                   <div class="common-device-hwid">{{ data.hwId }}</div>
                   <div class="common-device-hwid">Country: {{ data.country }}</div>
                 </div>
@@ -359,7 +362,8 @@ import ProgressModal from './ProgressModal.vue'
 import ChangeModeModal from './ChangeModeModal.vue'
 import FirmwareVersion from '@/components/FirmwareVersion.vue'
 import BookedDevicesTable from './BookedDevicesTable.vue'
-import { isRival } from '@/utils/deviceFlags'
+import { isRival, isApSwitchOn } from '@/utils/deviceFlags'
+import Tag from 'primevue/tag'
 import { useClipboardStore } from '@/stores/useClipboardStore'
 
 const todayPassword = inject('todayPassword')
@@ -1289,5 +1293,11 @@ watch(() => deviceStore.availableDevices, (newDevices) => {
   overflow-y: auto;
   padding-bottom: 0.5rem;
   border-bottom: 1px solid var(--surface-200);
+}
+.hw-switch-tag {
+  margin-left: 0.4rem;
+  font-size: 0.65rem;
+  padding: 0.1rem 0.4rem;
+  vertical-align: middle;
 }
 </style>

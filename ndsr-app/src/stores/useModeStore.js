@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia'
-import { isRival } from '@/utils/deviceFlags'
+import { isRival, isApSwitchOn } from '@/utils/deviceFlags'
 import { ref, watch } from 'vue'
 import { socket } from '@/socket'
 import { useToast } from 'primevue/usetoast'
@@ -10,8 +10,6 @@ export const useModeStore = defineStore('mode', () => {
   const isLoading = ref(false)
   const deviceStore = useDeviceStore()
 
-  const isApSwitchOn = (device) =>
-    ['true', 'yes', '1'].includes(String(device?.hwType ?? '').toLowerCase())
   
   const getInitialMode = () => {
     try {
@@ -193,7 +191,7 @@ const updateModeFromDetection = async (deviceId, password) => {
       
       const deviceStore = useDeviceStore();
       const apDevices = deviceStore.devices.filter(dev => 
-        dev.type === 'AP' && dev.hwType === 'true'
+        isApSwitchOn(dev)
       );
       
       // console.log(`🔧 Found ${apDevices.length} AP devices for mode validation`);
@@ -204,7 +202,7 @@ const updateModeFromDetection = async (deviceId, password) => {
         const modeInfo = savedModes[deviceId];
         const device = deviceStore.devices.find(d => d.id === deviceId);
         
-        if (device && device.type === 'AP' && device.hwType === 'true') {
+        if (device && isApSwitchOn(device)) {
           if (modeInfo.mode === 'router') {
             // console.log(`🔧 Исправляем AP устройство ${deviceId}: router -> extender`);
             savedModes[deviceId] = {
@@ -297,7 +295,7 @@ const validateAPDeviceModes = () => {
   try {
     const deviceStore = useDeviceStore();
     const apDevices = deviceStore.devices.filter(dev => 
-      dev.type === 'AP' && dev.hwType === 'true'
+      isApSwitchOn(dev)
     );
     
     let fixedCount = 0;

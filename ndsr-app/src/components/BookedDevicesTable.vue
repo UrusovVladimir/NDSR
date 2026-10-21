@@ -10,6 +10,30 @@
             </div>
             
             <div class="header-right">
+                <!-- Массовые перезагрузка / сброс выбранных (чекбоксы в таблице) -->
+                <template v-if="bulkSelectedDevices.length">
+                    <span class="bulk-ops-count">Selected: <strong>{{ bulkSelectedDevices.length }}</strong></span>
+                    <Button
+                        icon="pi pi-power-off"
+                        :label="`Reboot (${bulkSelectedDevices.length})`"
+                        class="p-button-outlined p-button-warning p-button-sm"
+                        @click="openBulkOp('reboot')"
+                        v-tooltip.bottom="'Reboot the selected devices'"
+                    />
+                    <Button
+                        icon="pi pi-refresh"
+                        :label="`Reset (${bulkSelectedDevices.length})`"
+                        class="p-button-outlined p-button-danger p-button-sm"
+                        @click="openBulkOp('reset')"
+                        v-tooltip.bottom="'Factory reset the selected devices'"
+                    />
+                    <Button
+                        icon="pi pi-times"
+                        class="p-button-text p-button-sm"
+                        @click="clearBulkOps"
+                        v-tooltip.bottom="'Clear selection'"
+                    />
+                </template>
                 <span class="common-devices-count">
                     {{ deviceStore.bookedDevicesCount }} device{{ deviceStore.bookedDevicesCount !== 1 ? 's' : '' }}
                 </span>
@@ -54,6 +78,26 @@
             responsive-layout="scroll"
             class="booked-devices-table"
         >
+            <Column style="width: 2.5rem; padding-right: 0;">
+                <template #header>
+                    <Checkbox
+                        :model-value="allBulkSelected"
+                        :binary="true"
+                        :disabled="!bulkSelectableDevices.length"
+                        v-tooltip.bottom="'Select all for bulk reboot / reset'"
+                        @update:model-value="toggleAllBulkOps"
+                    />
+                </template>
+                <template #body="{ data }">
+                    <Checkbox
+                        v-if="isBulkOpSelectable(data)"
+                        :model-value="bulkOpSelected.has(String(data.id))"
+                        :binary="true"
+                        @update:model-value="toggleBulkOp(data)"
+                    />
+                </template>
+            </Column>
+
             <Column field="statusCode" header="Status" style="min-width: 70px; max-width: 85px;">
                 <template #body="{ data }">
                     <StatusIndicator :status="data.statusCode" :type="data.type" />
@@ -70,6 +114,8 @@
                             <div class="common-device-name">{{ data.shortName }}
                                 <Tag v-if="isRival(data)" value="Rival" severity="warning" class="rival-tag"
                                     v-tooltip="'Rival device: only VNC and web interface are available'" />
+                                <Tag v-if="isApSwitchOn(data)" value="HW switch" icon="pi pi-lock" severity="info" class="rival-tag"
+                                    v-tooltip="'Hardware mode switch: the mode is set by the physical switch and cannot be changed from the portal. Connect it to a router with MWS Connect.'" />
                             </div>
                             <div class="common-device-hwid">{{ data.hwId }}
                                 <i class="pi pi-info-circle details-inline" 
@@ -214,7 +260,7 @@
                         />
                         
                         <Button
-                            v-if="data.type === 'AP' && !isRival(data)"
+                            v-if="canMwsConnectType(data) && !isRival(data)"
                             v-tooltip.bottom="'Connection AP to Router(MWS)'"
                             icon="pi pi-wifi"
                             class="p-button-sm p-button-outlined p-button-success p-button-rounded action-btn"
@@ -223,7 +269,7 @@
                         />
                         
                         <Button
-                            v-if="data.type === 'router' && data.hwType !== 'HardwareAP' && !isRival(data)"
+                            v-if="data.type === 'router' && data.hwType !== 'HardwareAP' && !isApSwitchOn(data) && !isRival(data)"
                             v-tooltip.bottom="'Change Mode'"
                             icon="pi pi-wrench"
                             class="p-button-sm p-button-outlined p-button-info p-button-rounded action-btn"
@@ -346,7 +392,7 @@
                     />
                     
                     <Button
-                        v-if="quickActionDevice.type === 'AP' && !isRival(quickActionDevice)"
+                        v-if="canMwsConnectType(quickActionDevice) && !isRival(quickActionDevice)"
                         label="MWS Connect"
                         icon="pi pi-wifi"
                         class="p-button-sm p-button-outlined p-button-success quick-action-btn"
@@ -363,7 +409,7 @@
                     />
                     
                     <Button
-                        v-if="quickActionDevice.type === 'router' && quickActionDevice.hwType !== 'HardwareAP' && !isRival(quickActionDevice)"
+                        v-if="quickActionDevice.type === 'router' && quickActionDevice.hwType !== 'HardwareAP' && !isApSwitchOn(quickActionDevice) && !isRival(quickActionDevice)"
                         label="Change Mode"
                         icon="pi pi-wrench"
                         class="p-button-sm p-button-outlined p-button-info quick-action-btn"
@@ -572,6 +618,56 @@
                         icon="pi pi-refresh" 
                         class="p-button-danger" 
                         @click="confirmReset"
+                    />
+                </div>
+            </template>
+        </Dialog>
+
+        <!-- Подтверждение массовой перезагрузки / сброса -->
+        <Dialog
+            v-model:visible="showBulkOpDialog"
+            modal
+            :blockScroll="false"
+            :header="bulkOp === 'reset' ? 'Reset Configuration' : 'Reboot Devices'"
+            :style="{ width: '480px', maxWidth: '90vw' }"
+            class="responsive-dialog"
+        >
+            <div class="confirmation-content">
+                <i class="pi pi-exclamation-triangle mr-3"
+                   :style="{ fontSize: '2rem', color: bulkOp === 'reset' ? '#e74c3c' : '#f39c12' }" />
+                <div>
+                    <h4 class="mb-2">
+                        {{ bulkOp === 'reset' ? 'Reset configuration of' : 'Reboot' }}
+                        {{ bulkSelectedDevices.length }} device{{ bulkSelectedDevices.length === 1 ? '' : 's' }}?
+                    </h4>
+                    <p v-if="bulkOp === 'reset'" class="text-color-secondary mb-2">
+                        All settings will be erased and factory defaults restored. This action cannot be undone.
+                    </p>
+                    <p v-else class="text-color-secondary mb-2">
+                        Devices will be restarted (1-2 minutes each). All connections will be temporarily interrupted.
+                    </p>
+                    <p class="text-color-secondary mb-2">
+                        Devices are started one by one, every {{ bulkOpStepSec }} s.
+                    </p>
+                    <div class="bulk-ops-list">
+                        <Tag
+                            v-for="d in bulkSelectedDevices"
+                            :key="d.id"
+                            :value="d.shortName ? `${d.hwId} · ${d.shortName}` : d.hwId"
+                            :severity="isAnyOperationOnThisDevice(d) ? 'secondary' : 'info'"
+                            v-tooltip="isAnyOperationOnThisDevice(d) ? 'Operation in progress — will be skipped' : null"
+                        />
+                    </div>
+                </div>
+            </div>
+            <template #footer>
+                <div class="dialog-footer">
+                    <Button label="Cancel" icon="pi pi-times" class="p-button-text" @click="showBulkOpDialog = false" />
+                    <Button
+                        :label="bulkOp === 'reset' ? `Reset ${bulkSelectedDevices.length}` : `Reboot ${bulkSelectedDevices.length}`"
+                        :icon="bulkOp === 'reset' ? 'pi pi-refresh' : 'pi pi-power-off'"
+                        :class="bulkOp === 'reset' ? 'p-button-danger' : 'p-button-warning'"
+                        @click="confirmBulkOp"
                     />
                 </div>
             </template>
@@ -1170,7 +1266,7 @@
 
 <script setup>
 import { ref, computed, inject, onMounted, onUnmounted, watch, nextTick } from 'vue'
-import { isRival } from '@/utils/deviceFlags'
+import { isRival, isApSwitchOn, canMwsConnectType } from '@/utils/deviceFlags'
 import { useToast } from 'primevue/usetoast'
 import { socket } from '@/socket'
 import { useDeviceStore } from '@/stores/useDeviceStore'
@@ -1190,6 +1286,7 @@ import InputNumber from 'primevue/inputnumber'
 import Chip from 'primevue/chip'
 import Tag from 'primevue/tag'
 import Badge from 'primevue/badge'
+import Checkbox from 'primevue/checkbox'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import OverlayPanel from 'primevue/overlaypanel'
@@ -1824,6 +1921,85 @@ const confirmReboot = () => {
     }
     showRebootConfirmDialog.value = false
     selectedDevice.value = null
+}
+
+// ========== Массовые перезагрузка / сброс ==========
+// Выбор чекбоксами среди своих броней; каждое устройство — обычная одиночная
+// операция (rebootDevice / resetConfig: своя строка в окне прогресса, вывод
+// консоли, тосты). Запуск с шагом: у Jerome/PowerHub одна telnet-сессия на
+// операцию (сброс держит кнопку ~10 с) — одновременные сессии не запускаем;
+// ночной сброс тоже идёт по одному.
+const BULK_OP_STEP_MS = { reboot: 6000, reset: 13000 }
+const bulkOpSelected = ref(new Set())
+const bulkOp = ref(null)
+const showBulkOpDialog = ref(false)
+const bulkOpStepSec = computed(() => (BULK_OP_STEP_MS[bulkOp.value] || 0) / 1000)
+
+const isBulkOpSelectable = (device) => !isRival(device) && isCurrentUserBooking(device)
+const bulkSelectableDevices = computed(() => deviceStore.bookedDevices.filter(isBulkOpSelectable))
+const bulkSelectedDevices = computed(() =>
+    bulkSelectableDevices.value.filter(d => bulkOpSelected.value.has(String(d.id))))
+const allBulkSelected = computed(() =>
+    bulkSelectableDevices.value.length > 0 &&
+    bulkSelectedDevices.value.length === bulkSelectableDevices.value.length)
+
+// Бронь снята / устройство ушло — убираем из выбора
+watch(bulkSelectedDevices, (list) => {
+    if (list.length !== bulkOpSelected.value.size) {
+        bulkOpSelected.value = new Set(list.map(d => String(d.id)))
+    }
+})
+
+const toggleBulkOp = (device) => {
+    const id = String(device.id)
+    const next = new Set(bulkOpSelected.value)
+    if (next.has(id)) next.delete(id)
+    else next.add(id)
+    bulkOpSelected.value = next
+}
+
+const toggleAllBulkOps = (checked) => {
+    bulkOpSelected.value = checked
+        ? new Set(bulkSelectableDevices.value.map(d => String(d.id)))
+        : new Set()
+}
+
+const clearBulkOps = () => {
+    bulkOpSelected.value = new Set()
+}
+
+const openBulkOp = (op) => {
+    bulkOp.value = op
+    showBulkOpDialog.value = true
+}
+
+const confirmBulkOp = () => {
+    const op = bulkOp.value
+    const step = BULK_OP_STEP_MS[op]
+    const list = bulkSelectedDevices.value.filter(d => !isAnyOperationOnThisDevice(d))
+    const skipped = bulkSelectedDevices.value.length - list.length
+    showBulkOpDialog.value = false
+    clearBulkOps()
+    if (!list.length) {
+        toast.add({ severity: 'warn', summary: 'Nothing to do', detail: 'All selected devices are busy with another operation', life: 4000 })
+        return
+    }
+
+    const run = op === 'reset' ? deviceActionsStore.resetConfig : deviceActionsStore.rebootDevice
+    list.forEach((device, i) => {
+        setTimeout(() => {
+            // Ошибки показывает сам store (тост по устройству)
+            run(device).catch(() => {})
+        }, i * step)
+    })
+
+    toast.add({
+        severity: 'info',
+        summary: op === 'reset' ? 'Bulk reset started' : 'Bulk reboot started',
+        detail: `${list.length} device${list.length === 1 ? '' : 's'}, one every ${step / 1000} s` +
+            (skipped ? `; ${skipped} busy — skipped` : ''),
+        life: 5000
+    })
 }
 
 const confirmDslReset = () => {
@@ -3234,5 +3410,18 @@ onUnmounted(() => {
         margin-bottom: 1rem;
         margin-right: 0;
     }
+}
+.bulk-ops-count {
+    font-size: 0.85rem;
+    color: var(--text-color-secondary);
+    margin-right: 0.25rem;
+}
+
+.bulk-ops-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.35rem;
+    max-height: 140px;
+    overflow-y: auto;
 }
 </style>

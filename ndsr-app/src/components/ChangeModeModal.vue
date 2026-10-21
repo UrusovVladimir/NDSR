@@ -319,9 +319,10 @@
         <div v-else-if="isHardwareControlled" class="mt-3">
         <Message severity="warn">
           <i class="pi pi-lock mr-2"></i>
-          Mode is controlled by the hardware switch. Software transitions to 
-          Router mode are not possible — use the physical switch, or use 
-          Extender / Extender+Connect scenarios.
+          This device has a <strong>hardware mode switch</strong> — the mode is set
+          by the physical switch and cannot be changed from the portal. To connect
+          it to a router, close this window and use <strong>MWS Connect</strong>
+          (<i class="pi pi-wifi"></i> button).
         </Message>
       </div>
       <!-- Сообщение при ошибке аутентификации -->
@@ -434,6 +435,7 @@ import ProgressSpinner from 'primevue/progressspinner'
 import Chip from 'primevue/chip'
 import Message from 'primevue/message'
 import Password from 'primevue/password' 
+import { isApSwitchOn } from '@/utils/deviceFlags'
 
 const toast = useToast()
 const modeStore = useModeStore()
@@ -480,12 +482,10 @@ const passwordInvalidated = computed(() => {
          props.device?.booking?.passwordInvalidated === true
 })
 
-// 🔑 Аппаратный переключатель режима: софт-переходы ограничены
-// (4310 отдаёт hw_controlled: true и 404 на /rci/system/mode)
-const isHardwareControlled = computed(() => {
-  return String(currentDevice.value?.hwType ?? props.device?.hwType ?? '')
-    .toLowerCase() === 'true'
-})
+// 🔑 Аппаратный переключатель режима: софтовая смена режима невозможна
+// (4310 отдаёт hw_controlled: true и 404 на /rci/system/mode; сервер
+// отклоняет device:changeMode). К роутеру — через MWS Connect.
+const isHardwareControlled = computed(() => isApSwitchOn(currentDevice.value || props.device))
 
 const modalTitle = computed(() => {
   if (!currentDevice.value) return 'Device Mode'
@@ -547,6 +547,9 @@ const availableBookedRoutersFormatted = computed(() => {
 
 // ========== ЛОГИКА ОТОБРАЖЕНИЯ ДЕЙСТВИЙ ==========
 const shouldShowAction = (action) => {
+  // 🔑 HW-переключатель (4310): сервер отклоняет любую device:changeMode —
+  // действий нет, подключение к роутеру — MWS Connect (device:mwsConnected)
+  if (isHardwareControlled.value) return false
   // 🔑 Фильтры работают и без пароля — база режимов теперь известна
   // (см. currentDeviceBaseMode fallback'и)
   if ((!hasValidPassword.value && !passwordInvalidated.value) || authError.value) return true
@@ -555,17 +558,6 @@ const shouldShowAction = (action) => {
   const hasConnection = hasRouterConnection.value
   const connectedRouter = connectedRouterId.value
 
-  // 🔑 HW-переключатель (4310): софт-переход в router невозможен (404) —
-  // скрываем router и disconnectRouter, разрешаем extender/extenderConnect
-  if (isHardwareControlled.value) {
-    switch (action) {
-      case 'extender':       return true
-      case 'extenderConnect': return true
-      case 'router':         return false
-      case 'disconnectRouter': return false
-      default: return false
-    }
-  }
   
   
   switch (action) {

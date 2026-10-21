@@ -599,7 +599,7 @@
 
 <script setup>
 import { ref, computed, watch, onUnmounted } from 'vue'
-import { isRival } from '@/utils/deviceFlags'
+import { isRival, isApSwitchOn } from '@/utils/deviceFlags'
 import { useToast } from 'primevue/usetoast'
 import { socket } from '@/socket'
 import Dialog from 'primevue/dialog'
@@ -1009,7 +1009,7 @@ const fetchCurrentConnection = async (deviceId) => {
       }
     }
 
-    if (device && device.type === 'AP' && device.hwType === 'true') {
+    if (device && isApSwitchOn(device)) {
       await fetchAPDeviceConnection(deviceId, device)
     } else {
       currentConnection.value = null
@@ -1307,8 +1307,9 @@ const saveChanges = async (action = 'connect') => {
     
     const deviceId = currentDevice.value.id;
     
-    if (currentDevice.value.hwType === 'true') {
-      // Для AP устройств используем device:mwsConnected
+    if (isApSwitchOn(currentDevice.value)) {
+      // Устройства с аппаратным переключателем (AP и, например, KN-4310 с
+      // type: router) — device:mwsConnected, без смены режима
       const saveData = {
         value: modalValue.value,
         type: 'mwsApConnection',  
