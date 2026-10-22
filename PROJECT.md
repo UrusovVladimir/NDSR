@@ -674,7 +674,7 @@ App.vue
    - не подошёл ни один пароль → cooldown 60 с и отказ;
    - сетевая ошибка → «Device is unreachable», отказ **без** cooldown.
 3. Для `extender_connect` — пароль роутера (`resolveRouterPassword`, 8.3) и **пароль экстендера**: `extenderPasswordMode` `'router'` (по умолчанию — проверенный пароль роутера) или `'custom'` + `extenderPassword` (≥ 4 символов; выбор в `ChangeModeModal` → «Extender Password»).
-4. Сразу ack `{async:true}`. Дальше прогресс идёт событиями `device:modeChangeProgress`.
+4. Сразу ack `{async:true}`. Дальше прогресс идёт событиями `device:modeChangeProgress`. Фронт (`useModeStore.changeMode`) ждёт итог `device:modeChangeResult` без жёсткого срока: сторож тишины 15 мин перезапускается на каждом `device:modeChangeProgress` устройства (прежний таймер 180 с от старта давал «Request timeout» посреди нормального отключения экстендера — оно идёт до ~6 мин).
 5. Если `action:'wan_off'` — выключить WAN на коммутаторе.
 6. `changeSystemMode`: для `extender_connect` сначала, пока устройство ещё роутер, ставит ему пароль экстендера (`POST /rci/` `user password` + `system configuration save`, как Skip Wizard; проверка входа с новым паролем; портал запоминает его — `rememberDevicePassword`: конфиг, бронь, `device:passwordUpdated`). Зачем: MWS-контроллер (роутер) заходит на экстендер со **своим** паролем — при другом пароле кандидат висит `DISCONNECTED` с `rci: error … access unauthorized`. Затем `POST /rci/system/mode` → через 2 с `POST /rci/system/reboot`.
 7. Для экстендера с `routerId`:
@@ -1135,7 +1135,7 @@ cd ndsr-app/api && node --env-file=.env -e "import('./src/socketHandler.js')"
 | Бэкенд падает сразу при старте | битый или отсутствующий JSON (devices, wan_types, users, badge) — они читаются синхронно | первые строки лога; пути `*_CONFIG_PATH`; запуск не из `ndsr-app/api/` |
 | Все устройства offline (0) | проброс или маршрут до `checkUrl`, CFK лежат | `curl -I <checkUrl>` с хоста бэкенда; `docker ps`; `monitorGw` в CFK |
 | Одно устройство offline | Keenetic выключен (реле), CFK не получил DHCP (192.168.1.254 = fallback), VLAN/мост | `device:getPowerStatus`; `docker exec KN-x ip addr`; лог `changeContainersIp.log` |
-| Статусы перестали обновляться до F5 | `ProgressModal` снимает все слушатели `device:status` (`socket.off` без handler) | перезагрузка страницы; баг в 12.2 |
+| Статусы перестали обновляться до F5 | раньше — `socket.off` без handler в `ProgressModal`/`PrimeDeviceModal` (исправлено, 12.2); сейчас — искать другой `socket.off(event)` без handler | перезагрузка страницы |
 | «Устройство забронировано другим» / кнопки неактивны | IP клиента изменился (VPN, NAT, прокси), `TRUST_PROXY_HEADERS` | `CLIENT_IP` на фронте и `bookedBy` в `bookings.json` |
 | Все пользователи «один и тот же» (чужие брони видны как свои), в логе у всех один `ip` | клиенты идут через nginx, а `TRUST_PROXY_HEADERS=false` → все видны как IP nginx `10.10.19.254` | `ndsr-app-backend.env`; лог `🔗 Client connected` (`trustedProxy`) |
 | После деплоя работает старый код | образ не пересобран (роль до октября 2026 собирала образ только если его нет) | `docker images` (время создания); `docker compose … up -d --build` |
@@ -1204,7 +1204,7 @@ cd ndsr-app/api && node --env-file=.env -e "import('./src/socketHandler.js')"
 
 ### 12.2 Фронтенд
 
-- `socket.off(event)` без handler в `ProgressModal` и `PrimeDeviceModal` снимает слушатели сторов. После первого прогресс-диалога перестают обновляться статусы и режимы. `socket.onAny` и `device:modeChangeResult` накапливаются при каждом открытии.
+- ~~`socket.off(event)` без handler в `ProgressModal` и `PrimeDeviceModal` снимал слушатели сторов~~ — исправлено (октябрь 2026): оба окна регистрируют свои обработчики через `listen()` и снимают только их; отладочный `socket.onAny` убран, `device:modeChangeResult` больше не копится. Симптомы были: статусы и режимы не обновлялись до F5, окно прогресса MWS «глохло» после закрытия окна MWS.
 - События без обработчика на сервере: `device:forceStatusCheckAll`, `device:updateShortName`, `password:generate`, `device:cancelOperation`. Слушатели `device:operationError` и `device:firmwareUpdated` мёртвые — сервер эти события не шлёт.
 - MWS для AP без аппаратного переключателя в `DeviceDataTable.handleModalSave` показывает успех, ничего не отправляя на сервер.
 - `listenForMwsUpdates` нигде не вызывается → `device:mwsStatusUpdated` игнорируется.

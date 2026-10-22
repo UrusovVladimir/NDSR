@@ -422,6 +422,8 @@ const validateAPDeviceModes = () => {
 
 // extra (extender_connect): { extenderPasswordMode: 'router'|'custom', extenderPassword }
 // — какой пароль поставить экстендеру перед сменой режима
+const MODE_CHANGE_SILENCE_MS = 15 * 60 * 1000
+
 const changeMode = async (deviceId, mode, routerId = null, password = null, routerPassword = null, action = null, extra = {}) => {
   isLoading.value = true
   error.value = null
@@ -435,15 +437,30 @@ const changeMode = async (deviceId, mode, routerId = null, password = null, rout
         settled = true
         clearTimeout(timeout)
         socket.off('device:modeChangeResult', onResult)
+        socket.off('device:modeChangeProgress', onProgress)
         fn()
       }
 
-      const timeout = setTimeout(() => {
-        settle(() => {
-          showErrorToast('Operation timeout - device is not responding', 'Timeout')
-          reject(new Error('Request timeout (180s)'))
-        })
-      }, 180000)
+      // Сторож тишины, а не срок операции: смена режима идёт минутами
+      // (отключение экстендера — до ~6 мин, ожидание MWS-кандидата — дольше);
+      // прежний жёсткий таймер 180 с от старта показывал «Request timeout»
+      // посреди нормальной операции. Каждый шаг прогресса устройства его
+      // перезапускает; срабатывает, только если сервер молчит MODE_CHANGE_SILENCE_MS.
+      let timeout = null
+      const armTimeout = () => {
+        clearTimeout(timeout)
+        timeout = setTimeout(() => {
+          settle(() => {
+            showErrorToast('No progress from the server for 15 minutes — the operation may still be running, check the device', 'No Response')
+            reject(new Error('No response from the server for 15 minutes'))
+          })
+        }, MODE_CHANGE_SILENCE_MS)
+      }
+      const onProgress = (data) => {
+        if (String(data?.deviceId) === String(deviceId)) armTimeout()
+      }
+      armTimeout()
+      socket.on('device:modeChangeProgress', onProgress)
 
       // 🎯 B3: итог операции приходит событием, а не через ack
       const onResult = (data) => {

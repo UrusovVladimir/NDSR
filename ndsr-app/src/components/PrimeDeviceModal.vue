@@ -1051,11 +1051,23 @@ const fetchAPDeviceConnection = async (deviceId, device) => {
   }
 }
 
+// Свои обработчики снимаем по ссылке: socket.off(event) без обработчика
+// снимал и чужие — device:modeUpdated стора режимов, прогресс ProgressModal
+// (mwsOperationProgress / modeChangeProgress) и сторож useModeStore.changeMode;
+// closeModal вызывается сразу после запуска MWS — окно прогресса глохло
+const ownListeners = []
+const listen = (event, handler) => {
+  socket.on(event, handler)
+  ownListeners.push([event, handler])
+}
+const removeOwnListeners = () => {
+  for (const [event, handler] of ownListeners.splice(0)) socket.off(event, handler)
+}
+
 const setupModeChangeListeners = () => {
-  socket.off('device:modeUpdated')
-  socket.off('device:operationError')
+  removeOwnListeners()
   
-  socket.on('device:modeUpdated', (data) => {
+  listen('device:modeUpdated', (data) => {
     if (data.deviceId === props.device?.id && data.source === 'mode_change') {
       if (data.success) {
         addLog('success', `Mode changed successfully to ${data.mode}`)
@@ -1077,7 +1089,7 @@ const setupModeChangeListeners = () => {
     }
   })
   
-  socket.on('device:operationError', (data) => {
+  listen('device:operationError', (data) => {
     if (data.deviceId === props.device?.id) {
       setStepError(currentStepId.value, data.error)
       emit('operationProgress', {
@@ -1096,10 +1108,7 @@ const cleanupOperation = () => {
     operationTimeout.value = null
   }
   
-  socket.off('device:modeUpdated')
-  socket.off('device:operationError')
-  socket.off('device:mwsOperationProgress')
-  socket.off('device:modeChangeProgress')
+  removeOwnListeners()
 }
 
 const getConnectButtonLabel = () => {

@@ -623,25 +623,26 @@ const show = (operationType = 'mwsConnection', device = null, operationData = {}
 }
 
 // Функция для очистки слушателей
+// Свои обработчики снимаем по ссылке: socket.off(event) без обработчика
+// снимал и чужие — слушатель статусов в useDeviceStore (статусы вставали до
+// F5) и сторож тишины в useModeStore.changeMode
+const ownListeners = []
+const listen = (event, handler) => {
+  socket.on(event, handler)
+  ownListeners.push([event, handler])
+}
 const cleanupListeners = () => {
-  socket.off('device:modeChangeProgress')
-  socket.off('device:mwsOperationProgress')
-  socket.off('device:operationProgress')
-  socket.off('device:status')
-  // console.log('🧹 Progress listeners cleaned up')
+  for (const [event, handler] of ownListeners.splice(0)) socket.off(event, handler)
 }
 
 const setupListeners = () => {
   // console.log('📊 Setting up progress listeners for device:', localDevice.value?.id);
   
-  // Удаляем все старые слушатели
-  socket.off('device:mwsOperationProgress');
-  socket.off('device:operationProgress');
-  socket.off('device:modeChangeProgress');
-  socket.off('device:status');
-  
+  // Свои прежние слушатели сняты в show() (cleanupListeners)
+  cleanupListeners()
+
   // Добавляем новые слушатели
-  socket.on('device:mwsOperationProgress', (data) => {
+  listen('device:mwsOperationProgress', (data) => {
     // console.log('📊 ProgressModal RECEIVED device:mwsOperationProgress:', data);
     if (data.deviceId === localDevice.value?.id) {
       updateProgress(data.progress, data.step, data.details);
@@ -650,27 +651,21 @@ const setupListeners = () => {
     }
   });
 
-  socket.on('device:operationProgress', (data) => {
+  listen('device:operationProgress', (data) => {
     // console.log('📊 ProgressModal RECEIVED device:operationProgress:', data);
     if (data.deviceId === localDevice.value?.id) {
       updateProgress(data.progress, data.step, data.details);
     }
   });
 
-  socket.on('device:modeChangeProgress', (data) => {
+  listen('device:modeChangeProgress', (data) => {
     // console.log('📊 ProgressModal RECEIVED device:modeChangeProgress:', data);
     if (data.deviceId === localDevice.value?.id) {
       updateProgress(data.progress, data.step, data.details);
     }
   });
   
-  // Добавляем глобальный слушатель для отладки
-  socket.onAny((event, ...args) => {
-    if (event.includes('progress') || event.includes('Progress')) {
-      // console.log(`📡 GLOBAL: ${event}`, args[0]);
-    }
-  });
-  socket.on('device:modeChangeResult', (data) => {
+  listen('device:modeChangeResult', (data) => {
     if (String(data?.deviceId) !== String(localDevice.value?.id)) return
 
     if (data.success) {
@@ -764,9 +759,7 @@ const updateProgress = (newProgress, step, details = null) => {
 };
 
 const startDeviceMonitoring = (deviceId) => {
-  socket.off('device:status')
-  
-  socket.on('device:status', (data) => {
+  listen('device:status', (data) => {
     if (data.deviceId === deviceId) {
       deviceStatus.value = data.status
       
