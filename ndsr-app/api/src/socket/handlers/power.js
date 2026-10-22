@@ -196,6 +196,23 @@ export function register(socket, io) {
       }
     ), { errorShape: 'status' });
 
+  // «Restore switch & reset»: устройство переводили в extender, а связка в
+  // портале не записалась (или записана не та) — откат свича/NAT к роутеру,
+  // который выбрал пользователь, затем обычный заводской сброс.
+  // { deviceId, routerId }; роутер — свободен или в своей брони.
+  on(socket, 'device:restoreSwitchAndReset', (data, callback) => {
+    const deviceId = String(data?.deviceId || '');
+    const routerId = data?.routerId ? String(data.routerId) : null;
+    if (!routerId) return callback({ status: 'error', error: 'Router is required' });
+    if (routerId === deviceId) return callback({ status: 'error', error: 'Router must be another device' });
+    const run = setupDeviceOperation('device:restoreSwitchAndReset', 'resetting',
+      (id) => factoryResetDevice(io, id, { revertRouterId: routerId }),
+      180000,
+      (id) => requireLinkAccess(socket, id, routerId, { disconnect: true })
+    );
+    run(deviceId, callback);
+  }, { errorShape: 'status' });
+
   on(socket, 'device:resetDslLine', (deviceId, callback) => {
     // 🔒 S7: сброс DSL-линии требует брони владельцем
     try {

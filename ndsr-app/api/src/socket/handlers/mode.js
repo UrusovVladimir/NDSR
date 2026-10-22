@@ -332,7 +332,7 @@ export function register(socket, io) {
     
 
     try {
-      const { deviceId: id, mode, routerId, password, routerPassword, action } = data;
+      const { deviceId: id, mode, routerId, password, routerPassword, action, extenderPasswordMode, extenderPassword } = data;
       deviceId = id;
 
       // Отказ до старта: ack + итог событием — окно прогресса (ProgressModal)
@@ -454,9 +454,20 @@ export function register(socket, io) {
       // до любых изменений. Отключению он не нужен (fullDisconnect работает
       // с паролем экстендера).
       let finalRouterPassword = null;
+      // Пароль экстендера перед сменой режима: по умолчанию — пароль роутера
+      // (проверенный на нём), 'custom' — выбранный пользователем
+      let extenderPasswordToSet = null;
       if (mode === 'extender_connect') {
         try {
           finalRouterPassword = await resolveRouterPassword(routerId, socket.clientIp, routerPassword || null);
+          if (extenderPasswordMode === 'custom') {
+            if (typeof extenderPassword !== 'string' || extenderPassword.length < 4) {
+              throw new Error('Extender password must be at least 4 characters');
+            }
+            extenderPasswordToSet = extenderPassword;
+          } else {
+            extenderPasswordToSet = finalRouterPassword;
+          }
           // MAC экстендера нужен, чтобы найти его у роутера; проверяем до WAN off
           const ext = getDeviceById(deviceId);
           await ensureExtenderMac(ext, ext.checkDeviceMode || ext.checkUrl || ext.URL, workingPassword);
@@ -521,7 +532,10 @@ export function register(socket, io) {
           result = await changeSystemMode(deviceId, null, 'extender', workingPassword, null, io, 'direct', targetUrl);
           break;
         case 'extender_connect':
-          result = await changeSystemMode(deviceId, routerId, 'extender', workingPassword, finalRouterPassword, io, 'direct', targetUrl);
+          result = await changeSystemMode(deviceId, routerId, 'extender', workingPassword, finalRouterPassword, io, 'direct', targetUrl, {
+            extenderPassword: extenderPasswordToSet,
+            extenderPasswordSource: extenderPasswordMode === 'custom' ? 'custom' : 'router'
+          });
           break;
         case 'extender_disconnect':
           result = await disconnectAndChangeToRouter(deviceId, routerId, workingPassword, null, io, 'router', targetUrl);

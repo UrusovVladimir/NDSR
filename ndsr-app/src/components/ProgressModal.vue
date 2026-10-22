@@ -5,7 +5,7 @@
       :closable="userCanClose"
       :closeOnEscape="userCanClose"
       :header="modalHeader"
-      :style="{ width: mobileView ? '95vw' : '550px' }"
+      :style="{ width: mobileView ? '95vw' : (consoleExpanded ? 'min(960px, 95vw)' : '550px') }"
       class="universal-progress-modal"
     >
       <div class="progress-content">
@@ -139,6 +139,14 @@
             </div>
           </div>
         </Message>
+
+        <!-- Вывод консоли устройства (смена режима, MWS): свёрнут, раскрытый — окно шире -->
+        <ConsoleOutputBlock
+          v-if="withConsole"
+          v-model:expanded="consoleExpanded"
+          :device-id="localDevice?.id"
+          :hw-id="localDevice?.hwId"
+        />
       </div>
   
       <template #footer>
@@ -164,7 +172,7 @@
   </template>
   
 <script setup>
-import { ref, computed, onUnmounted } from 'vue'
+import { ref, computed, watch, onUnmounted } from 'vue'
 import { useToast } from 'primevue/usetoast'
 import Dialog from 'primevue/dialog'
 import ProgressBar from 'primevue/progressbar'
@@ -172,10 +180,38 @@ import Button from 'primevue/button'
 import Message from 'primevue/message'
 import { socket } from '@/socket'
 import { useDeviceStore } from '../stores/useDeviceStore'
+import { useConsoleLogStore } from '../stores/useConsoleLogStore'
+import ConsoleOutputBlock from './ConsoleOutputBlock.vue'
 
 const toast = useToast()
 // console.log('📊 ProgressModal component loaded');
 const deviceStore = useDeviceStore()
+const consoleLogStore = useConsoleLogStore()
+
+// Вывод консоли — для смены режима и MWS (устройство перезагружается);
+// захват только для своей брони (сервер проверяет её же)
+const CONSOLE_OPERATIONS = ['modeChange', 'mwsConnection']
+const withConsole = ref(false)
+const consoleExpanded = ref(false)
+const consoleDeviceId = ref(null)
+
+const startConsole = (device, operationType) => {
+  stopConsole()
+  const mine = device?.booking?.isBooked && device.booking.bookedBy === deviceStore.currentUserId
+  withConsole.value = !!(device?.id && mine && CONSOLE_OPERATIONS.includes(operationType))
+  if (!withConsole.value) return
+  consoleDeviceId.value = device.id
+  consoleLogStore.begin(device.id)
+}
+const finishConsole = () => {
+  if (consoleDeviceId.value != null) consoleLogStore.finish(consoleDeviceId.value)
+}
+const stopConsole = () => {
+  if (consoleDeviceId.value != null) consoleLogStore.forget(consoleDeviceId.value)
+  consoleDeviceId.value = null
+  withConsole.value = false
+  consoleExpanded.value = false
+}
 
 const getRouterName = (routerId) => {
   if (!routerId) return "Unknown Router name";
@@ -565,6 +601,7 @@ const show = (operationType = 'mwsConnection', device = null, operationData = {}
   if (localDevice.value?.id) {
     startDeviceMonitoring(localDevice.value.id)
   }
+  startConsole(device, operationType)
 }
 
 // Функция для очистки слушателей
@@ -781,11 +818,13 @@ const completeOperation = () => {
   }
   
   addLog('success', operationConfig.value.successMessage)
+  finishConsole()
   
   emit('completed')
   
+  // Раскрытый вывод консоли — окно не закрываем само
   setTimeout(() => {
-    if (visible.value && !userClosed.value) {
+    if (visible.value && !userClosed.value && !consoleExpanded.value) {
       // console.log('🔒 Auto-closing progress modal after 3 seconds');
       closeModal()
     }
@@ -806,14 +845,9 @@ const failOperation = (errorMessage) => {
 
   progress.value = 0
   addLog('error', errorMessage)
-
-  // Прогресс-окно закроется через 4 сек — тост с ошибкой уже показан стором,
-  // держим окно ровно чтобы пользователь увидел, на каком шаге упало
-  setTimeout(() => {
-    if (visible.value && !userClosed.value) {
-      closeModal()
-    }
-  }, 4000)
+  finishConsole()
+  // Окно с ошибкой само не закрывается — пользователь читает ошибку
+  // (и вывод консоли) и закрывает его кнопкой
 }
 const getCloseButtonLabel = () => {
   if (closingInProgress.value) return 'Closing...'
@@ -862,6 +896,7 @@ const closeModal = () => {
   emit('close')
   
   cleanupListeners()
+  stopConsole()
   
   setTimeout(() => {
     progress.value = 0
@@ -888,8 +923,12 @@ const setStepError = (stepId, errorMessage) => {
   addLog('error', `Error: ${errorMessage}`)
 }
 
+// Закрыли крестиком / Esc (минуя closeModal) — захват консоли тоже снять
+watch(visible, (v) => { if (!v) stopConsole() })
+
 onUnmounted(() => {
   cleanupListeners()
+  stopConsole()
 })
 
 defineExpose({ 

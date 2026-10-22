@@ -251,6 +251,69 @@
         </div>
       </div>
 
+      <!-- Пароль экстендера: MWS-контроллер (роутер) заходит на экстендер со
+           своим паролем — при другом пароле кандидат висит DISCONNECTED с
+           «access unauthorized». Поэтому перед сменой режима ставим пароль
+           роутера; осознанно можно задать свой. -->
+      <div v-if="selectedAction === 'extenderConnect' && (hasValidPassword || passwordInvalidated) && !authError" class="action-selection-section mb-4">
+        <h6 class="section-title mb-3">Extender Password:</h6>
+        <div class="password-toggle-section mb-3">
+          <div class="horizontal-password-options">
+            <div class="password-option horizontal-option"
+                 :class="{ 'active': extenderPasswordMode === 'router' }"
+                 @click="extenderPasswordMode = 'router'">
+              <div class="option-content">
+                <RadioButton v-model="extenderPasswordMode" inputId="extPwRouter" name="extenderPassword" value="router" class="password-radio" />
+                <label for="extPwRouter" class="password-label">
+                  <div class="flex align-items-center mb-1">
+                    <i class="pi pi-key mr-2 text-primary"></i>
+                    <strong>Same as router</strong>
+                  </div>
+                  <small class="block text-color-secondary">Recommended</small>
+                </label>
+              </div>
+            </div>
+            <div class="password-option horizontal-option"
+                 :class="{ 'active': extenderPasswordMode === 'custom' }"
+                 @click="extenderPasswordMode = 'custom'">
+              <div class="option-content">
+                <RadioButton v-model="extenderPasswordMode" inputId="extPwCustom" name="extenderPassword" value="custom" class="password-radio" />
+                <label for="extPwCustom" class="password-label">
+                  <div class="flex align-items-center mb-1">
+                    <i class="pi pi-pencil mr-2 text-warning"></i>
+                    <strong>Other password</strong>
+                  </div>
+                  <small class="block text-color-secondary">Set your own</small>
+                </label>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div v-if="extenderPasswordMode === 'router'" class="info-message p-2 border-round bg-green-50 border-1 border-green-200">
+          <i class="pi pi-check-circle text-green-600 mr-2"></i>
+          <span class="text-green-700">
+            Before switching, the device password is set to the router's
+            <template v-if="routerPasswordPreview">(<b class="mono">{{ routerPasswordPreview }}</b>)</template>
+            — the router can then adopt the extender.
+          </span>
+        </div>
+        <template v-else>
+          <Password
+            v-model="customExtenderPassword"
+            :feedback="false"
+            placeholder="New device password (min 4 characters)"
+            class="w-full router-password-input mb-2"
+            toggleMask
+            :inputProps="{ autocomplete: 'new-password', id: 'extender-password' }"
+          />
+          <Message severity="warn" :closable="false">
+            With a password different from the router's, the router may report
+            <b>access unauthorized</b> for the extender. The portal then removes the
+            extender password and asks the router to adopt it again (mws revisit).
+          </Message>
+        </template>
+      </div>
+
       <!-- Router Selection for Disconnect -->
         <div v-if="selectedAction === 'disconnectRouter' && (hasValidPassword || passwordInvalidated) && !authError" class="router-selection-section mb-4">
         <h6 class="section-title mb-2">Select Router to Disconnect From:</h6>
@@ -338,43 +401,6 @@
         </Message>
       </div>
 
-      <!-- Debug секция -->
-      <Button 
-        :label="showDebug ? 'Hide' : 'Show Debug Info'"
-        :icon="showDebug ? 'bi bi-toggle-on' : 'bi bi-tools'"
-        @click="showDebugSection"
-        class="p-button-sm p-button-info"
-        style="margin-top: 15px;"
-      />
-          
-      <div v-if="showDebug" class="debug-section mt-3 p-2 border-round" style="background: #f8f9fa; border: 1px dashed #ccc;">
-        <small class="text-color-secondary">Debug info:</small>
-        <div class="flex gap-2 mt-1">
-          <Button 
-            label="Test Mode Detection" 
-            icon="pi pi-bug" 
-            @click="testModeDetection"
-            class="p-button-sm p-button-help"
-            :disabled="!hasValidPassword"
-          />
-          <Button 
-            label="Reset State" 
-            icon="pi pi-refresh" 
-            @click="resetState"
-            class="p-button-sm p-button-secondary"
-          />
-        </div>
-        <div v-if="debugInfo" class="mt-1 text-xs">
-          <pre style="margin: 0; font-size: 0.75rem; background: #fff; padding: 0.5rem; border-radius: 4px; overflow-x: auto;">{{ debugInfo }}</pre>
-        </div>
-        <div class="mt-1 text-xs">
-          <div><strong>Device:</strong> {{ currentDevice?.hwId }} ({{ currentDevice?.id }})</div>
-          <div><strong>Password:</strong> {{ devicePassword ? `'${devicePassword}'` : 'None' }} ({{ passwordSource }})</div>
-          <div><strong>Auth Error:</strong> {{ authError }}</div>
-          <div><strong>Current Mode:</strong> {{ currentDeviceBaseMode || 'Unknown' }}</div>
-          <div><strong>Available Routers:</strong> {{ availableBookedRoutersFormatted.length }}</div>
-        </div>
-      </div>
     </div>
     
     <div v-else-if="!currentDevice" class="text-center p-4">
@@ -459,6 +485,10 @@ const props = defineProps({
 const visible = ref(false)
 const selectedAction = ref('router')
 const selectedRouterId = ref('')
+// Пароль экстендера после смены режима: 'router' — как у роутера (по
+// умолчанию; сервер берёт проверенный пароль роутера), 'custom' — свой
+const extenderPasswordMode = ref('router')
+const customExtenderPassword = ref('')
 const isLoading = ref(false)
 const modeCheckInProgress = ref(false)
 const devicePassword = ref('')
@@ -468,8 +498,6 @@ const useRouterPassword = ref(true)
 const manualRouterPassword = ref('')
 const isMobile = ref(false)
 const currentDevice = ref(null)
-const debugInfo = ref('')
-const showDebug = ref(false)
 const todayPassword = inject('todayPassword')
 
 // ========== COMPUTED ==========
@@ -537,6 +565,15 @@ const mwsStatus = computed(() => {
 })
 
 // ========== ФИЛЬТРАЦИЯ РОУТЕРОВ ==========
+// Пароль роутера для подсказки (пароли устройств видны всем by design)
+const routerPasswordPreview = computed(() => {
+  if (!useRouterPassword.value) return manualRouterPassword.value || ''
+  const router = deviceStore.devices.find(d => String(d.id) === String(selectedRouterId.value))
+  if (!router) return ''
+  return router.devicePassword ||
+    (!router.booking?.passwordInvalidated ? router.booking?.accessPassword : '') || ''
+})
+
 const availableBookedRoutersFormatted = computed(() => {
   return deviceStore.devices
     .filter(device => {
@@ -585,7 +622,10 @@ const shouldShowAction = (action) => {
 const canConfirm = computed(() => {
   if ((!hasValidPassword.value && !passwordInvalidated.value) || modeCheckInProgress.value || isLoading.value) return false
   if (!shouldShowAction(selectedAction.value)) return false
-  if (selectedAction.value === 'extenderConnect') return !!selectedRouterId.value && hasRouterPasswordChoice.value
+  if (selectedAction.value === 'extenderConnect') {
+    return !!selectedRouterId.value && hasRouterPasswordChoice.value &&
+      (extenderPasswordMode.value === 'router' || customExtenderPassword.value.length >= 4)
+  }
   if (selectedAction.value === 'disconnectRouter') return !!selectedRouterId.value
   return !!selectedAction.value
 })
@@ -705,6 +745,8 @@ const modeIconForBase = () => {
 const show = async (password, source = 'global') => {
   devicePassword.value = password
   useRouterPassword.value = true
+  extenderPasswordMode.value = 'router'
+  customExtenderPassword.value = ''
   manualRouterPassword.value = ''
   passwordSource.value = source
   authError.value = false
@@ -712,7 +754,6 @@ const show = async (password, source = 'global') => {
   selectedRouterId.value = ''
   modeCheckInProgress.value = false
   isLoading.value = false
-  debugInfo.value = ''
   
   currentDevice.value = props.device
   visible.value = true
@@ -882,7 +923,13 @@ const confirmAction = async () => {
       routerId, 
       devicePassword.value,
       routerPasswordToUse,
-      action
+      action,
+      selectedAction.value === 'extenderConnect'
+        ? {
+            extenderPasswordMode: extenderPasswordMode.value,
+            extenderPassword: extenderPasswordMode.value === 'custom' ? customExtenderPassword.value : null
+          }
+        : {}
     )
     
     if (result.success) {
@@ -924,48 +971,14 @@ const fullCleanup = () => {
   selectedRouterId.value = ''
   devicePassword.value = ''
   useRouterPassword.value = true
+  extenderPasswordMode.value = 'router'
+  customExtenderPassword.value = ''
   manualRouterPassword.value = ''
   passwordSource.value = 'global'
   authError.value = false
   modeCheckInProgress.value = false
   currentDevice.value = null
-  debugInfo.value = ''
-  showDebug.value = false
   isLoading.value = false
-}
-
-// ========== DEBUG ==========
-const testModeDetection = async () => {
-  if (!hasValidPassword.value || !currentDevice.value) return
-  
-  debugInfo.value = 'Testing mode detection via store...'
-  
-  try {
-    const mode = await modeStore.getCurrentMode(currentDevice.value.id, devicePassword.value, { forceRefresh: true })
-    debugInfo.value = `✅ Success! Mode: ${mode}`
-    toast.add({ severity: 'success', summary: 'Mode Detection Test', detail: `Mode detected: ${mode}`, life: 3000 })
-  } catch (error) {
-    debugInfo.value = `❌ Store error: ${error.message}`
-    let errorDetail = error.message
-    if (error.message.includes('401') || error.message.includes('authentication')) {
-      errorDetail = 'Authentication failed. Please check the device password.'
-    } else if (error.message.includes('timeout')) {
-      errorDetail = 'Device timeout. Device may be offline or slow to respond.'
-    }
-    toast.add({ severity: 'error', summary: 'Mode Detection Test Failed', detail: errorDetail, life: 5000 })
-  }
-}
-
-const resetState = () => {
-  modeStore.resetDeviceMode(currentDevice.value?.id)
-  authError.value = false
-  modeCheckInProgress.value = false
-  debugInfo.value = 'State reset'
-  toast.add({ severity: 'info', summary: 'State Reset', detail: 'Modal state has been reset', life: 2000 })
-}
-
-const showDebugSection = () => {
-  showDebug.value = !showDebug.value
 }
 
 // ========== МОБИЛЬНАЯ АДАПТАЦИЯ ==========

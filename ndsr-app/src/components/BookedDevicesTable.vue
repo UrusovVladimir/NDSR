@@ -149,7 +149,7 @@
                                 v-tooltip="'Copy access password'"></i>
                                 <i v-else-if="data.booking?.passwordInvalidated"
                                 class="pi pi-exclamation-triangle details-inline password-unknown-icon"
-                                v-tooltip="'Password unknown after reset — set a new one via Skip Wizard'"></i>
+                                v-tooltip="'Password unknown (factory reset or forgotten) — set a new one via Skip Wizard, or enter the current one with the pencil'"></i>
                                 <i v-if="isCurrentUserBooking(data)"
                                 class="pi pi-pencil details-inline"
                                 @click.stop="openChangePasswordDialog(data)"
@@ -260,6 +260,16 @@
                             class="p-button-sm p-button-outlined p-button-danger p-button-rounded action-btn"
                             :disabled="!canResetConfig(data) || isAnyOperationOnThisDevice(data)" 
                             @click="showResetConfirm(data)"
+                        />
+
+                        <!-- Переведён в extender: откат порта свича + заводской сброс -->
+                        <Button
+                            v-if="!isRival(data) && isInExtenderMode(data)"
+                            v-tooltip.bottom="'Restore switch port & factory reset'"
+                            icon="pi pi-undo"
+                            class="p-button-sm p-button-outlined p-button-danger p-button-rounded action-btn"
+                            :disabled="!canResetConfig(data) || isAnyOperationOnThisDevice(data)"
+                            @click="openRestoreSwitch(data)"
                         />
                         
                         <Button
@@ -394,6 +404,15 @@
                         @click="executeQuickAction('reset')"
                     />
                     
+                    <Button
+                        v-if="!isRival(quickActionDevice)"
+                        label="Restore Switch & Reset"
+                        icon="pi pi-undo"
+                        class="p-button-sm p-button-outlined p-button-danger quick-action-btn"
+                        :disabled="!canResetConfig(quickActionDevice) || isAnyOperationOnThisDevice(quickActionDevice)"
+                        @click="executeQuickAction('restoreSwitch')"
+                    />
+
                     <Button
                         v-if="canMwsConnectType(quickActionDevice) && !isRival(quickActionDevice)"
                         label="MWS Connect"
@@ -621,6 +640,56 @@
                         icon="pi pi-refresh" 
                         class="p-button-danger" 
                         @click="confirmReset"
+                    />
+                </div>
+            </template>
+        </Dialog>
+
+        <!-- Откат порта свича к выбранному роутеру + заводской сброс -->
+        <Dialog
+            v-model:visible="showRestoreSwitchDialog"
+            modal
+            :blockScroll="false"
+            header="Restore Switch & Factory Reset"
+            :style="{ width: '500px', maxWidth: '92vw' }"
+            class="responsive-dialog"
+        >
+            <div class="confirmation-content">
+                <i class="pi pi-undo mr-3" style="font-size: 2rem; color: #e74c3c;" />
+                <div class="restore-switch-body">
+                    <p class="mb-2">
+                        For <strong>{{ restoreDevice?.hwId }}</strong> converted to extender: the switch port
+                        returns to the device's own VLAN and is removed from the router's VLAN, port forwarding
+                        via the router is removed, then the device is <strong>factory reset</strong>.
+                    </p>
+                    <label class="block text-sm font-semibold mb-1" for="restore-router">Router it was connected to</label>
+                    <Dropdown
+                        inputId="restore-router"
+                        v-model="restoreRouterId"
+                        :options="restoreRouterOptions"
+                        optionLabel="label"
+                        optionValue="id"
+                        placeholder="Select router"
+                        filter
+                        class="w-full mb-2"
+                    />
+                    <small v-if="restoreKnownRouterId" class="text-color-secondary">
+                        The portal has this device linked to the selected router.
+                    </small>
+                    <small v-else class="text-color-secondary">
+                        The portal has no link for this device — choose the router manually.
+                    </small>
+                </div>
+            </div>
+            <template #footer>
+                <div class="dialog-footer">
+                    <Button label="Cancel" icon="pi pi-times" class="p-button-text" @click="showRestoreSwitchDialog = false" />
+                    <Button
+                        label="Restore & Reset"
+                        icon="pi pi-undo"
+                        class="p-button-danger"
+                        :disabled="!restoreRouterId"
+                        @click="confirmRestoreSwitch"
                     />
                 </div>
             </template>
@@ -1253,6 +1322,17 @@
                         @click="useBookingPassword"
                         :disabled="isSavingPassword || !suggestedBookingPassword"
                     />
+                    <!-- Забыть пароль: из конфига и брони → статус Unknown -->
+                    <Button
+                        v-if="isChangePasswordMode && hasKnownPassword(passwordDialogDevice)"
+                        label="Forget Password"
+                        icon="pi pi-trash"
+                        class="p-button-danger p-button-outlined"
+                        v-tooltip.top="'Remove the saved password from the portal (device config and booking) — the password becomes Unknown. The device itself is not changed.'"
+                        @click="forgetDevicePassword"
+                        :loading="isForgettingPassword"
+                        :disabled="isSavingPassword"
+                    />
                     <Button 
                         :label="isChangePasswordMode ? 'Save' : 'Save & Open'" 
                         icon="pi pi-check" 
@@ -1290,6 +1370,7 @@ import Chip from 'primevue/chip'
 import Tag from 'primevue/tag'
 import Badge from 'primevue/badge'
 import Checkbox from 'primevue/checkbox'
+import Dropdown from 'primevue/dropdown'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import OverlayPanel from 'primevue/overlaypanel'
@@ -1401,6 +1482,9 @@ const executeQuickAction = (action) => {
             break
         case 'mwsConnection':
             openMwsConnection(device)
+            break
+        case 'restoreSwitch':
+            openRestoreSwitch(device)
             break
         case 'changeMode':
             emit('open-change-mode', device)
@@ -1625,9 +1709,10 @@ const getDeviceDisplayPassword = (device) => {
     if (device.devicePassword) {
         return device.devicePassword
     }
-    // После reset пароль неизвестен — НЕ показываем мёртвый пароль из брони
+    // После reset или Forget Password пароль неизвестен — НЕ показываем
+    // мёртвый пароль из брони
     if (device.booking?.passwordInvalidated) {
-        return 'Unknown (after reset)'
+        return 'Unknown'
     }
     return device.booking?.accessPassword || 'Not available'
 }
@@ -1941,6 +2026,41 @@ const confirmReboot = () => {
     selectedDevice.value = null
 }
 
+// ========== Restore Switch & Reset ==========
+// Устройство переводили в extender, связка в портале не записалась (или
+// подключение упало посреди) — порт свича остался в VLAN роутера. Бэкенд
+// (device:restoreSwitchAndReset) откатывает свич/NAT к выбранному роутеру
+// и делает обычный заводской сброс.
+const showRestoreSwitchDialog = ref(false)
+const restoreDevice = ref(null)
+const restoreRouterId = ref(null)
+const restoreKnownRouterId = ref(null)
+
+const isInExtenderMode = (device) =>
+    ['extender', 'extender_connect'].includes(modeStore.getDeviceModeInfo(device.id)?.mode)
+
+const restoreRouterOptions = computed(() => deviceStore.devices
+    .filter(d => d.type === 'router' && !isRival(d) && String(d.id) !== String(restoreDevice.value?.id))
+    .map(d => ({ id: String(d.id), label: d.shortName ? `${d.hwId} · ${d.shortName}` : d.hwId }))
+    .sort((a, b) => a.label.localeCompare(b.label, undefined, { numeric: true })))
+
+const openRestoreSwitch = (device) => {
+    restoreDevice.value = device
+    const known = modeStore.getDeviceModeInfo(device.id)?.routerId
+    restoreKnownRouterId.value = known ? String(known) : null
+    restoreRouterId.value = restoreKnownRouterId.value
+    showRestoreSwitchDialog.value = true
+}
+
+const confirmRestoreSwitch = () => {
+    const device = restoreDevice.value
+    const routerId = restoreRouterId.value
+    showRestoreSwitchDialog.value = false
+    if (!device || !routerId) return
+    // Ошибку показывает store (тост)
+    deviceActionsStore.restoreSwitchAndReset(device, routerId).catch(() => {})
+}
+
 // ========== Массовые перезагрузка / сброс ==========
 // Выбор чекбоксами среди своих броней; каждое устройство — обычная одиночная
 // операция (rebootDevice / resetConfig: своя строка в окне прогресса, вывод
@@ -2149,6 +2269,38 @@ const openChangePasswordDialog = (device) => {
     newPassword.value = ''
     passwordError.value = ''
     showPasswordDialog.value = true
+}
+
+// ========== Forget Password ==========
+// device:clearPassword: пароль удаляется из devices.json, пароль брони
+// помечается недействительным (passwordInvalidated) — статус «Unknown».
+// На самом устройстве пароль не меняется.
+const isForgettingPassword = ref(false)
+
+const hasKnownPassword = (device) => !!(device?.devicePassword ||
+    (device?.booking?.accessPassword && !device.booking.passwordInvalidated))
+
+const forgetDevicePassword = async () => {
+    const device = passwordDialogDevice.value
+    if (!device) return
+    if (!window.confirm(`Forget the saved password of ${device.hwId}?\n\n` +
+        'It is removed from the device config and the booking; the password becomes Unknown. ' +
+        'The password on the device itself is not changed.')) return
+    isForgettingPassword.value = true
+    try {
+        await new Promise((resolve, reject) => {
+            socket.emit('device:clearPassword', device.id, (response) => {
+                if (response?.success) resolve(response)
+                else reject(new Error(response?.error || 'Failed to forget password'))
+            })
+        })
+        toast.add({ severity: 'success', summary: 'Password Forgotten', detail: `${device.hwId}: password is now Unknown`, life: 4000 })
+        closePasswordDialog()
+    } catch (error) {
+        toast.add({ severity: 'error', summary: 'Forget Password Failed', detail: error.message, life: 5000 })
+    } finally {
+        isForgettingPassword.value = false
+    }
 }
 
 const closePasswordDialog = () => {

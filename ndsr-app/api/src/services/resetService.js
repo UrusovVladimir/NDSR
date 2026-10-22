@@ -26,10 +26,19 @@ async function turnOffWan(io, deviceId) {
 // (иначе VLAN и пробросы остались бы висеть без записи в currentModes).
 // Права на роутер проверяет вызывающий (requireLinkAccess / пропуск броней).
 // Сбой выключения WAN сброс не отменяет — возвращается в wanError.
-async function factoryResetDevice(io, deviceId) {
+// revertRouterId — «Restore switch & reset»: роутер, к которому устройство
+// подключали, указал пользователь (связка могла не записаться вовсе) — свич
+// и NAT откатываются к нему, даже если портал о связке не знает.
+async function factoryResetDevice(io, deviceId, { revertRouterId = null } = {}) {
   // Устройства конкурентов не сбрасываем никогда (ни вручную, ни ночью)
   if (isRival(getDeviceById(deviceId))) {
     throw new Error('Not available for rival devices.');
+  }
+
+  const known = getActiveLink(deviceId)?.routerId || getMwsLink(deviceId)?.routerId || null;
+  if (revertRouterId && String(revertRouterId) !== String(known)) {
+    console.log(`🔗 ${deviceId}: restoring switch and NAT for router ${revertRouterId} (chosen by user) before reset`);
+    await releaseLinkInfrastructure(deviceId, String(revertRouterId));
   }
 
   // Связка из currentModes; нет — незавершённое подключение (mwsLinks есть,

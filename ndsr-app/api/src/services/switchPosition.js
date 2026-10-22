@@ -15,6 +15,7 @@
 import { getDeviceById } from '../devices.js';
 import { isApSwitchOn } from '../utils/deviceFlags.js';
 import { switchPositions } from '../state/switchPositions.js';
+import { currentModes } from '../state/modes.js';
 import { checkDeviceMode } from '../actions/changeModeType.js';
 import { getPasswordCandidates, tryWithPasswords, isAuthError, isAuthCoolingDown } from './passwordService.js';
 import { getDeviceUrl } from './statusService.js';
@@ -38,7 +39,22 @@ export function recordSwitchPosition(io, deviceId, activeMode) {
     console.log(`🔀 ${device.hwId}: hardware switch in position ${position === 'router' ? 'A (Router)' : 'B (AP)'}`);
     io?.emit('device:switchPosition', { deviceId: id, ...entry });
   }
+  syncModeWithPosition(io, id, device, position);
   return position;
+}
+
+// Записанный режим противоречит переключателю (например, extender у
+// устройства в A — остался от прежнего положения) — правим по факту.
+// Активную MWS-связку (extender_connect) не трогаем.
+function syncModeWithPosition(io, id, device, position) {
+  const info = currentModes.get(id);
+  if (info?.mode === 'extender_connect') return;
+  const mode = position === 'router' ? 'router' : 'extender';
+  if (info?.mode === mode) return;
+  const timestamp = Date.now();
+  currentModes.set(id, { mode, routerId: null, timestamp });
+  console.log(`🔀 ${device.hwId}: mode ${info?.mode || 'unknown'} → ${mode} (switch position)`);
+  io?.emit('device:modeUpdated', { deviceId: id, mode, routerId: null, timestamp, source: 'switch_position' });
 }
 
 // Спросить устройство. null — не удалось (недоступно, пароль, cooldown).

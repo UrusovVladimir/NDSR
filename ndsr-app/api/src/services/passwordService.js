@@ -1,10 +1,10 @@
 // services/passwordService.js — разрешение паролей устройства, daily-пароли,
 // auth-cooldown и единый перебор кандидатов (tryWithPasswords).
-import { getDeviceById, getParamRouter } from '../devices.js';
+import { getDeviceById, getParamRouter, setDevicePassword } from '../devices.js';
 import { generatePassword } from '../actions/generatePassword.js';
-import { makeAuthenticatedRequest } from '../actions/athentication.js';
+import { makeAuthenticatedRequest, clearAuthFailures } from '../actions/athentication.js';
 import { currentModes } from '../state/modes.js';
-import { deviceBookings } from '../state/bookings.js';
+import { deviceBookings, saveBookings } from '../state/bookings.js';
 import { dailyPasswords } from '../state/passwords.js';
 import { getIO } from '../state/io.js';
 
@@ -166,7 +166,25 @@ function updateDailyPasswords() {
   }
 }
 
+// Пароль на самом устройстве сменил портал (например, перед переводом в
+// extender ему ставится пароль роутера): запоминаем как device:setPassword —
+// конфиг, бронь, фронт, сброс счётчиков неудачных входов
+function rememberDevicePassword(deviceId, password) {
+  setDevicePassword(deviceId, password);
+  const booking = deviceBookings.get(deviceId);
+  if (booking) {
+    booking.accessPassword = password;
+    booking.passwordInvalidated = false;
+    saveBookings();
+  }
+  emitPasswordUpdate(deviceId, password);
+  const dev = getDeviceById(deviceId);
+  clearAuthFailures([dev?.URL, dev?.checkUrl]);
+  clearAuthCooldown(deviceId);
+}
+
 export {
+  rememberDevicePassword,
   isAuthCoolingDown,
   setAuthCooldown,
   clearAuthCooldown,

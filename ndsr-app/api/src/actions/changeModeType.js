@@ -1,5 +1,7 @@
 import { getParamRouter, getDeviceById, getDeviceStatusCode, devices, saveConfig } from "../devices.js";
 import { makeAuthenticatedRequest } from "./athentication.js";
+import { sessionManager } from "./sessionManager.js";
+import { rememberDevicePassword } from "../services/passwordService.js";
 import axios from "axios";
 import { connectToMws } from "./connectToMws.js"; 
 import { SSHManager } from "./sshManager.js";
@@ -112,6 +114,45 @@ export const checkDeviceMode = async (url, login, password) => {
 };
 
 
+// show/mws/candidate отдаёт объект ({} без кандидатов, { candidate: [...] |
+// {...} }), а не массив — раньше Array.isArray() не находил кандидатов
+// никогда, и поиск держался только на запасной проверке по ARP
+function normalizeCandidates(data) {
+  if (!data) return [];
+  if (Array.isArray(data)) return data;
+  if (data.candidate) return [].concat(data.candidate).filter(Boolean);
+  if (data.mac) return [data];
+  return Object.values(data).flat().filter(c => c && typeof c === 'object' && c.mac);
+}
+
+// Кандидат DISCONNECTED с «access unauthorized»: контроллер (роутер) не может
+// зайти на экстендер — у экстендера другой пароль
+const isUnauthorizedCandidate = (c) =>
+  String(c?.state || '').toUpperCase() === 'DISCONNECTED' &&
+  /unauthori[sz]ed/i.test(JSON.stringify(c || {}));
+
+// Ответ RCI с ошибкой ("status":"error" в любом месте) → throw с текстом
+function assertRciOk(response, what) {
+  const text = JSON.stringify(response || {});
+  if (!/"status"\s*:\s*"error"/.test(text)) return response;
+  const m = text.match(/"message"\s*:\s*"([^"]*)"/);
+  throw new Error(`${what}: ${m ? m[1] : text.slice(0, 200)}`);
+}
+
+// Пароль admin на устройстве (как Skip Wizard) + проверка входа с новым
+async function setAdminPassword(url, oldPassword, newPassword) {
+  const res = await makeAuthenticatedRequest(url, 'admin', oldPassword, '/rci/', 'POST', [
+    { user: { password: { name: 'admin', password: newPassword } } },
+    { system: { configuration: { save: true } } }
+  ]);
+  assertRciOk(res, 'set admin password');
+  sessionManager.clearSession(url, 'admin');
+  const check = await checkDeviceMode(url, 'admin', newPassword);
+  if (!check.success) {
+    throw new Error(`login with the new password failed: ${check.message}`);
+  }
+}
+
 //  pollMwsCandidates для использования ограничителя
 async function pollMwsCandidates(routerUrl, login, routerPassword, maxAttempts = 1, delay = 5000) {
   return executeMwsRequest(async () => {
@@ -124,7 +165,7 @@ async function pollMwsCandidates(routerUrl, login, routerPassword, maxAttempts =
           '/rci/show/mws/candidate',
           'GET'
         );
-        return candidatesData;
+        return normalizeCandidates(candidatesData);
       } catch (error) {
         if (attempt === maxAttempts) throw error;
         await new Promise(resolve => setTimeout(resolve, delay));
@@ -362,7 +403,11 @@ async function waitForExtenderInMwsCandidates(routerId, extenderMac, routerPassw
     throw error;
   }
 }
-async function waitForExtenderConnection(routerId, extenderMac, routerPassword, maxAttempts = 60, delay = 5000) {
+// onUnauthorized — один раз, если кандидат висит DISCONNECTED с «access
+// unauthorized» (см. changeSystemMode: снять пароль экстендера + mws revisit)
+async function waitForExtenderConnection(routerId, extenderMac, routerPassword, maxAttempts = 60, delay = 5000, onUnauthorized = null) {
+  let recoveryTried = false;
+  let recoveryFailure = null;
   try {
     console.log(`🔗 Ожидание успешного подключения extender'а ${extenderMac}`);
     
@@ -398,6 +443,19 @@ async function waitForExtenderConnection(routerId, extenderMac, routerPassword, 
           if (extender) {
             console.log(`📊 Состояние extender'а в MWS: ${extender.state}`);
             lastState = extender.state;
+
+            if (isUnauthorizedCandidate(extender)) lastState = 'DISCONNECTED (access unauthorized)';
+            if (onUnauthorized && !recoveryTried && isUnauthorizedCandidate(extender)) {
+              recoveryTried = true;
+              console.warn(`🔐 Extender ${extenderMac}: DISCONNECTED, access unauthorized — recovering`);
+              try {
+                await onUnauthorized();
+              } catch (recoveryError) {
+                recoveryFailure = recoveryError.message;
+                console.error(`❌ Unauthorized recovery failed: ${recoveryError.message}`);
+              }
+              continue;
+            }
             
             if (extender.state === 'CONNECTED' || extender.state === 'COMPATIBLE_UPDATE' || extender.state === 'COMPATIBLE') {
               console.log(`🎉 Extender успешно подключен к роутеру!`);
@@ -443,7 +501,9 @@ async function waitForExtenderConnection(routerId, extenderMac, routerPassword, 
       }
 
       if (attempt === maxAttempts) {
-        throw new Error(`Extender не подключился к роутеру после ${maxAttempts} попыток`);
+        throw new Error(`Extender не подключился к роутеру после ${maxAttempts} попыток` +
+          (lastState ? `, последнее состояние: ${lastState}` : '') +
+          (recoveryFailure ? `; снять пароль экстендера / mws revisit не удалось: ${recoveryFailure}` : ''));
       }
 
       // Увеличиваем интервал между попытками
@@ -549,8 +609,13 @@ async function waitForDeviceBoot(io, deviceId, maxAttempts = 60, delay = 10000) 
     return { ok: false, timedOut: false };
 }
 
-export const changeSystemMode = async (deviceId, routerId, mode, password, routerPassword = null, io = null, connectionType = 'direct', targetUrl = null) => {
+// options.extenderPassword (mode extender + routerId): пароль, который ставится
+// экстендеру ДО смены режима — по умолчанию пароль роутера: MWS-контроллер
+// заходит на экстендер со своим паролем, при другом кандидат висит
+// DISCONNECTED «access unauthorized»
+export const changeSystemMode = async (deviceId, routerId, mode, password, routerPassword = null, io = null, connectionType = 'direct', targetUrl = null, options = {}) => {
     let currentMode;
+    const originalPassword = password;
     
     try {
         console.log(`🔄 Смена режима для устройства ${deviceId} на ${mode} (connectionType: ${connectionType})`);
@@ -607,6 +672,26 @@ export const changeSystemMode = async (deviceId, routerId, mode, password, route
         
         console.log(`📋 Текущий режим: ${currentMode}, целевой режим: ${mode}`);
 
+        // 🔑 Пароль экстендера = пароль роутера (или выбранный пользователем) —
+        // пока устройство ещё роутер и доступно напрямую
+        if (mode === 'extender' && routerId && options.extenderPassword && options.extenderPassword !== password) {
+            console.log(`🔑 ${device.hwId}: setting admin password for MWS (${options.extenderPasswordSource || 'router'})`);
+            if (io) {
+                io.emit('device:modeChangeProgress', {
+                    deviceId, progress: 40, operationType: 'mode_change', step: 'applying_config',
+                    details: 'Setting extender password', timestamp: Date.now()
+                });
+            }
+            try {
+                await setAdminPassword(url, password, options.extenderPassword);
+            } catch (pwError) {
+                throw new Error(`Не удалось сменить пароль устройства перед переводом в extender: ${pwError.message}`);
+            }
+            password = options.extenderPassword;
+            rememberDevicePassword(deviceId, password);
+            console.log(`✅ ${device.hwId}: admin password changed and saved`);
+        }
+
         if (currentMode === mode) {
             return { 
                 success: true, 
@@ -654,13 +739,63 @@ export const changeSystemMode = async (deviceId, routerId, mode, password, route
                 console.log(`✅ MWS подключение успешно выполнено`);
 
                 await waitForExtenderInMwsCandidates(routerId, device.macAddress, finalRouterPassword);
-                await waitForExtenderConnection(routerId, device.macAddress, finalRouterPassword);
+
+                // Подпорка: кандидат DISCONNECTED «access unauthorized» —
+                // заходим на экстендер (пробросы через роутер) с паролем,
+                // который был на нём при переводе, снимаем пароль
+                // (user admin no password) и просим контроллер повторить
+                // приём (mws revisit <mac>); дальше ждём нормальный статус
+                let forwardingReady = false;
+                const recoverUnauthorized = async () => {
+                    if (io) {
+                        io.emit('device:modeChangeProgress', {
+                            deviceId, progress: 75, operationType: 'mode_change', step: 'port_forwarding',
+                            details: 'Router: access unauthorized — removing extender password, mws revisit',
+                            timestamp: Date.now()
+                        });
+                    }
+                    if (!forwardingReady) {
+                        await manageIptablesForExtender(deviceId, routerId, device, finalRouterPassword);
+                        forwardingReady = true;
+                    }
+                    const extUrl = device.checkUrl;
+                    const candidates = [...new Set([password, originalPassword, finalRouterPassword].filter(Boolean))];
+                    let cleared = false;
+                    let lastError = null;
+                    for (const candidate of candidates) {
+                        try {
+                            sessionManager.clearSession(extUrl, 'admin');
+                            const res = await makeAuthenticatedRequest(extUrl, login, candidate, '/rci/', 'POST', [
+                                { parse: 'user admin no password' },
+                                { parse: 'system configuration save' }
+                            ]);
+                            assertRciOk(res, 'user admin no password');
+                            cleared = true;
+                            break;
+                        } catch (err) {
+                            lastError = err;
+                        }
+                    }
+                    if (!cleared) throw new Error(`extender password not removed: ${lastError?.message}`);
+                    console.log(`🔓 ${device.hwId}: extender admin password removed`);
+
+                    const router = getParamRouter(routerId);
+                    const res = await makeAuthenticatedRequest(router.URL, login, finalRouterPassword, '/rci/', 'POST', [
+                        { parse: `mws revisit ${String(device.macAddress).toLowerCase()}` }
+                    ]);
+                    assertRciOk(res, 'mws revisit');
+                    console.log(`🔁 ${routerId}: mws revisit ${device.macAddress}`);
+                };
+
+                await waitForExtenderConnection(routerId, device.macAddress, finalRouterPassword, 60, 5000, recoverUnauthorized);
 
                 console.log(`⏳ Даем время на полное подключение...`);
                 await new Promise(resolve => setTimeout(resolve, 5000));
 
-                console.log(`🔧 Настройка проброса портов...`);
-                await manageIptablesForExtender(deviceId, routerId, device, finalRouterPassword);
+                if (!forwardingReady) {
+                    console.log(`🔧 Настройка проброса портов...`);
+                    await manageIptablesForExtender(deviceId, routerId, device, finalRouterPassword);
+                }
                 console.log(`✅ Проброс портов настроен`);
                 
             } catch (mwsError) {

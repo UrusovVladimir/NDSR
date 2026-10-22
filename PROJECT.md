@@ -462,10 +462,11 @@ Telnet-клиент (`telnetClassEthernet.js`) при обрыве перепо�
 | `device:getPowerStatus` | `deviceId` → `{success, status}` | опрос Jerome | — |
 | `device:power` | `{deviceId, action:'on'/'off'}` → `{status:'ok', powerStatus}` | питание | ✔ |
 | `device:reboot` | `deviceId` → `{status:'ok', deviceStatus:'online'/'timeout'}` | power-cycle + ожидание | ✔ |
+| `device:restoreSwitchAndReset` | `{deviceId, routerId}` → как reboot | «Restore Switch & Reset»: откат свича/NAT к выбранному роутеру (связка могла не записаться), затем factory reset (`factoryResetDevice(…, {revertRouterId})`) | ✔ + роутер свободен или свой |
 | `device:resetConfig` | `deviceId` → как reboot | factory reset (8.10) | ✔; для подключённого экстендера — связка (отключение) |
 | `device:resetDslLine` | `deviceId` → `{status}` | сброс DSL | ✔ |
 | `device:init` | `{url, body, deviceId}` → `{success, data}` | прокси RCI-batch на устройство (Skip Wizard); SSRF-фильтр по хостам из devices.json | ✔ |
-| `device:getPassword` / `setPassword` / `clearPassword` | `deviceId` / `{deviceId, password}` | пароль устройства в devices.json | ✔ |
+| `device:getPassword` / `setPassword` / `clearPassword` | `deviceId` / `{deviceId, password}` | пароль устройства в devices.json; `clearPassword` — кнопка **Forget Password** в окне «Change Device Password» («мои брони», карандаш у пароля): удаляет `devicePassword` из конфига, пароль брони → `passwordInvalidated` — статус «Unknown» (на устройстве пароль не меняется) | ✔ |
 | `device:getCurrentFW` | `{deviceId, login, password}` → `{success, sessionCookie:{release}}` или `{success:false, errorType}` | версия прошивки (кэш 5 мин, таймаут 30 с) | — |
 | `device:checkMultipleFirmwares` | `{deviceIds, passwords?}` | пакетная проверка прошивок | — |
 | `device:clearFirmwareCache` | `deviceId` | сбросить кэш прошивки | — |
@@ -557,6 +558,9 @@ App.vue
 │   ├─ BookedDevicesTable — «мои устройства»: основное рабочее место (питание, reset, режимы,
 │   │                        консоль, VNC, веб, Skip Wizard, продление, релиз, FW Check All;
 │   │                        меню по клику на Device дублирует Actions, в т.ч. кнопку VMs)
+│   │   ├─ Restore Switch & Reset (pi-undo: в Actions — у устройства в extender/extender_connect,
+│   │   │  в меню по клику на Device — всегда): окно с выбором роутера (по умолчанию — из записанной
+│   │   │  связки) → device:restoreSwitchAndReset — порт свича в свой VLAN, снятие пробросов, сброс
 │   │   └─ массовые reboot / reset: чекбоксы в первой колонке (в заголовке — выбрать все свои,
 │   │      кроме конкурентов) → в шапке секции «Selected: N · Reboot (N) · Reset (N) · ×» →
 │   │      подтверждение со списком. Каждое устройство — обычная одиночная операция
@@ -571,8 +575,13 @@ App.vue
 │   │   бронь — тем же device:book по очереди; неудачные остаются отмеченными, Esc сбрасывает выбор
 │   ├─ BookedByOther — чужая бронь: имя пользователя + «сколько осталось» (из `booking.expiresAt`, общие часы `composables/useNow.js`, тик 30 с; подсказка — время окончания)
 │   ├─ PrimeDeviceModal — выбор WAN / MWS-подключение / FAQ
-│   ├─ ChangeModeModal — смена режима
-│   └─ ProgressModal — пошаговый прогресс (управляется событиями сервера)
+│   ├─ ChangeModeModal — смена режима; для Extender + Connect — выбор пароля экстендера
+│   │                    (как у роутера / свой); отладочный раздел «Show Debug Info» убран
+│   ├─ ProgressModal — пошаговый прогресс (управляется событиями сервера); для смены режима
+│   │                  и MWS — блок «Console output» (ConsoleOutputBlock, useConsoleLogStore,
+│   │                  только своя бронь; раскрытый — окно шире и само не закрывается);
+│   │                  при ошибке окно само не закрывается — текст ошибки, закрывает пользователь
+│   └─ ConsoleOutputBlock — общий раскрывающийся вывод консоли одного устройства
 ├─ GlobalProgressDialog — прогресс операций из useDeviceActionsStore (прогресс имитированный)
 ├─ SidebarContent — счётчики, iPerf, reload configs, добавить/удалить устройство и пользователя
 └─ ChatWidget (components/chat/*)
@@ -642,7 +651,7 @@ App.vue
 - **A — Router**: устройство работает роутером; к другому роутеру по MWS его не подключить — сначала переключатель в B (устройство перезагрузится extender'ом).
 - **B — Access point**: устройство extender; к роутеру — MWS Connect (`device:mwsConnected`), без смены режима. После ребута всегда в `extender`.
 
-Положение (`services/switchPosition.js`, состояние `state/switchPositions.js` → `switch_positions.json` рядом с `devices.json`) узнаётся у самого устройства: `/rci/show/system/mode` → `active` (`router` → A, иначе B). Запрос с авторизацией, поэтому постоянно не опрашивается (лок после неверных паролей) — запоминается при каждом определении режима: `device:getCurrentMode` (кнопка Refresh mode, окно Change Mode), проверка перед MWS Connect, успешный MWS Connect. Рассылается всем `device:switchPosition { deviceId, position: 'router'|'ap', at }`, в `device:list` — поле `switchPosition`.
+Положение (`services/switchPosition.js`, состояние `state/switchPositions.js` → `switch_positions.json` рядом с `devices.json`) узнаётся у самого устройства: `/rci/show/system/mode` → `active` (`router` → A, иначе B). Запрос с авторизацией, поэтому постоянно не опрашивается (лок после неверных паролей) — запоминается при каждом определении режима: `device:getCurrentMode` (кнопка Refresh mode, окно Change Mode), проверка перед MWS Connect, успешный MWS Connect. Рассылается всем `device:switchPosition { deviceId, position: 'router'|'ap', at }`, в `device:list` — поле `switchPosition`. Заодно правится записанный режим (`current_modes.json`), если противоречит положению: A → `router`, B → `extender` (`device:modeUpdated`, `source: 'switch_position'`); активную связку `extender_connect` не трогаем. Так у KN-4310 на 77 висел `extender` при переключателе в A.
 
 - **В интерфейсе**: под hwId (основная таблица и «мои брони») — тег: **HW switch: A · Router** (оранжевый), **HW switch: B · AP** (синий) или **HW switch** (серый, положение ещё не определялось), с подсказкой. Отдельной строкой: строка имени `nowrap` + `overflow: hidden` обрезала тег у длинных имён. Кнопки Change Mode нет, вместо неё **MWS Connect** (`canMwsConnectType`: `type: AP` или переключатель); в положении A кнопка не открывает окно, а объясняет «переключите в B» (`SWITCH_A_HINT`). `ChangeModeModal` действий не даёт, текст зависит от положения. Стор режимов не навязывает `extender` устройству в положении A.
 - **Сервер**: `device:mwsConnected connect` для такого устройства сначала спрашивает положение (не удалось — берёт последнее известное) и в A отказывает до любых изменений (свитч, пробросы) с текстом «…position A (Router)… move the switch to position B…». Текст ошибки MWS уходит в окно прогресса (`sendMwsProgress(…, 'error', message)` → `ProgressModal.failOperation`). `device:changeMode` отказывает всегда; отказы до старта (переключатель, нет брони) идут и в ack, и событием `device:modeChangeResult` — окно прогресса закрывается с ошибкой (раньше висело на первом шаге).
@@ -661,12 +670,14 @@ App.vue
 2. **Проба авторизации до любых изменений**: `GET /rci/show/system/mode` по кандидатам.
    - не подошёл ни один пароль → cooldown 60 с и отказ;
    - сетевая ошибка → «Device is unreachable», отказ **без** cooldown.
-3. Для `extender_connect` — пароль роутера (`resolveRouterPassword`, 8.3).
+3. Для `extender_connect` — пароль роутера (`resolveRouterPassword`, 8.3) и **пароль экстендера**: `extenderPasswordMode` `'router'` (по умолчанию — проверенный пароль роутера) или `'custom'` + `extenderPassword` (≥ 4 символов; выбор в `ChangeModeModal` → «Extender Password»).
 4. Сразу ack `{async:true}`. Дальше прогресс идёт событиями `device:modeChangeProgress`.
 5. Если `action:'wan_off'` — выключить WAN на коммутаторе.
-6. `changeSystemMode`: `POST /rci/system/mode` → через 2 с `POST /rci/system/reboot`.
+6. `changeSystemMode`: для `extender_connect` сначала, пока устройство ещё роутер, ставит ему пароль экстендера (`POST /rci/` `user password` + `system configuration save`, как Skip Wizard; проверка входа с новым паролем; портал запоминает его — `rememberDevicePassword`: конфиг, бронь, `device:passwordUpdated`). Зачем: MWS-контроллер (роутер) заходит на экстендер со **своим** паролем — при другом пароле кандидат висит `DISCONNECTED` с `rci: error … access unauthorized`. Затем `POST /rci/system/mode` → через 2 с `POST /rci/system/reboot`.
 7. Для экстендера с `routerId`:
    - `connectToMws` — VLAN роутера на LAN-порт экстендера;
+   - `show/mws/candidate` отдаёт **объект** (`{}` / `{ candidate: [...] | {...} }`), а не массив — разбирает `normalizeCandidates` (до октября 2026 код ждал массив и кандидатов не видел никогда, работала только запасная проверка по ARP);
+   - **подпорка «access unauthorized»** (один раз за подключение): кандидат `DISCONNECTED` с `access unauthorized` → пробросы через роутер (как в конце подключения) → на экстендер по `checkUrl` с паролем, бывшим на нём при переводе (затем исходный, затем пароль роутера): `POST /rci/` `[{parse:'user admin no password'},{parse:'system configuration save'}]` → на роутере `[{parse:'mws revisit <mac>'}]` → ждём нормальный статус дальше. RCI `parse` выполняет текст CLI (проверено `show version` на 78, прошивка 5.01). Не вышло — причина в итоговой ошибке;
    - ожидание экстендера в `show/mws/candidate` / `show/ip/neighbor` (нет на прошивке — 404 → `show/ip/arp`) — **до десятков минут**; ищется по `macAddress` экстендера. Пустой `macAddress` — до любых изменений (до WAN off) MAC читается с экстендера (`/rci/show/interface/Bridge0`, это MAC его LAN) и сохраняется в `devices.json` (`ensureExtenderMac`); не прочитался — подключение сразу отклоняется. Раньше пустой MAC давал ~26 минут ожидания и ошибку;
    - проброс портов (`DockerManager.setupPortForwarding`, пишет `mwsLinks`; контейнер роутера — `containerNameOf`: поле `container` или hwId).
    - **сбой любого шага после переключения свича** — откат: порт экстендера → его `vlanLocal`, снятие пробросов и записи `mwsLinks` (`reconfigureSwitchWithLocalVlan` + `removeIptablesRulesOnly`); устройство остаётся в extender — вернуть в router или сбросить. Раньше отката не было: экстендер оставался в VLAN роутера, а связка в `currentModes` не записывалась — сброс её не откатывал, и после сброса в сети роутера появлялся второй 192.168.1.1 (так было на 77 20.10.2026 с 2312 и 4110 при NC-1013). Factory reset теперь откатывает и незавершённую связку из `mwsLinks`.

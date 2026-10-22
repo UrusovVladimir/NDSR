@@ -424,6 +424,33 @@ export const useDeviceActionsStore = defineStore('deviceActions', () => {
     }
   }
 
+  // Откат свича/NAT к выбранному роутеру + заводской сброс — для устройства,
+  // переведённого в extender, у которого связка в портале не записалась
+  const restoreSwitchAndReset = async (device, routerId) => {
+    try {
+      const response = await executeDeviceAction(device, 'resetting', 'device:restoreSwitchAndReset',
+        { deviceId: device.id, routerId }, 180000)
+      if (response?.status === 'ok') {
+        toast.add({
+          severity: 'success',
+          summary: 'Switch Restored & Reset',
+          detail: `${device.shortName} (${device.hwId}): switch port restored, configuration reset`,
+          life: 5000
+        })
+      } else {
+        throw new Error(response?.error || 'Restore & reset failed')
+      }
+    } catch (error) {
+      toast.add({
+        severity: error.message.includes('timeout') ? 'warn' : 'error',
+        summary: error.message.includes('timeout') ? 'Reset Taking Longer' : 'Restore & Reset Failed',
+        detail: `${device.shortName}: ${error.message}`,
+        life: 6000
+      })
+      throw error
+    }
+  }
+
   const rebootDevice = async (device) => {
     try {
       const response = await executeDeviceAction(device, 'rebooting', 'device:reboot')
@@ -719,6 +746,7 @@ export const useDeviceActionsStore = defineStore('deviceActions', () => {
     processOperationChanges,
     resetConfig,
     rebootDevice,
+    restoreSwitchAndReset,
     resetDslLine,
     initializationDevice,
     powerDevice,

@@ -420,7 +420,9 @@ const validateAPDeviceModes = () => {
     return userMessage
   }
 
-const changeMode = async (deviceId, mode, routerId = null, password = null, routerPassword = null, action = null) => {
+// extra (extender_connect): { extenderPasswordMode: 'router'|'custom', extenderPassword }
+// — какой пароль поставить экстендеру перед сменой режима
+const changeMode = async (deviceId, mode, routerId = null, password = null, routerPassword = null, action = null, extra = {}) => {
   isLoading.value = true
   error.value = null
 
@@ -474,7 +476,9 @@ const changeMode = async (deviceId, mode, routerId = null, password = null, rout
         routerId: routerId ? String(routerId) : null,
         password: password ? String(password) : null,
         routerPassword: routerPassword ? String(routerPassword) : null,
-        action: action ? String(action) : null
+        action: action ? String(action) : null,
+        extenderPasswordMode: extra.extenderPasswordMode || null,
+        extenderPassword: extra.extenderPassword ? String(extra.extenderPassword) : null
       }, (response) => {
         if (!response?.success) {
           settle(() => {
