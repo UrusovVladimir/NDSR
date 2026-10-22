@@ -114,7 +114,10 @@
                             <div class="common-device-name">{{ data.shortName }}
                                 <Tag v-if="isRival(data)" value="Rival" severity="warning" class="rival-tag"
                                     v-tooltip="'Rival device: only VNC and web interface are available'" />
-                                <Tag v-if="isApSwitchOn(data)" value="HW switch" icon="pi pi-lock" severity="info" class="rival-tag"
+                            </div>
+                            <!-- Отдельной строкой: строка имени nowrap + overflow hidden обрезала тег -->
+                            <div v-if="isApSwitchOn(data)" class="hw-switch-line">
+                                <Tag value="HW switch" icon="pi pi-lock" severity="info" class="rival-tag"
                                     v-tooltip="'Hardware mode switch: the mode is set by the physical switch and cannot be changed from the portal. Connect it to a router with MWS Connect.'" />
                             </div>
                             <div class="common-device-hwid">{{ data.hwId }}
@@ -2754,7 +2757,9 @@ onUnmounted(() => {
 
 @media (max-width: 768px) {
     .common-section-header {
-        grid-template-columns: 1fr auto; 
+        /* правая часть (кнопки, в т.ч. массовые Reboot/Reset) — в оставшуюся
+           ширину с переносом, а не шире экрана */
+        grid-template-columns: minmax(0, max-content) minmax(0, 1fr);
         gap: 0.5rem;
         padding: 0.75rem 1rem;
     }
@@ -3423,5 +3428,13 @@ onUnmounted(() => {
     gap: 0.35rem;
     max-height: 140px;
     overflow-y: auto;
+}
+.hw-switch-line {
+    line-height: 1;
+    margin-top: 0.15rem;
+}
+
+.hw-switch-line .rival-tag {
+    margin-left: 0;
 }
 </style>

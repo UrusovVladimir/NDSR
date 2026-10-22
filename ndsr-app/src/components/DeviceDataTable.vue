@@ -66,19 +66,26 @@
                 </button>
               </div>
               <div class="common-section-actions">
+                <!-- Счётчики — группами, на узком экране группа переносится целиком -->
                 <span class="devices-count">
-                  <i class="pi pi-circle-fill online-icon"></i>
+                  <span class="count-item">
+                    <i class="pi pi-circle-fill online-icon"></i>
                     {{ viewStats.online }} online
+                  </span>
+                  <span class="count-item">
                     <i class="pi pi-circle-fill offline-icon"></i>
                     {{ viewStats.offline }} offline
+                  </span>
+                  <span class="count-item">
                     <i class="pi pi-calculator total-icon"></i>
                     {{ viewStats.total }} total
-                    <span v-if="viewStats.bookedByOthers > 0" class="booked-by-others">
-                      <i class="pi pi-bookmark booked-icon"></i>
-                      {{ viewStats.bookedByOthers }} booked by others
-                      </span>
-                    <!-- Общие VM: свободно/всего, по клику — кто занял и на сколько -->
-                    <SharedVmsStatus />
+                  </span>
+                  <span v-if="viewStats.bookedByOthers > 0" class="count-item booked-by-others">
+                    <i class="pi pi-bookmark booked-icon"></i>
+                    {{ viewStats.bookedByOthers }} booked by others
+                  </span>
+                  <!-- Общие VM: свободно/всего, по клику — кто занял и на сколько -->
+                  <SharedVmsStatus class="count-item" />
                 </span>
 
                 <div class="common-search-wrapper">
@@ -202,11 +209,13 @@
                   <i :class="deviceIcon(data.type)" class="common-device-icon"></i>
                 </div>
                 <div class="common-device-info">
-                  <div class="common-device-name">{{ data.shortName }}
-                    <Tag v-if="isApSwitchOn(data)" value="HW switch" icon="pi pi-lock" severity="info" class="hw-switch-tag"
+                  <div class="common-device-name">{{ data.shortName }}</div>
+                  <div class="common-device-hwid">{{ data.hwId }}</div>
+                  <!-- Отдельной строкой: строка имени nowrap + overflow hidden обрезала тег -->
+                  <div v-if="isApSwitchOn(data)" class="hw-switch-line">
+                    <Tag value="HW switch" icon="pi pi-lock" severity="info" class="hw-switch-tag"
                       v-tooltip="'Hardware mode switch: the mode is set by the physical switch and cannot be changed from the portal. Connect it to a router with MWS Connect.'" />
                   </div>
-                  <div class="common-device-hwid">{{ data.hwId }}</div>
                   <div class="common-device-hwid">Country: {{ data.country }}</div>
                 </div>
               </div>
@@ -1084,6 +1093,17 @@ watch(() => deviceStore.availableDevices, (newDevices) => {
   padding: 0.25rem 0.5rem;
   border-radius: 6px;
   border: 1px solid var(--surface-200);
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  column-gap: 0.6rem;
+  row-gap: 0.2rem;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
+.count-item {
   white-space: nowrap;
 }
 .online-icon {
@@ -1294,8 +1314,12 @@ watch(() => deviceStore.availableDevices, (newDevices) => {
   padding-bottom: 0.5rem;
   border-bottom: 1px solid var(--surface-200);
 }
+.hw-switch-line {
+  line-height: 1;
+  margin-top: 0.15rem;
+}
+
 .hw-switch-tag {
-  margin-left: 0.4rem;
   font-size: 0.65rem;
   padding: 0.1rem 0.4rem;
   vertical-align: middle;

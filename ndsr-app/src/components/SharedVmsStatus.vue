@@ -102,7 +102,6 @@ const rows = computed(() => vmStore.vms.map(vm => {
 
 <style scoped>
 .shared-vms-count {
-  margin-left: 0.6rem;
   color: #0d9488;
   font-weight: 600;
   cursor: pointer;
