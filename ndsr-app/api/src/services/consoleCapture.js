@@ -15,9 +15,12 @@ const FLUSH_MS = 250;
 
 const captures = new Map(); // deviceId -> { socketId, stop }
 
+// Перевод строки — только \n, \r выкидываем целиком: серийные консоли шлют
+// и \r\n, и \n\r, и \r\r\n — замена \r\n? → \n давала пустую строку после
+// каждой строки (и на стыке пачек TCP тоже)
 const cleanText = (s) => s
     .replace(/\x1b\[[0-9;?]*[A-Za-z]/g, '')   // ANSI
-    .replace(/\r\n?/g, '\n')
+    .replace(/\r/g, '')
     .replace(/[\x00-\x08\x0b-\x1f\x7f]/g, '');
 
 export const isConsoleCaptureEnabled = isConsoleHubEnabled;

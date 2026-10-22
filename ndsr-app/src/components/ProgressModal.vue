@@ -140,12 +140,15 @@
           </div>
         </Message>
 
-        <!-- Вывод консоли устройства (смена режима, MWS): свёрнут, раскрытый — окно шире -->
+        <!-- Вывод консоли (смена режима, MWS): устройство и роутер, к которому
+             его подключают; свёрнут, раскрытый — окно шире -->
         <ConsoleOutputBlock
-          v-if="withConsole"
-          v-model:expanded="consoleExpanded"
-          :device-id="localDevice?.id"
-          :hw-id="localDevice?.hwId"
+          v-for="c in consoleDevices"
+          :key="c.id"
+          :expanded="consoleOpen.has(c.id)"
+          @update:expanded="v => setConsoleOpen(c.id, v)"
+          :device-id="c.id"
+          :hw-id="c.label"
         />
       </div>
   
@@ -188,29 +191,44 @@ const toast = useToast()
 const deviceStore = useDeviceStore()
 const consoleLogStore = useConsoleLogStore()
 
-// Вывод консоли — для смены режима и MWS (устройство перезагружается);
-// захват только для своей брони (сервер проверяет её же)
+// Вывод консоли — для смены режима и MWS: самого устройства и роутера, к
+// которому его подключают (operationData.routerId). Захват только для своей
+// брони (сервер проверяет её же); роутер не свой — его блока нет.
 const CONSOLE_OPERATIONS = ['modeChange', 'mwsConnection']
-const withConsole = ref(false)
-const consoleExpanded = ref(false)
-const consoleDeviceId = ref(null)
+const consoleDevices = ref([])          // [{ id, label }]
+const consoleOpen = ref(new Set())      // раскрытые блоки
+const consoleExpanded = computed(() => consoleOpen.value.size > 0)
 
-const startConsole = (device, operationType) => {
+const setConsoleOpen = (id, open) => {
+  const next = new Set(consoleOpen.value)
+  if (open) next.add(id)
+  else next.delete(id)
+  consoleOpen.value = next
+}
+
+const isMine = (d) => d?.booking?.isBooked && d.booking.bookedBy === deviceStore.currentUserId
+
+const startConsole = (device, operationType, operationData = {}) => {
   stopConsole()
-  const mine = device?.booking?.isBooked && device.booking.bookedBy === deviceStore.currentUserId
-  withConsole.value = !!(device?.id && mine && CONSOLE_OPERATIONS.includes(operationType))
-  if (!withConsole.value) return
-  consoleDeviceId.value = device.id
-  consoleLogStore.begin(device.id)
+  if (!device?.id || !CONSOLE_OPERATIONS.includes(operationType)) return
+  const list = []
+  if (isMine(device)) list.push({ id: String(device.id), label: device.hwId })
+  const router = operationData?.routerId
+    ? deviceStore.devices.find(d => String(d.id) === String(operationData.routerId))
+    : null
+  if (router && String(router.id) !== String(device.id) && isMine(router)) {
+    list.push({ id: String(router.id), label: `${router.hwId} (router)` })
+  }
+  consoleDevices.value = list
+  list.forEach(c => consoleLogStore.begin(c.id))
 }
 const finishConsole = () => {
-  if (consoleDeviceId.value != null) consoleLogStore.finish(consoleDeviceId.value)
+  consoleDevices.value.forEach(c => consoleLogStore.finish(c.id))
 }
 const stopConsole = () => {
-  if (consoleDeviceId.value != null) consoleLogStore.forget(consoleDeviceId.value)
-  consoleDeviceId.value = null
-  withConsole.value = false
-  consoleExpanded.value = false
+  consoleDevices.value.forEach(c => consoleLogStore.forget(c.id))
+  consoleDevices.value = []
+  consoleOpen.value = new Set()
 }
 
 const getRouterName = (routerId) => {
@@ -601,7 +619,7 @@ const show = (operationType = 'mwsConnection', device = null, operationData = {}
   if (localDevice.value?.id) {
     startDeviceMonitoring(localDevice.value.id)
   }
-  startConsole(device, operationType)
+  startConsole(device, operationType, operationData)
 }
 
 // Функция для очистки слушателей

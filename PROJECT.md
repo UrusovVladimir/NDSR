@@ -578,14 +578,17 @@ App.vue
 │   ├─ ChangeModeModal — смена режима; для Extender + Connect — выбор пароля экстендера
 │   │                    (как у роутера / свой); отладочный раздел «Show Debug Info» убран
 │   ├─ ProgressModal — пошаговый прогресс (управляется событиями сервера); для смены режима
-│   │                  и MWS — блок «Console output» (ConsoleOutputBlock, useConsoleLogStore,
-│   │                  только своя бронь; раскрытый — окно шире и само не закрывается);
+│   │                  и MWS — блоки «Console output» устройства и роутера, к которому его
+│   │                  подключают (operationData.routerId) — ConsoleOutputBlock, useConsoleLogStore,
+│   │                  только свои брони; раскрытый — окно шире и само не закрывается;
 │   │                  при ошибке окно само не закрывается — текст ошибки, закрывает пользователь
 │   └─ ConsoleOutputBlock — общий раскрывающийся вывод консоли одного устройства
 ├─ GlobalProgressDialog — прогресс операций из useDeviceActionsStore (прогресс имитированный)
 ├─ SidebarContent — счётчики, iPerf, reload configs, добавить/удалить устройство и пользователя
 └─ ChatWidget (components/chat/*)
 ```
+
+**Прокрутка под модалками.** `blockScroll` у большинства Dialog не задан или `false`, поэтому блокировка глобальная (`assets/main.css`): пока на странице есть маска модального окна (`.p-dialog-mask.p-component-overlay`), `html:has(...)` — `overflow: hidden`; у маски, содержимого окна и `pre` в окне — `overscroll-behavior: contain` (прокрутка у края не уходит на страницу).
 
 **Кеш HTML.** nginx фронта отдаёт `*.html` (`index.html`, `rdp.html`, SPA-fallback) с `Cache-Control: no-cache` (`location ~ \.html$` в `nginx.conf.j2`): после обновления портала браузер сразу берёт новую страницу и новые ассеты (их имена с хешем кешируются как обычно). Без этого после деплоя открывалась старая `rdp.html` («ничего не поменялось»). На стендах конфиг — смонтированный `nginx.conf.j2` (77: `~/nginx.conf.j2`, 78: `/home/uvs/NDSR_PROJECT/nginx.conf.j2`), применяется `docker exec ndsr-app-front nginx -s reload`.
 
@@ -955,7 +958,7 @@ ping -c2 10.10.31.11; nc -vz 10.10.31.11 3389
 
 В окне прогресса (`GlobalProgressDialog`) у каждого перезагружаемого/сбрасываемого устройства — свёрнутый блок **Console output**; раскрытый — окно шире (~960px), лог прокручивается вниз (если не отмотать наверх); свёрнутый — окно прежнего размера. Пока вывод раскрыт, окно не закрывается само по окончании операции («Operation Finished», закрыть крестиком).
 
-- Бэкенд `services/consoleCapture.js`: telnet `<хост консоли>:<consolePort>`, хост по `consoleID` из `CONSOLE_HOSTS` (через запятую, порядок как у `MOXA_IPS`; на 77 — `172.16.77.252,172.16.77.252`, на 78 — `172.16.78.252,172.16.78.253` — это `domain` в config.py контейнеров webtelnet). Подключение — общее с окном консоли портала (`services/consoleHub.js`, 8.15), текст очищается от ANSI/`\r`, пачками раз в 250 мс событием `device:consoleLog` только запросившему сокету. Стоп: `device:consoleCapture:stop`, отключение браузера, лимит `CONSOLE_CAPTURE_MAX_MS` (6 мин), закрытие порта.
+- Бэкенд `services/consoleCapture.js`: telnet `<хост консоли>:<consolePort>`, хост по `consoleID` из `CONSOLE_HOSTS` (через запятую, порядок как у `MOXA_IPS`; на 77 — `172.16.77.252,172.16.77.252`, на 78 — `172.16.78.252,172.16.78.253` — это `domain` в config.py контейнеров webtelnet). Подключение — общее с окном консоли портала (`services/consoleHub.js`, 8.15), текст очищается от ANSI, `\r` выкидывается целиком (консоли шлют и `\r\n`, и `\n\r`, и `\r\r\n` — прежняя замена `\r\n?→\n` давала пустую строку после каждой строки); блок вывода оформлен как окно консоли (шрифт, 13px, межстрочный 1.2, фон #1e1e1e), пачками раз в 250 мс событием `device:consoleLog` только запросившему сокету. Стоп: `device:consoleCapture:stop`, отключение браузера, лимит `CONSOLE_CAPTURE_MAX_MS` (6 мин), закрытие порта.
 - `device:consoleCapture:start/stop` (`socket/handlers/consoleCapture.js`) — только владелец брони, не для конкурентов. Фронт (`useConsoleLogStore`) запрашивает захват в `executeDeviceAction` для `rebooting`/`resetting` и останавливает через 20 с после конца операции.
 - **Порт консоли пускает одного клиента: последнее подключение выбивает предыдущее** (проверено на 78: из двух telnet-клиентов закрывается первый). Окно консоли портала и захват сидят на одном подключении и не мешают друг другу. Окно webtelnet держит своё: при открытом webtelnet захват не запрашивается (блок «in console window»); webtelnet, открытый во время захвата, забирает порт — захват завершается с пометкой.
 - Не настроено (`CONSOLE_HOSTS` пуст / у устройства нет `consoleID`/`consolePort`) — блок «unavailable» с причиной. Массовые операции администратора и ночной сброс консоль не захватывают.

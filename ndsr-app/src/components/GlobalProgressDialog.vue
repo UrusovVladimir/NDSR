@@ -453,16 +453,17 @@ watch(() => {
 
 .console-pre {
     margin: 0.35rem 0 0;
-    padding: 0.6rem 0.75rem;
+    padding: 0.5rem 0.6rem;
     height: 360px;
     max-height: 50vh;
     overflow: auto;
-    background: #111827;
-    color: #d1d5db;
+    /* как окно консоли (console.html, xterm.js) */
+    background: #1e1e1e;
+    color: #e5e5e5;
     border-radius: 6px;
-    font-family: 'Courier New', ui-monospace, monospace;
-    font-size: 0.78rem;
-    line-height: 1.35;
+    font-family: Menlo, Consolas, "DejaVu Sans Mono", "Liberation Mono", monospace;
+    font-size: 13px;
+    line-height: 1.2;
     white-space: pre-wrap;
     word-break: break-all;
 }

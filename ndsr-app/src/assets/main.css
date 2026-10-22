@@ -46,6 +46,18 @@ body.p-overflow-hidden {
   overflow: hidden !important;
   padding-right: 0 !important;
 }
+/* То же для модалок без block-scroll (у большинства окон он не задан или
+   false): пока на странице есть маска модального Dialog
+   (.p-dialog-mask.p-component-overlay), страница не прокручивается. */
+html:has(.p-dialog-mask.p-component-overlay) {
+  overflow: hidden !important;
+}
+/* Прокрутка внутри окна (и вывода консоли) у края не уходит на страницу */
+.p-dialog-mask,
+.p-dialog-content,
+.p-dialog pre {
+  overscroll-behavior: contain;
+}
 
 /* Для всех модальных окон */
 .p-dialog-mask {
