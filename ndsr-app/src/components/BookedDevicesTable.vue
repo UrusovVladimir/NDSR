@@ -117,8 +117,8 @@
                             </div>
                             <!-- Отдельной строкой: строка имени nowrap + overflow hidden обрезала тег -->
                             <div v-if="isApSwitchOn(data)" class="hw-switch-line">
-                                <Tag value="HW switch" icon="pi pi-lock" severity="info" class="rival-tag"
-                                    v-tooltip="'Hardware mode switch: the mode is set by the physical switch and cannot be changed from the portal. Connect it to a router with MWS Connect.'" />
+                                <Tag :value="hwSwitchTag(data).value" icon="pi pi-lock" :severity="hwSwitchTag(data).severity" class="rival-tag"
+                                    v-tooltip="hwSwitchTag(data).tooltip" />
                             </div>
                             <div class="common-device-hwid">{{ data.hwId }}
                                 <i class="pi pi-info-circle details-inline" 
@@ -264,10 +264,10 @@
                         
                         <Button
                             v-if="canMwsConnectType(data) && !isRival(data)"
-                            v-tooltip.bottom="'Connection AP to Router(MWS)'"
+                            v-tooltip.bottom="isSwitchInRouterPosition(data) ? 'Switch in position A (Router) — move it to B (Access point) first' : 'Connection AP to Router(MWS)'"
                             icon="pi pi-wifi"
                             class="p-button-sm p-button-outlined p-button-success p-button-rounded action-btn"
-                            @click="$emit('open-modal', data, 'mwsConnection')"
+                            @click="openMwsConnection(data)"
                             :disabled="!canMwsConnect(data)"
                         />
                         
@@ -1269,7 +1269,7 @@
 
 <script setup>
 import { ref, computed, inject, onMounted, onUnmounted, watch, nextTick } from 'vue'
-import { isRival, isApSwitchOn, canMwsConnectType } from '@/utils/deviceFlags'
+import { isRival, isApSwitchOn, canMwsConnectType, hwSwitchTag, isSwitchInRouterPosition, SWITCH_A_HINT } from '@/utils/deviceFlags'
 import { useToast } from 'primevue/usetoast'
 import { socket } from '@/socket'
 import { useDeviceStore } from '@/stores/useDeviceStore'
@@ -1400,7 +1400,7 @@ const executeQuickAction = (action) => {
             showReleaseConfirm(device)
             break
         case 'mwsConnection':
-            emit('open-modal', device, 'mwsConnection')
+            openMwsConnection(device)
             break
         case 'changeMode':
             emit('open-change-mode', device)
@@ -1657,6 +1657,21 @@ const isInitializing = (device) => deviceActionsStore.getDeviceOperation(device.
 const isResetting = (device) => deviceActionsStore.getDeviceOperation(device.id) === 'resetting'
 const isRebooting = (device) => deviceActionsStore.getDeviceOperation(device.id) === 'rebooting'
 const isResettingDsl = (device) => deviceActionsStore.getDeviceOperation(device.id) === 'resettingDsl'
+// MWS Connect: переключатель в A (Router) — подключать нельзя, объясняем,
+// что сначала переключить в B. Положение неизвестно — сервер проверит сам.
+const openMwsConnection = (device) => {
+    if (isSwitchInRouterPosition(device)) {
+        toast.add({
+            severity: 'warn',
+            summary: `${device.hwId}: switch in position A`,
+            detail: SWITCH_A_HINT,
+            life: 10000
+        })
+        return
+    }
+    emit('open-modal', device, 'mwsConnection')
+}
+
 const canRefreshMode = (device) => !isRival(device) && isCurrentUserBooking(device) && !isOffline(device) && 
     (device.booking?.accessPassword || device.booking?.passwordInvalidated)
 

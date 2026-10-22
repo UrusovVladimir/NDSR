@@ -36,6 +36,12 @@ import {
 import { sendMwsProgress, sendModeChangeProgress } from '../../services/progress.js';
 import { requireLinkAccess } from '../../services/bookingService.js';
 import { finishApDisconnect } from '../../services/linkService.js';
+import {
+  SWITCH_A_MESSAGE,
+  getSwitchPosition,
+  recordSwitchPosition,
+  detectSwitchPosition
+} from '../../services/switchPosition.js';
 
 const universalPromptRegex = /.*/i;
 
@@ -143,6 +149,18 @@ export function register(socket, io) {
         }
     }
     
+    // 🔀 Аппаратный переключатель в положении A (Router): по MWS не подключить —
+    // проверяем на самом устройстве до любых изменений (свитч, пробросы).
+    // Не удалось спросить — решаем по последнему известному положению.
+    if (action === 'connect' && isApSwitchOn(device)) {
+        const position = await detectSwitchPosition(io, deviceId, { clientIp: socket.clientIp })
+            ?? getSwitchPosition(deviceId);
+        if (position === 'router') {
+            console.warn(`🔀 MWS connect refused for ${deviceId}: switch in position A (Router)`);
+            throw new Error(SWITCH_A_MESSAGE);
+        }
+    }
+    
     // ✅ ПОЛУЧАЕМ ПАРОЛЬ УСТРОЙСТВА — конфиг приоритетнее брони
     // (бронь могла пережить смену пароля; конфиг всегда актуален)
     const devicePassword = getDevicePassword(deviceId)
@@ -233,6 +251,7 @@ export function register(socket, io) {
           }
           
         console.log(`🔗 Successfully connected device ${deviceId} to router ${routerId}`);
+        recordSwitchPosition(io, deviceId, 'extender');
         }
       } catch (error) {
           portForwardError = error;
@@ -241,7 +260,7 @@ export function register(socket, io) {
       
       // ✅ ФИНАЛЬНЫЙ ПРОГРЕСС
       if (portForwardError) {
-          sendMwsProgress(io, deviceId, 0, 'error');
+          sendMwsProgress(io, deviceId, 0, 'error', portForwardError.message);
       } else {
           sendMwsProgress(io, deviceId, 95, 'verification');
           sendMwsProgress(io, deviceId, 100, 'completed');
@@ -297,7 +316,7 @@ export function register(socket, io) {
          console.error('❌ MWS connection error:', error);
         // ✅ Теперь deviceId доступен здесь!
         if (deviceId) {
-         sendMwsProgress(io, deviceId, 0, 'error');
+         sendMwsProgress(io, deviceId, 0, 'error', error.message);
         } else {
          console.error('❌ deviceId is undefined in catch block');
         }
@@ -343,8 +362,10 @@ export function register(socket, io) {
       const guardDevice = getDeviceById(deviceId);
       if (guardDevice && isApSwitchOn(guardDevice)) {
         console.warn(`🛡 Mode change blocked for ${deviceId}: hardware switch controls mode`);
-        return refuse('Mode is set by the hardware switch — software mode change is not possible. ' +
-          'To connect it to a router use MWS Connect.');
+        return refuse(getSwitchPosition(deviceId) === 'router'
+          ? 'Mode is set by the hardware switch — software mode change is not possible. ' + SWITCH_A_MESSAGE
+          : 'Mode is set by the hardware switch — software mode change is not possible. ' +
+            'To connect it to a router use MWS Connect.');
       }
       
       // 🛡 B18: cooldown после полного провала авторизации — не долбим устройство,
@@ -673,6 +694,7 @@ export function register(socket, io) {
         });
 
         if (modeResult?.success) {
+            recordSwitchPosition(io, deviceId, modeResult.baseMode || modeResult.mode);
             callback({ 
                 success: true, 
                 mode: modeResult.mode,

@@ -26,13 +26,15 @@ import { deviceStatusCache, invalidateStatusCache, markStatusCacheFresh } from '
 import { buildBookingPayload } from '../../services/bookingService.js';
 import { initializeStatusCache, getAllDevicesStatus } from '../../services/statusService.js';
 import { sendInitData, syncMwsStatusesToClient } from '../../services/initData.js';
+import { getSwitchPosition } from '../../services/switchPosition.js';
 
 // device:list целиком заменяет список на клиенте (setDevices), поэтому
 // без booking/powerStatus после add/remove пропадали все брони в таблице.
 const buildDeviceListPayload = () => devices.map(device => ({
   ...device,
   powerStatus: devicePowerStatus.get(device.id) || 'unknown',
-  booking: buildBookingPayload(device.id)
+  booking: buildBookingPayload(device.id),
+  switchPosition: getSwitchPosition(device.id)
 }));
 
 export function register(socket, io) {

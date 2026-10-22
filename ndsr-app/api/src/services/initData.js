@@ -12,6 +12,7 @@ import { dailyPasswords } from '../state/passwords.js';
 import { deviceStatusCache } from '../state/statusCache.js';
 import { buildBookingPayload } from './bookingService.js';
 import { getWanTypesSnapshot } from './wanService.js';
+import { getSwitchPosition } from './switchPosition.js';
 
 // Никогда не изменяются — клиент всегда получает { status: "None" } и {}.
 const currentMwsRouter = {};
@@ -80,7 +81,8 @@ async function sendInitData(socket) {
     const devicesWithBookings = devices.map(device => ({
       ...device,
       booking: buildBookingPayload(device.id),
-      powerStatus: devicePowerStatus.get(device.id) || 'on'
+      powerStatus: devicePowerStatus.get(device.id) || 'on',
+      switchPosition: getSwitchPosition(device.id)
     }));
   
     socket.emit('device:list', devicesWithBookings);

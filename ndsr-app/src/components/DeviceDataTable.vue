@@ -213,8 +213,8 @@
                   <div class="common-device-hwid">{{ data.hwId }}</div>
                   <!-- Отдельной строкой: строка имени nowrap + overflow hidden обрезала тег -->
                   <div v-if="isApSwitchOn(data)" class="hw-switch-line">
-                    <Tag value="HW switch" icon="pi pi-lock" severity="info" class="hw-switch-tag"
-                      v-tooltip="'Hardware mode switch: the mode is set by the physical switch and cannot be changed from the portal. Connect it to a router with MWS Connect.'" />
+                    <Tag :value="hwSwitchTag(data).value" icon="pi pi-lock" :severity="hwSwitchTag(data).severity" class="hw-switch-tag"
+                      v-tooltip="hwSwitchTag(data).tooltip" />
                   </div>
                   <div class="common-device-hwid">Country: {{ data.country }}</div>
                 </div>
@@ -371,7 +371,7 @@ import ProgressModal from './ProgressModal.vue'
 import ChangeModeModal from './ChangeModeModal.vue'
 import FirmwareVersion from '@/components/FirmwareVersion.vue'
 import BookedDevicesTable from './BookedDevicesTable.vue'
-import { isRival, isApSwitchOn } from '@/utils/deviceFlags'
+import { isRival, isApSwitchOn, hwSwitchTag } from '@/utils/deviceFlags'
 import Tag from 'primevue/tag'
 import { useClipboardStore } from '@/stores/useClipboardStore'
 

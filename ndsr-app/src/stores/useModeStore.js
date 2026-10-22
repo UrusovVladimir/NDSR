@@ -191,7 +191,7 @@ const updateModeFromDetection = async (deviceId, password) => {
       
       const deviceStore = useDeviceStore();
       const apDevices = deviceStore.devices.filter(dev => 
-        isApSwitchOn(dev)
+        isApSwitchOn(dev) && dev.switchPosition !== 'router'
       );
       
       // console.log(`🔧 Found ${apDevices.length} AP devices for mode validation`);
@@ -202,7 +202,7 @@ const updateModeFromDetection = async (deviceId, password) => {
         const modeInfo = savedModes[deviceId];
         const device = deviceStore.devices.find(d => d.id === deviceId);
         
-        if (device && isApSwitchOn(device)) {
+        if (device && isApSwitchOn(device) && device.switchPosition !== 'router') {
           if (modeInfo.mode === 'router') {
             // console.log(`🔧 Исправляем AP устройство ${deviceId}: router -> extender`);
             savedModes[deviceId] = {
@@ -295,7 +295,7 @@ const validateAPDeviceModes = () => {
   try {
     const deviceStore = useDeviceStore();
     const apDevices = deviceStore.devices.filter(dev => 
-      isApSwitchOn(dev)
+      isApSwitchOn(dev) && dev.switchPosition !== 'router'
     );
     
     let fixedCount = 0;

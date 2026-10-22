@@ -470,6 +470,15 @@ const updateDeviceName = (deviceId, newShortName) => {
         }
       }
     })
+
+    // 🔀 Положение аппаратного переключателя (A — router, B — ap) —
+    // сервер узнаёт его при определении режима / MWS Connect
+    socket.on('device:switchPosition', (data) => {
+      const deviceIndex = devices.value.findIndex(d => String(d.id) === String(data.deviceId))
+      if (deviceIndex !== -1) {
+        devices.value[deviceIndex] = { ...devices.value[deviceIndex], switchPosition: data.position }
+      }
+    })
       
   } 
 
@@ -482,6 +491,7 @@ const updateDeviceName = (deviceId, newShortName) => {
     socket.off('device:batchBookingUpdated')
     socket.off('device:wanTypeUpdated')
     socket.off('device:passwordUpdated')
+    socket.off('device:switchPosition')
   }
 
   

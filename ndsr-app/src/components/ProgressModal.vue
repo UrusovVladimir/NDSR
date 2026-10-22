@@ -590,6 +590,8 @@ const setupListeners = () => {
     // console.log('📊 ProgressModal RECEIVED device:mwsOperationProgress:', data);
     if (data.deviceId === localDevice.value?.id) {
       updateProgress(data.progress, data.step, data.details);
+      // Сервер передаёт текст ошибки — показываем его и даём закрыть окно
+      if (data.step === 'error' && data.error) failOperation(data.error);
     }
   });
 

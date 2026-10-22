@@ -1,6 +1,8 @@
 // services/progress.js — эмиттеры прогресса операций (имена событий — контракт фронта).
 
-function sendMwsProgress(io, deviceId, progress, step = null) {
+// error — текст ошибки при step 'error': окно прогресса показывает его
+// (ProgressModal → failOperation), а не безликое «Failed»
+function sendMwsProgress(io, deviceId, progress, step = null, error = null) {
   console.log(`📤 MWS Progress: ${deviceId}, ${progress}%, step: ${step}`)
   
   // Отправляем всем клиентам (уже работает)
@@ -9,6 +11,7 @@ function sendMwsProgress(io, deviceId, progress, step = null) {
     progress: progress,
     operationType: 'mws_connection',
     step: step,
+    error,
     timestamp: Date.now()
   });
   
@@ -18,6 +21,7 @@ function sendMwsProgress(io, deviceId, progress, step = null) {
     progress: progress,
     operationType: 'mwsConnection',
     step: step,
+    error,
     details: step ? `MWS: ${step}` : null,
     timestamp: Date.now()
   });

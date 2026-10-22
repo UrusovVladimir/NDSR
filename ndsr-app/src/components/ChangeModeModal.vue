@@ -319,10 +319,15 @@
         <div v-else-if="isHardwareControlled" class="mt-3">
         <Message severity="warn">
           <i class="pi pi-lock mr-2"></i>
-          This device has a <strong>hardware mode switch</strong> — the mode is set
-          by the physical switch and cannot be changed from the portal. To connect
-          it to a router, close this window and use <strong>MWS Connect</strong>
-          (<i class="pi pi-wifi"></i> button).
+          This device has a <strong>hardware mode switch</strong> (A — Router, B — Access point):
+          the mode is set by the physical switch and cannot be changed from the portal.
+          <template v-if="switchInRouterPosition">
+            <br>{{ SWITCH_A_HINT }}
+          </template>
+          <template v-else>
+            To connect it to a router, close this window and use <strong>MWS Connect</strong>
+            (<i class="pi pi-wifi"></i> button) — the switch must be in position B.
+          </template>
         </Message>
       </div>
       <!-- Сообщение при ошибке аутентификации -->
@@ -435,7 +440,7 @@ import ProgressSpinner from 'primevue/progressspinner'
 import Chip from 'primevue/chip'
 import Message from 'primevue/message'
 import Password from 'primevue/password' 
-import { isApSwitchOn } from '@/utils/deviceFlags'
+import { isApSwitchOn, SWITCH_A_HINT } from '@/utils/deviceFlags'
 
 const toast = useToast()
 const modeStore = useModeStore()
@@ -486,6 +491,9 @@ const passwordInvalidated = computed(() => {
 // (4310 отдаёт hw_controlled: true и 404 на /rci/system/mode; сервер
 // отклоняет device:changeMode). К роутеру — через MWS Connect.
 const isHardwareControlled = computed(() => isApSwitchOn(currentDevice.value || props.device))
+// Положение переключателя (от сервера): 'router' — A
+const switchInRouterPosition = computed(() =>
+  (currentDevice.value || props.device)?.switchPosition === 'router')
 
 const modalTitle = computed(() => {
   if (!currentDevice.value) return 'Device Mode'
@@ -506,7 +514,7 @@ const currentDeviceBaseMode = computed(() => {
   // hw-переключатель → устройство в extender физически
   // дефолтное (после reset) → заводской режим router
   // остальное без пароля → null (не выдумываем)
-  if (isHardwareControlled.value) return 'extender'
+  if (isHardwareControlled.value) return switchInRouterPosition.value ? 'router' : 'extender'
   if (passwordInvalidated.value) return 'router'
   return hasValidPassword.value && !authError.value ? 'router' : null
 })
