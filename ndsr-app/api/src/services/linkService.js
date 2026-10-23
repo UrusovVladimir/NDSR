@@ -26,6 +26,9 @@ async function finishApDisconnect(deviceId, routerId, progress = () => {}) {
   const device = getDeviceById(deviceId);
   let portForwardError = null;
 
+  // Контроллер забывает участника (mws member <mac>), не обязательно
+  await DisconnectManager.releaseFromController(deviceId, routerId);
+
   console.log(`🔧 Removing port forwarding for device ${deviceId}`);
   progress(50, 'port_forwarding');
   try {
@@ -70,7 +73,10 @@ function getActiveLink(extenderId) {
 // коммутатор (PVID порта → vlanLocal экстендера, порт forbidden во VLAN
 // роутера) и DNAT на хосте и в контейнере роутера (+ запись mwsLinks).
 // Режим устройства не трогает — годится, когда следом идёт сброс.
+// Заодно (не обязательно) контроллер забывает участника — запись
+// mws member <mac> в конфиге роутера иначе переживает и сброс экстендера.
 async function releaseLinkInfrastructure(deviceId, routerId) {
+  await DisconnectManager.releaseFromController(deviceId, routerId);
   await DisconnectManager.reconfigureSwitchWithLocalVlan(deviceId, routerId);
   await DisconnectManager.removeIptablesRulesOnly(deviceId, routerId);
 }

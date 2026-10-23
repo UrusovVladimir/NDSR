@@ -2,6 +2,13 @@ import { getParamRouter, getDeviceById, getDeviceStatusCode, devices, saveConfig
 import { makeAuthenticatedRequest } from "./athentication.js";
 import { sessionManager } from "./sessionManager.js";
 import { rememberDevicePassword } from "../services/passwordService.js";
+import {
+  normalizeCandidates,
+  isUnauthorizedCandidate,
+  assertRciOk,
+  findMwsMember,
+  normMac
+} from "./mwsRci.js";
 import axios from "axios";
 import { connectToMws } from "./connectToMws.js"; 
 import { SSHManager } from "./sshManager.js";
@@ -113,31 +120,6 @@ export const checkDeviceMode = async (url, login, password) => {
     }
 };
 
-
-// show/mws/candidate отдаёт объект ({} без кандидатов, { candidate: [...] |
-// {...} }), а не массив — раньше Array.isArray() не находил кандидатов
-// никогда, и поиск держался только на запасной проверке по ARP
-function normalizeCandidates(data) {
-  if (!data) return [];
-  if (Array.isArray(data)) return data;
-  if (data.candidate) return [].concat(data.candidate).filter(Boolean);
-  if (data.mac) return [data];
-  return Object.values(data).flat().filter(c => c && typeof c === 'object' && c.mac);
-}
-
-// Кандидат DISCONNECTED с «access unauthorized»: контроллер (роутер) не может
-// зайти на экстендер — у экстендера другой пароль
-const isUnauthorizedCandidate = (c) =>
-  String(c?.state || '').toUpperCase() === 'DISCONNECTED' &&
-  /unauthori[sz]ed/i.test(JSON.stringify(c || {}));
-
-// Ответ RCI с ошибкой ("status":"error" в любом месте) → throw с текстом
-function assertRciOk(response, what) {
-  const text = JSON.stringify(response || {});
-  if (!/"status"\s*:\s*"error"/.test(text)) return response;
-  const m = text.match(/"message"\s*:\s*"([^"]*)"/);
-  throw new Error(`${what}: ${m ? m[1] : text.slice(0, 200)}`);
-}
 
 // Пароль admin на устройстве (как Skip Wizard) + проверка входа с новым
 async function setAdminPassword(url, oldPassword, newPassword) {
@@ -267,7 +249,6 @@ async function pollNeighbors(routerUrl, login, routerPassword, targetMac, maxAtt
   
   return null;
 }
-const normMac = (mac) => String(mac || '').replace(/[^0-9a-f]/gi, '').toLowerCase();
 
 // MAC экстендера — по нему он ищется у роутера (MWS-кандидаты, ARP). Это MAC
 // LAN экстендера (Bridge0; совпадает с macAddress прод-конфигов). Пусто в
@@ -334,6 +315,14 @@ async function waitForExtenderInMwsCandidates(routerId, extenderMac, routerPassw
               ip: foundExtender.ip || null
             };
           }
+        }
+
+        // Уже принят (пароль совпал) — из кандидатов он пропадает и
+        // числится в show/mws/member; раньше это ждали до таймаута
+        const member = await findMwsMember(routerUrl, routerPassword, extenderMac);
+        if (member) {
+          console.log(`✅ Extender уже участник MWS роутера ${routerId}`);
+          return { ...member, source: 'mws_member', state: 'MEMBER', ip: null };
         }
         
         // ✅ Если прошло больше половины попыток и extender не найден, пробуем поискать в соседях
@@ -468,6 +457,17 @@ async function waitForExtenderConnection(routerId, extenderMac, routerPassword, 
           }
         }
         
+        // Принят контроллером — подключение состоялось
+        try {
+          const member = await findMwsMember(routerUrl, routerPassword, extenderMac);
+          if (member) {
+            console.log(`🎉 Extender ${extenderMac} — участник MWS роутера ${routerId}`);
+            return { ...member, source: 'mws_member', state: 'MEMBER', ip: null };
+          }
+        } catch (memberError) {
+          console.log(`⚠️ Ошибка запроса MWS участников: ${memberError.message}`);
+        }
+
         // Если в MWS кандидатах нет, проверяем таблицу соседей
         const neighborData = await pollNeighbors(
           routerUrl, 
@@ -692,24 +692,38 @@ export const changeSystemMode = async (deviceId, routerId, mode, password, route
             console.log(`✅ ${device.hwId}: admin password changed and saved`);
         }
 
-        if (currentMode === mode) {
+        // Уже extender, а нужно подключить к роутеру — смену режима и ребут
+        // пропускаем, но подключение (свич, ожидание, пробросы) делаем.
+        // Раньше тут был ранний return «уже в режиме» — портал записывал
+        // extender_connect без VLAN роутера и без пробросов.
+        const connectOnly = mode === 'extender' && !!routerId &&
+            ['extender', 'extender_connect'].includes(currentMode);
+
+        if (currentMode === mode && !connectOnly) {
             return { 
                 success: true, 
                 message: `Устройство уже находится в режиме ${mode}` 
             };
         }
 
-        // ✅ ШАГ 2-4: Смена режима и перезагрузка
-        console.log(`🔄 Отправка команды смены режима на ${mode}...`);
-        
-        const modeToSend = mode === 'extender_connect' ? 'extender' : mode;
-        await makeAuthenticatedRequest(url, login, password, '/rci/system/mode', 'POST', { mode: modeToSend });
+        if (connectOnly) {
+            console.log(`🔧 ${device.hwId} уже в режиме extender — без смены режима, сразу MWS-подключение`);
+        } else {
+            // ✅ ШАГ 2-4: Смена режима и перезагрузка
+            console.log(`🔄 Отправка команды смены режима на ${mode}...`);
+            
+            const modeToSend = mode === 'extender_connect' ? 'extender' : mode;
+            // Ответ проверяем: прошивка отвечает 200 и при отказе
+            // (например, «execute blocked in MWS member mode»)
+            const modeResponse = await makeAuthenticatedRequest(url, login, password, '/rci/system/mode', 'POST', { mode: modeToSend });
+            assertRciOk(modeResponse, 'system mode');
 
-        console.log(`⏳ Ожидание перед перезагрузкой...`);
-        await new Promise(resolve => setTimeout(resolve, 2000));
+            console.log(`⏳ Ожидание перед перезагрузкой...`);
+            await new Promise(resolve => setTimeout(resolve, 2000));
 
-        console.log(`🔄 Отправка команды перезагрузки...`);
-        await makeAuthenticatedRequest(url, login, password, '/rci/system/reboot', 'POST', {});
+            console.log(`🔄 Отправка команды перезагрузки...`);
+            await makeAuthenticatedRequest(url, login, password, '/rci/system/reboot', 'POST', {});
+        }
 
         // модалка покидает "WAN Configuration" — команда ребута ушла
         if (io) {

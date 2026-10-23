@@ -5,11 +5,40 @@ import { getDeviceById, getParamRouter, wanTypes } from "../devices.js";
 import { getManagmentID } from "../actions/getManagmentID.js";
 import { TelnetConnection } from "../actions/telnetClassEthernet.js";
 import { makeAuthenticatedRequest } from "../actions/athentication.js";
+import { findMwsMember, releaseMwsMember, assertRciOk, isMemberModeBlocked } from "../actions/mwsRci.js";
+import { resolveRouterPassword } from "../services/passwordService.js";
 
 
 const universalPromptRegex = /.*[# ]/i;
 
 export class DisconnectManager {
+    /**
+     * Контроллер (роутер) отпускает экстендер — no mws member <mac>.
+     * Участник MWS не принимает смену режима («system mode: execute blocked
+     * in MWS member mode»), а запись mws member в конфиге роутера переживает
+     * и смену VLAN, и сброс экстендера. Не участник / не вышло — false
+     * (ошибки не бросает: вызывающий решает по результату смены режима).
+     */
+    static async releaseFromController(deviceId, routerId) {
+        const device = getDeviceById(deviceId);
+        const router = getParamRouter(routerId);
+        if (!device?.macAddress || !router?.URL) return false;
+        try {
+            const routerPassword = await resolveRouterPassword(routerId, null);
+            const member = await findMwsMember(router.URL, routerPassword, device.macAddress);
+            if (!member) {
+                console.log(`🔗 ${device.hwId} не числится участником MWS роутера ${routerId}`);
+                return false;
+            }
+            await releaseMwsMember(router.URL, routerPassword, device.macAddress);
+            console.log(`🔓 ${routerId}: no mws member ${device.macAddress} (${device.hwId})`);
+            return true;
+        } catch (error) {
+            console.warn(`⚠️ Не удалось отпустить ${device.hwId} у контроллера ${routerId}: ${error.message}`);
+            return false;
+        }
+    }
+
     /**
      * ПРАВИЛЬНЫЙ порядок отключения extender'а
      */
@@ -50,6 +79,11 @@ export class DisconnectManager {
         });
 
         try {
+            // ✅ ШАГ 0: участника MWS контроллер сначала отпускает — иначе
+            // экстендер отвечает «execute blocked in MWS member mode»
+            console.log(`🔓 ШАГ 0: Освобождаем экстендер у контроллера ${routerId}...`);
+            await this.releaseFromController(deviceId, routerId);
+
             // ✅ ШАГ 1: СНАЧАЛА ОТПРАВЛЯЕМ КОМАНДУ СМЕНЫ РЕЖИМА
             console.log(`🔄 ШАГ 1: Отправляем команду смены режима на устройство...`);
             await this.sendModeChangeCommand(device, devicePassword, finalDeviceUrl);
@@ -119,31 +153,40 @@ export class DisconnectManager {
     
             // ✅ ОТПРАВЛЯЕМ КОМАНДУ СМЕНЫ РЕЖИМА С ПОВТОРЕНИЕМ
             console.log(`🔄 Отправка команды смены режима...`);
+            // Ответ проверяем: прошивка отвечает 200 и при отказе. Раньше
+            // «execute blocked in MWS member mode» считался успехом — дальше
+            // шли ребут и переключение свича, а устройство оставалось extender.
+            // Отказ «member mode» — ждём, пока экстендер выйдет из MWS после
+            // no mws member (до ~1 мин), прочие ошибки — одна повторная попытка.
             let changeResult;
-            try {
-                changeResult = await makeAuthenticatedRequest(
-                    finalDeviceUrl,
-                    'admin',
-                    password,
-                    '/rci/system/mode',
-                    'POST',
-                    { mode: 'router' }
-                );
-                console.log(`✅ Команда смены режима отправлена:`, changeResult);
-            } catch (error) {
-                console.warn(`⚠️ Первая попытка отправки не удалась: ${error.message}`);
-                console.log(`🔄 Повторная отправка команды смены режима...`);
-                // Повторная попытка
-                await new Promise(resolve => setTimeout(resolve, 3000));
-                changeResult = await makeAuthenticatedRequest(
-                    finalDeviceUrl,
-                    'admin',
-                    password,
-                    '/rci/system/mode',
-                    'POST',
-                    { mode: 'router' }
-                );
-                console.log(`✅ Команда смены режима отправлена (повторно):`, changeResult);
+            let lastError = null;
+            for (let attempt = 1; attempt <= 12; attempt++) {
+                try {
+                    changeResult = await makeAuthenticatedRequest(
+                        finalDeviceUrl,
+                        'admin',
+                        password,
+                        '/rci/system/mode',
+                        'POST',
+                        { mode: 'router' }
+                    );
+                    assertRciOk(changeResult, 'system mode');
+                    lastError = null;
+                    console.log(`✅ Команда смены режима принята (попытка ${attempt})`);
+                    break;
+                } catch (error) {
+                    lastError = error;
+                    const blocked = isMemberModeBlocked(error);
+                    if (!blocked && attempt >= 2) break;
+                    console.warn(`⚠️ Смена режима не принята (попытка ${attempt}): ${error.message}`);
+                    await new Promise(resolve => setTimeout(resolve, blocked ? 5000 : 3000));
+                }
+            }
+            if (lastError) {
+                throw isMemberModeBlocked(lastError)
+                    ? new Error('device is still an MWS member of the router — mode change is blocked ' +
+                        '(system mode: execute blocked in MWS member mode); switch and port forwarding were not changed')
+                    : lastError;
             }
     
             // ✅ КОРОТКАЯ ПАУЗА МЕЖДУ КОМАНДАМИ
