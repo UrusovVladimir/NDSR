@@ -716,10 +716,17 @@ export function register(socket, io) {
 
         if (modeResult?.success) {
             recordSwitchPosition(io, deviceId, modeResult.baseMode || modeResult.mode);
+            // Принятый контроллером экстендер сам про связку не знает (его
+            // show/mws пуст) — связку помнит портал: extender + записанная
+            // extender_connect → отдаём extender_connect с роутером
+            const known = currentModes.get(deviceId);
+            const linked = known?.mode === 'extender_connect' && known.routerId &&
+                ['extender', 'extender_connect'].includes(modeResult.mode);
             callback({ 
                 success: true, 
-                mode: modeResult.mode,
-                hasMwsConnections: modeResult.hasMwsConnections || false
+                mode: linked ? 'extender_connect' : modeResult.mode,
+                routerId: linked ? known.routerId : null,
+                hasMwsConnections: linked || modeResult.hasMwsConnections || false
             });
         } else {
             callback({ 

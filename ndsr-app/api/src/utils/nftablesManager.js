@@ -37,7 +37,7 @@ export class NftablesManager {
             const backend = await this.detectBackend();
             
             if (backend === 'nftables' || backend === 'nf_tables') {
-                const command = `nft list chain ip nat PREROUTING | grep "tcp dport ${port}" | grep "dnat to ${destination}"`;
+                const command = `nft list chain ip nat PREROUTING | grep -E "tcp dport ${port}( |$)" | grep -E "dnat to ${destination}(:| |$)"`;
                 const result = await this.ssh.executeCommand(command);
                 return result.stdout.length > 0;
             } else {
@@ -59,7 +59,7 @@ export class NftablesManager {
                 console.log(`🔧 Удаление правил nftables: порт ${port} -> ${destination}`);
                 
                 // ✅ ИЩЕМ ТОЛЬКО ПРАВИЛА С ЭТИМ PORT И DESTINATION
-                const findCommand = `nft -a list chain ip nat PREROUTING | grep "tcp dport ${port}" | grep "dnat to ${destination}" | grep -o "handle [0-9]*" | awk '{print $2}'`;
+                const findCommand = `nft -a list chain ip nat PREROUTING | grep -E "tcp dport ${port}( |$)" | grep -E "dnat to ${destination}(:| |$)" | grep -o "handle [0-9]*" | awk '{print $2}'`;
                 const findResult = await this.ssh.executeCommand(findCommand);
                 
                 const handles = findResult.stdout.split('\n').filter(handle => handle.trim());

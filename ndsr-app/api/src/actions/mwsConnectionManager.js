@@ -3,8 +3,8 @@ import { DockerManager } from "../utils/dockerManager.js";
 import { getSSHConfig } from "../utils/hostConfig.js";
 import { getDeviceById, getParamRouter } from "../devices.js";
 import { IpDiscoveryService } from "../utils/ipDiscovery.js"; 
-import { saveMwsLink, getMwsLink, dropMwsLink } from "../state/mwsLinks.js";
-import { containerNameOf } from "../utils/deviceFlags.js";
+import { saveMwsLink, getMwsLink, dropMwsLink, isRealExtenderIp } from "../state/mwsLinks.js";
+import { containerNameOf, isApSwitchOn } from "../utils/deviceFlags.js";
 
 export class MWSConnectionManager {
     static async getExtenderIpFromRouter(routerId, extenderMac, routerPassword = null, maxAttempts = 10, delay = 5000) {
@@ -44,7 +44,9 @@ export class MWSConnectionManager {
             });
     
             // ✅ ОПРЕДЕЛЯЕМ ТИП УСТРОЙСТВА
-            const isAPDevice = device.type === 'AP' && device.hwType === 'true';
+            // hwType в конфигах — 'yes'/'true'/'1' (на 78 — 'yes'; раньше
+            // сравнивали с 'true', и AP шли по короткому ожиданию 5×3 с)
+            const isAPDevice = device.type === 'AP' && isApSwitchOn(device);
             
             let hostTargetIp = router.ip.split('/')[0]; // IP роутера для хоста
             let containerTargetIp; // IP для контейнера
@@ -65,8 +67,7 @@ export class MWSConnectionManager {
                     
                 } catch (dhcpError) {
                     console.warn(`⚠️ Не удалось получить IP AP из DHCP: ${dhcpError.message}`);
-                    console.log(`🔄 Используем IP роутера для контейнера: ${hostTargetIp}`);
-                    containerTargetIp = hostTargetIp;
+                    containerTargetIp = null;
                 }
             } else {
                 // ✅ ДЛЯ ОБЫЧНЫХ УСТРОЙСТВ: стандартная логика
@@ -75,9 +76,13 @@ export class MWSConnectionManager {
                     console.log(`✅ Получен реальный IP устройства для контейнера: ${containerTargetIp}`);
                 } catch (ipError) {
                     console.warn(`⚠️ Не удалось получить реальный IP устройства: ${ipError.message}`);
-                    console.log(`🔄 Используем IP роутера для контейнера: ${hostTargetIp}`);
-                    containerTargetIp = hostTargetIp;
+                    containerTargetIp = null;
                 }
+            }
+            if (!isRealExtenderIp(containerTargetIp, { routerIp: hostTargetIp, device })) {
+                if (containerTargetIp) console.warn(`⚠️ ${containerTargetIp} — не адрес экстендера в LAN роутера`);
+                console.log(`⏳ IP экстендера пока неизвестен — правило в контейнере роутера поставит сверка пробросов (mwsForwardService), когда экстендер появится в DHCP`);
+                containerTargetIp = null;
             }
     
             console.log(`🎯 Финальные IP для пробросов:`, {
@@ -106,7 +111,9 @@ export class MWSConnectionManager {
             // ✅ ШАГ 2: НАСТРАИВАЕМ ПРОБРОС В КОНТЕЙНЕРЕ
             console.log(`🔧 Настраиваем проброс портов в контейнере роутера...`);
             console.log(`   → Контейнер: порт ${extenderId} -> ${containerTargetIp}:80`);
-            await dockerManager.manageContainerFirewall(containerNameOf(router), extenderId, containerTargetIp, 'setup');
+            if (containerTargetIp) {
+                await dockerManager.manageContainerFirewall(containerNameOf(router), extenderId, containerTargetIp, 'setup');
+            }
 
             // ✅ СОХРАНЯЕМ НА ДИСК — по этим IP правила будут сняты при отключении
             saveMwsLink(extenderId, { routerId, routerIp: hostTargetIp, extenderIp: containerTargetIp });

@@ -9,6 +9,7 @@ import { scheduleNightlyReset } from './services/nightlyReset.js';
 import { reconcileVms } from './services/vmService.js';
 import { reconcileLanWan } from './services/lanWanService.js';
 import { reconcileRouterIps } from './services/routerIpService.js';
+import { reconcileMwsForwards } from './services/mwsForwardService.js';
 import { startBrowserRdp } from './services/browserRdp.js';
 
 let started = false;
@@ -41,6 +42,10 @@ export function startBackgroundTasks() {
   // Адрес роутера, заданный порталом, — обратно в пересозданные контейнеры
   setTimeout(() => reconcileRouterIps().catch(err => console.error(`❌ router LAN IP reconcile: ${err.message}`)), 20 * 1000);
   setInterval(() => reconcileRouterIps().catch(err => console.error(`❌ router LAN IP reconcile: ${err.message}`)), 5 * 60 * 1000);
+  // Пробросы подключённых экстендеров — после `nft -f` с flush ruleset
+  // и пересоздания контейнера роутера (services/mwsForwardService.js)
+  setTimeout(() => reconcileMwsForwards(), 30 * 1000);
+  setInterval(() => reconcileMwsForwards(), 2 * 60 * 1000);
 
   // 🔒 Отладочный вывод бронирований — только при явном включении в .env
   // (раньше шел каждые 30 секунд в логи на весь uptime сервера)

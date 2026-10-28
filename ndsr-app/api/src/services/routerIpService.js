@@ -28,7 +28,7 @@ async function writeContainerFile(device, ip) {
     ? `mkdir -p /etc/ndsr && echo ${ip}/24 > ${FILE}`
     : `rm -f ${FILE}`;
   const dm = await initializeDockerManager();
-  const res = await dm.ssh.executeCommand(`docker exec ${name} sh -c '${cmd}'`);
+  const res = await dm.sshManager.executeCommand(`docker exec ${name} sh -c '${cmd}'`);
   if (res.code !== 0) throw new Error(`container ${name}: ${res.stderr || `exit ${res.code}`}`);
 }
 
@@ -63,7 +63,7 @@ export async function reconcileRouterIps() {
     for (const device of list) {
       const name = containerNameOf(device);
       try {
-        const res = await dm.ssh.executeCommand(`docker exec ${name} cat ${FILE} 2>/dev/null`);
+        const res = await dm.sshManager.executeCommand(`docker exec ${name} cat ${FILE} 2>/dev/null`);
         if (res.stdout.trim() !== `${device.routerLanIp}/24`) {
           await writeContainerFile(device, device.routerLanIp);
           console.log(`🏠 ${device.hwId}: router LAN IP ${device.routerLanIp} restored in container`);

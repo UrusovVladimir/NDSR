@@ -290,6 +290,7 @@ IP клиента для HTTP и для socket.io определяется од�
 - `resetService.js` — `factoryResetDevice(io, id)`: заводской сброс со всей подготовкой и уборкой (8.10). Единственная точка входа для ручного и ночного сброса.
 - `nightlyReset.js` — ночной cron (8.9).
 - `vmService.js` — тестовые VM (8.12): атач/детач с блокировкой на VM, `reconcileVms` (раз в минуту из `bootstrap.js`), автодетач при снятии брони.
+- `mwsForwardService.js` — `reconcileMwsForwards`: возвращает пропавшие пробросы подключённых экстендеров по `mws_links.json` (8.5, «Восстановление пробросов»).
 
 **`src/devices.js`**:
 
@@ -434,7 +435,8 @@ Telnet-клиент (`telnetClassEthernet.js`) при обрыве перепо�
   - смотрит интерфейсы (`docker exec <hwId> ip addr` — отсюда IP TFTP-сервера);
   - ставит и снимает DNAT в контейнере роутера;
   - через `UniversalFirewallManager` → `nftablesManager.js` правит nft на хосте (`ip nat PREROUTING`, fallback на iptables).
-- IP, на которые поставлены MWS-пробросы, хранятся в `state/mwsLinks.js` (`mws_links.json`) и переживают рестарт: снятие правил берёт IP оттуда, а не ищет экстендер заново по DHCP.
+- IP, на которые поставлены MWS-пробросы, хранятся в `state/mwsLinks.js` (`mws_links.json`) и переживают рестарт: снятие правил берёт IP оттуда, а не ищет экстендер заново по DHCP; по ним же `reconcileMwsForwards` возвращает стёртые правила (8.5).
+- `nftablesManager` ищет правила по `tcp dport <порт>( |$)` и `dnat to <ip>(:| |$)` — без совпадения по префиксу (раньше `10.10.20.2` задевал и `10.10.20.21`).
 - `utils/ipDiscovery.js` ищет IP экстендера по MAC: сначала в DHCP-bindings роутера, потом в ARP.
 
 ### 5.6 MWS и смена режима
@@ -553,7 +555,7 @@ Telnet-клиент (`telnetClassEthernet.js`) при обрыве перепо�
 ```
 App.vue
 ├─ AppHeader — часы (МСК), суточный пароль, переключатель cron, FileManager
-├─ DeviceDataTable — таблица устройств (не мои): вкладки Our Devices / Rival Devices в шапке, поиск, модалки, сохранение WAN/MWS
+├─ DeviceDataTable — таблица устройств (не мои): вкладки Our Devices / Rival Devices в шапке, поиск, модалки, сохранение WAN/MWS; у каждого устройства под hwId — «Current Mode» (если известен) и «Connected to» у extender_connect (режимы всех устройств сервер шлёт при подключении и при каждом изменении)
 │   ├─ SharedVmsStatus — в строке счётчиков (online/offline/total) «N/M VMs free»; по клику список VM: свободна / кто занял, к какому устройству, сколько осталось (до booking.expiresAt устройства — VM отключается вместе с бронью). Данные: vm:list (всем) + брони из deviceStore; строка счётчиков — группы `.count-item` с переносом (на телефоне не шире экрана); панель закрывается при прокрутке страницы (кроме прокрутки своего списка); нет VM — скрыт
 │   ├─ BookedDevicesTable — «мои устройства»: основное рабочее место (питание, reset, режимы,
 │   │                        консоль, VNC, веб, Skip Wizard, продление, релиз, FW Check All;
@@ -675,6 +677,8 @@ App.vue
 | `hwType` = true/yes/1 (переключатель) | `device:mwsConnected` `connect` / `disconnect` |
 | остальные | `device:changeMode` `extender_connect` / `extender_disconnect` |
 
+**Режим на фронте** (`useModeStore.currentMode`): источник — сервер (`currentModes`, рассылка `device:modeUpdated` всем). Снятие брони режим не стирает (устройство физически в нём осталось; раньше после новой брони было «Unknown» до F5). `device:getCurrentMode` спрашивает устройство, но принятый контроллером экстендер сам про связку не знает (его `show/mws` пуст, ответ «extender») — сервер в этом случае отдаёт записанную `extender_connect` с `routerId`, кнопка обновления режима роутер не теряет (раньше «Extender (Connected)» превращалось в «Extender»).
+
 **`device:changeMode`** (`socket/handlers/mode.js` → `actions/changeModeType.js`):
 
 1. `requireLinkAccess`, guard аппаратного переключателя, guard cooldown.
@@ -726,6 +730,18 @@ App.vue
 | `mws_links.json` | `{routerId, routerIp, extenderIp}` | удаляется после снятия DNAT | файл в каталоге состояния |
 | `current_modes.json` | `extender_connect` + `routerId` | `router` / `extender` (или запись удаляется при сбросе) | файл в каталоге состояния |
 | Сам роутер | экстендер в MWS (candidate → member) | **не снимается** — стирается только сбросом роутера | `show mws` на роутере |
+
+**Восстановление пробросов** (`services/mwsForwardService.js`, `reconcileMwsForwards`; запуск из `bootstrap.js` — через 30 с после старта, затем раз в 2 минуты). Правило хоста живёт только в ядре: `nft -f <файл>` с `flush ruleset` (выкатка/пересоздание бэкенда на 77/78, правка nft-файла) его стирает, и порт `<extenderId>` уходит на статическое правило из файла — в собственный CFK экстендера, где веба нет (так было на 78 28.10.2026 с 2312 → 1012). Правило в CFK роутера пропадает при пересоздании контейнера. Ещё случай: экстендер не успел получить адрес в DHCP роутера за время подключения (его захватывают в MWS, он перезагружается) — раньше правило в контейнере ставилось на запасной адрес (IP CFK роутера или самого экстендера, 10.10.x) и так и оставалось (78, 28.10.2026: 4410 → `10.10.20.19:80`, а экстендер получил 192.168.1.95). Теперь такие адреса не используются (`isRealExtenderIp` в `state/mwsLinks.js`): связка пишется с `extenderIp: null`, правила в контейнере нет, адрес находит сверка. Сверка:
+- берёт записи `mws_links.json`, у которых `current_modes.json` = `extender_connect` к тому же `routerId`; остальные пропускает (ничего не удаляет — лишнее снимает отключение);
+- хост: ищет в `nft list chain ip nat PREROUTING` строку `tcp dport <id> … dnat to <routerIp>[:порт]` (подходит и ручное правило с `iifname`), нет — `manageHostFirewall(…,'setup')` (вставка в начало цепочки, впереди статического);
+- адрес экстендера: `IpDiscoveryService.getExtenderIpFromRouter` (DHCP bindings роутера по MAC, затем ARP) — при `extenderIp: null` каждый проход, при известном — раз в 10 минут. Сначала кэшированной сессией портала; без неё — `resolveRouterPassword` (конфиг → бронь владельца роутера → daily) не чаще раза в 10 минут на роутер, чтобы не сработала блокировка входа после неверных паролей. Адрес сменился — правило на старый адрес (и на IP CFK роутера от прежних версий) снимается, связка перезаписывается, правило на новый ставится в том же проходе;
+- контейнер роутера: ищет в `iptables -t nat -S PREROUTING` `--dport <id> … --to-destination <extenderIp>:80`, нет — `manageContainerFirewall(…,'setup')`; контейнер не запущен — пропуск;
+- ставит правило, только если его нет **два прохода подряд** и запись связки ещё есть: отключение сначала снимает правила, потом удаляет запись — сверка не должна вернуть правило в этом промежутке. Поэтому после `nft -f` проброс возвращается за 2–4 минуты;
+- в логе бэкенда: `🔧 MWS <ext> → <router>: restoring host forward …` / `restoring forward in <container> …` / `extender IP <старый> → <новый>`, адрес ещё не найден — `⏳ MWS … extender IP still unknown`, ошибки — `❌ MWS forward reconcile: …`.
+
+AP-устройства (`type: AP` + `hwType` — `isApSwitchOn`: 'yes'/'true'/'1') при MWS Connect ждут адрес дольше (`waitForAPInDHCP`). Раньше `mwsConnectionManager` сравнивал `hwType === 'true'`, а на 78 у AP `'yes'` — они ждали как обычные устройства 5×3 с.
+
+Что править при изменениях: формат правил — `manageHostFirewall` / `manageContainerFirewall` (`utils/dockerManager.js`) и, если поменялся вид строки, регулярки `hostHasRule` / `containerHasRule` в `mwsForwardService.js`; новые поля связки — `state/mwsLinks.js` (`saveMwsLink` в `setupPortForwarding` и `MWSConnectionManager.setupMWSConnection`); частота — `bootstrap.js`, интервалы поиска адреса — `IP_REFRESH_MS` / `PASSWORD_RETRY_MS` в `mwsForwardService.js`; какие адреса не считаются адресом экстендера — `isRealExtenderIp`. Ручные правила для портов экстендеров в nft-файл класть не нужно.
 
 Согласованное состояние — либо всё из таблицы есть (подключено), либо ничего нет. Все операции снятия **идемпотентны** (правила сначала ищутся, удаляются только найденные; `pvid`/`forbidden` просто выставляются заново), поэтому при «полуразобранной» связке безопасно повторить отключение или сделать factory reset экстендера.
 
@@ -1193,7 +1209,7 @@ cd ndsr-app/api && node --env-file=.env -e "import('./src/socketHandler.js')"
 | Смена режима висит | ожидание MWS-кандидата может длиться десятки минут; экстендер не видит роутер (VLAN); у экстендера неверный `macAddress` (в логе `Ожидание появления extender'а <MAC>`) | лог changeModeType; `show mws candidate` на роутере; события `device:modeChangeProgress` |
 | Режим показан неверно | устаревший localStorage `deviceCurrentMode`; `current_modes.json` из старого деплоя | очистить localStorage; `current_modes.json`; «обновить режим» в UI |
 | Подключение экстендера: «Контейнер … не запущен» | имя CFK-контейнера роутера ≠ hwId (`docker ps`) | задать `"container": "<имя>"` у роутера в devices.json; при ошибке подключения портал сам откатывает свич (порт экстендера → его VLAN) и пробросы, устройство остаётся в extender — вернуть в router или сбросить |
-| Веб экстендера через роутер не открывается | нет DNAT на хосте/в контейнере; IP экстендера не найден (нет `macAddress`); экстендер сменил IP по DHCP | `mws_links.json` (`extenderIp`); `nft list table ip nat`; `docker exec <router hwId> iptables -t nat -S` |
+| Веб экстендера через роутер не открывается | нет DNAT на хосте/в контейнере (после `nft -f` / пересоздания CFK роутера сверка вернёт его за 2–4 мин; `extenderIp: null` в `mws_links.json` — адрес экстендера ещё не найден в DHCP роутера); IP экстендера не найден (нет `macAddress`); экстендер сменил IP по DHCP | `mws_links.json` (`extenderIp`); `nft list table ip nat`; `docker exec <router hwId> iptables -t nat -S`; лог бэкенда `MWS … restoring` / `MWS forward reconcile` (8.5) |
 | После отключения/сброса экстендер всё ещё в сети роутера или веб открывается через роутер | связка разобрана не до конца (см. 8.5, «Что создаёт подключение…») | пройти по таблице в 8.5; повторить отключение или factory reset экстендера — снятие идемпотентно |
 | Сброс подключённого экстендера: «Router is booked by another user» | роутер в чужой брони, связку трогать нельзя | дождаться освобождения роутера или попросить владельца отключить экстендер |
 | Сброс подключённого экстендера падает сразу, устройство не сбрасывается | не удалось откатить коммутатор или NAT (telnet к LAN-коммутатору, SSH к docker-хосту) | лог `reconfigureSwitchWithLocalVlan` / `removeIptablesRulesOnly`; `SWITCH_*`, `SSH_*` |

@@ -539,6 +539,10 @@ const getCurrentMode = async (deviceId, password) => {
                       finalMode = 'extender_connect';
                       // console.log(`🔄 Upgrading mode from extender to extender_connect (has MWS connections)`);
                   }
+                  // Связку (к какому роутеру) знает сервер — сохраняем её
+                  if (finalMode === 'extender_connect' && response.routerId) {
+                      updateDeviceMode(deviceId, { mode: finalMode, routerId: response.routerId })
+                  }
                   
                   showSuccessWithIcon(`Current mode: ${finalMode}`, 'Mode Detected')
                   resolve(finalMode)

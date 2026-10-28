@@ -1,7 +1,7 @@
 import { UniversalFirewallManager } from './UniversalFirewallManager.js';
 import { getParamRouter } from '../devices.js';
 import { makeAuthenticatedRequest } from '../actions/athentication.js';
-import { saveMwsLink, getMwsLink, dropMwsLink } from '../state/mwsLinks.js';
+import { saveMwsLink, getMwsLink, dropMwsLink, isRealExtenderIp } from '../state/mwsLinks.js';
 import { containerNameOf } from './deviceFlags.js';
 
 export class DockerManager {
@@ -336,6 +336,13 @@ export class DockerManager {
                 }
             }
     
+            // Запасные адреса (IP CFK роутера/экстендера) правилом в контейнере
+            // роутера не годятся — адрес найдёт сверка пробросов (mwsForwardService)
+            if (!isRealExtenderIp(extenderIp, { routerIp, device })) {
+                console.warn(`⏳ IP экстендера ${deviceId} в LAN роутера пока неизвестен (${extenderIp || 'нет'}) — правило в контейнере поставит сверка пробросов`);
+                extenderIp = null;
+            }
+
             // ✅ СОХРАНЯЕМ НА ДИСК (state/mwsLinks) — переживает рестарт
             saveMwsLink(deviceId, { routerId, routerIp, extenderIp });
             
@@ -351,7 +358,9 @@ export class DockerManager {
     
             // ✅ 3. НАСТРАИВАЕМ ПРОБРОС В КОНТЕЙНЕРЕ НА РЕАЛЬНЫЙ IP УСТРОЙСТВА
             console.log(`🔧 КОНТЕЙНЕР: порт ${deviceId} -> ${extenderIp}:80`);
-            await this.manageContainerFirewall(containerNameOf(router), deviceId, extenderIp, 'setup');
+            if (extenderIp) {
+                await this.manageContainerFirewall(containerNameOf(router), deviceId, extenderIp, 'setup');
+            }
     
             console.log(`✅ Пробросы настроены:`);
             console.log(`   🏠 ХОСТ: ${deviceId} -> ${routerIp}`);

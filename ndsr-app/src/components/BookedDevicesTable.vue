@@ -1907,7 +1907,8 @@ const releaseBooking = async (deviceId) => {
             life: 3000
         })
         showReleaseConfirmDialog.value = false
-        modeStore.removeDeviceMode(deviceId)
+        // Режим не стираем: устройство физически осталось в нём, сервер его помнит
+        // (раньше после новой брони было «Unknown» до перезагрузки страницы)
     } catch (error) {
         toast.add({
             severity: 'error',
@@ -1932,7 +1933,8 @@ const releaseAllBookedDevices = async () => {
         })
         const result = await deviceStore.releaseMultipleDevices(deviceIds)
         deviceIds.forEach(deviceId => {
-            modeStore.removeDeviceMode(deviceId)
+            // Режим не стираем: устройство физически осталось в нём, сервер его помнит
+            // (раньше после новой брони было «Unknown» до перезагрузки страницы)
         })
         safeUpdateTable()
         if (result.failed && result.failed > 0) {
@@ -2302,9 +2304,11 @@ const refreshDeviceMode = async (deviceId) => {
         const mode = await modeStore.getCurrentMode(deviceId, device.booking.accessPassword)
         
         if (mode) {
+            // extender_connect — роутер не терять (сервер вернул его вместе с режимом)
+            const prev = modeStore.getDeviceModeInfo(deviceId)
             modeStore.currentMode[deviceId] = {
                 mode: mode,
-                routerId: null,
+                routerId: mode === 'extender_connect' ? (prev?.routerId || null) : null,
                 updatedAt: Date.now()
             }
             

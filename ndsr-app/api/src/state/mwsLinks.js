@@ -24,6 +24,17 @@ export function getMwsLink(extenderId) {
   return mwsLinks.get(String(extenderId)) || null;
 }
 
+// Настоящий адрес экстендера в LAN роутера. Поиск IP при неудаче раньше
+// подставлял IP CFK роутера или самого экстендера (10.10.x) — правило в
+// контейнере роутера тогда вело в никуда (78, 28.10.2026: 4410 → 10.10.20.19).
+// Такие адреса считаем неизвестными: связка пишется с extenderIp: null, а
+// services/mwsForwardService.js находит адрес позже в DHCP роутера.
+export function isRealExtenderIp(ip, { routerIp, device } = {}) {
+  if (!ip || !/^(\d{1,3})(\.\d{1,3}){3}$/.test(String(ip))) return false;
+  const own = String(device?.ip || '').split('/')[0];
+  return ip !== String(routerIp || '').split('/')[0] && ip !== own;
+}
+
 export function dropMwsLink(extenderId) {
   return mwsLinks.delete(String(extenderId));
 }

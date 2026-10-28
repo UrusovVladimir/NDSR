@@ -211,6 +211,9 @@
                 <div class="common-device-info">
                   <div class="common-device-name">{{ data.shortName }}</div>
                   <div class="common-device-hwid">{{ data.hwId }}</div>
+                  <!-- Режим — и у чужих / свободных устройств (сервер шлёт режимы всех) -->
+                  <div v-if="modeLabel(data)" class="common-device-hwid">Current Mode: <b>{{ modeLabel(data) }}</b></div>
+                  <div v-if="connectedTo(data)" class="common-device-hwid">Connected to: <b>{{ connectedTo(data) }}</b></div>
                   <!-- Отдельной строкой: строка имени nowrap + overflow hidden обрезала тег -->
                   <div v-if="isApSwitchOn(data)" class="hw-switch-line">
                     <Tag :value="hwSwitchTag(data).value" icon="pi pi-lock" :severity="hwSwitchTag(data).severity" class="hw-switch-tag"
@@ -363,12 +366,25 @@ import ChangeModeModal from './ChangeModeModal.vue'
 import FirmwareVersion from '@/components/FirmwareVersion.vue'
 import BookedDevicesTable from './BookedDevicesTable.vue'
 import { isRival, isApSwitchOn, hwSwitchTag } from '@/utils/deviceFlags'
+import { useModeStore } from '@/stores/useModeStore'
 import Tag from 'primevue/tag'
 import { useClipboardStore } from '@/stores/useClipboardStore'
 
 const todayPassword = inject('todayPassword')
 const toast = useToast()
 const deviceStore = useDeviceStore()
+const modeStore = useModeStore()
+
+// Режим в таблице «Our Devices» (как «Current Mode» в «My Booked Devices»);
+// неизвестный не показываем
+const MODE_LABELS = { router: 'Router', extender: 'Extender', extender_connect: 'Extender (Connected)' }
+const modeLabel = (device) => MODE_LABELS[modeStore.getDeviceModeInfo(device.id)?.mode] || ''
+const connectedTo = (device) => {
+  const info = modeStore.getDeviceModeInfo(device.id)
+  if (info?.mode !== 'extender_connect' || !info.routerId) return ''
+  const r = deviceStore.devices.find(d => String(d.id) === String(info.routerId))
+  return r ? (r.shortName ? `${r.hwId} (${r.shortName})` : r.hwId) : String(info.routerId)
+}
 const clipboardStore = useClipboardStore()
 
 const copyPassword = (device) => {
