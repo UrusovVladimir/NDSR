@@ -12,6 +12,14 @@ let sshConnection = null;
 // создавались ДВА SSHManager'а, и первый утекал навсегда.
 // Теперь все параллельные вызовы ожидают ОДИН и тот же промис.
 const initializeDockerManager = () => {
+    // Соединение было, но закрылось (перезагрузка хоста, сеть) — заново.
+    // Пока первое подключение идёт, dockerManager ещё null — не сбрасываем.
+    if (dockerManager && sshConnection && !sshConnection.connected) {
+        console.warn(`⚠️ SSH к ${process.env.SSH_HOST} закрыт — переподключаемся`);
+        dockerManager = null;
+        sshConnection = null;
+        dockerManagerPromise = null;
+    }
     dockerManagerPromise ??= (async () => {
         try {
             // Проверяем наличие необходимых переменных окружения
@@ -34,7 +42,15 @@ const initializeDockerManager = () => {
                 );
 
                 console.log(`🔧 Подключение к SSH серверу ${process.env.SSH_HOST}...`);
-                await sshConnection.connect();
+                try {
+                    await sshConnection.connect();
+                } catch (err) {
+                    // Неподключённый объект не оставляем: иначе следующие
+                    // вызовы пропускали connect() и до рестарта бэкенда
+                    // получали «Not connected» (196, ключ ещё не добавлен)
+                    sshConnection = null;
+                    throw err;
+                }
                 console.log(`✅ SSHManager подключен к ${process.env.SSH_HOST}`);
             }
 

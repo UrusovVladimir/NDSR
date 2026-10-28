@@ -10,6 +10,9 @@ export class SSHManager {
         this.privateKeyPath = privateKeyPath;
         this.useSudo = useSudo;
         this.conn = new Client();
+        // true между 'ready' и 'close'/'end' — по нему services/docker.js
+        // решает, переподключаться ли
+        this.connected = false;
     }
 
     /**
@@ -21,8 +24,13 @@ export class SSHManager {
             const privateKey = fs.readFileSync(this.privateKeyPath);
             
             this.conn.on('ready', () => {
+                this.connected = true;
                 console.log(`✅ SSH подключение установлено к ${this.host}`);
                 resolve();
+            }).on('close', () => {
+                this.connected = false;
+            }).on('end', () => {
+                this.connected = false;
             }).on('error', (err) => {
                 console.error(`❌ Ошибка SSH подключения к ${this.host}:`, err);
                 reject(err);
