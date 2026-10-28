@@ -606,12 +606,31 @@ if ip route | grep -q "^default via .* dev eth0"; then
     ip route del default dev eth0 2>/dev/null && log "Удален default через eth0 (шлюз — роутер в LAN)"
 fi
 
+# NAT контейнера (раньше — внешний masquerade.sh на стенде после запуска):
+#   - MASQUERADE в LAN: роутер видит запрос веба от контейнера и отвечает ему,
+#     а не клиенту напрямую через свой WAN (иначе веб снаружи не открывается);
+#   - MASQUERADE в eth0: устройства LAN роутера ходят в сети стенда от адреса
+#     контейнера;
+#   - TCPMSS: MSS по MTU пути.
+# -C перед -A — без дублей при перезапуске скрипта.
+ensure_nat_rules() {
+    local ifc
+    for ifc in eth0 "$MODEL_NAME"; do
+        iptables -t nat -C POSTROUTING -o "$ifc" -j MASQUERADE 2>/dev/null || \
+            { iptables -t nat -A POSTROUTING -o "$ifc" -j MASQUERADE && log "NAT: MASQUERADE -o $ifc"; }
+    done
+    iptables -C FORWARD -p tcp --tcp-flags SYN,RST SYN -j TCPMSS --clamp-mss-to-pmtu 2>/dev/null || \
+        { iptables -A FORWARD -p tcp --tcp-flags SYN,RST SYN -j TCPMSS --clamp-mss-to-pmtu && log "NAT: TCPMSS clamp"; }
+}
+
 if ! ip link show "$MODEL_NAME" >/dev/null 2>&1; then
     log "ОШИБКА: Интерфейс $MODEL_NAME не существует"
     log "Доступные интерфейсы:"
     ip link show | grep -E "^[0-9]+:" | awk -F: '{print $2}' | tee -a /var/log/changeContainersIp.log
     exit 1
 fi
+
+ensure_nat_rules
 
 # Очищаем правила при запуске (только для нашего порта)
 if clean_iptables_rules "$PORT"; then
