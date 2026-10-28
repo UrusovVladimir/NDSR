@@ -10,22 +10,31 @@
             </div>
             
             <div class="header-right">
-                <!-- Массовые перезагрузка / сброс выбранных (чекбоксы в таблице) -->
+                <!-- Массовые перезагрузка / сброс / снятие брони выбранных (чекбоксы в таблице) -->
                 <template v-if="bulkSelectedDevices.length">
                     <span class="bulk-ops-count">Selected: <strong>{{ bulkSelectedDevices.length }}</strong></span>
                     <Button
+                        v-if="bulkPowerDevices.length"
                         icon="pi pi-power-off"
-                        :label="`Reboot (${bulkSelectedDevices.length})`"
+                        :label="`Reboot (${bulkPowerDevices.length})`"
                         class="p-button-outlined p-button-warning p-button-sm"
                         @click="openBulkOp('reboot')"
                         v-tooltip.bottom="'Reboot the selected devices'"
                     />
                     <Button
+                        v-if="bulkPowerDevices.length"
                         icon="pi pi-refresh"
-                        :label="`Reset (${bulkSelectedDevices.length})`"
+                        :label="`Reset (${bulkPowerDevices.length})`"
                         class="p-button-outlined p-button-danger p-button-sm"
                         @click="openBulkOp('reset')"
                         v-tooltip.bottom="'Factory reset the selected devices'"
+                    />
+                    <Button
+                        icon="pi pi-sign-out"
+                        :label="`Release (${bulkSelectedDevices.length})`"
+                        class="p-button-outlined p-button-secondary p-button-sm"
+                        @click="openBulkOp('release')"
+                        v-tooltip.bottom="'Release the bookings of the selected devices'"
                     />
                     <Button
                         icon="pi pi-times"
@@ -87,7 +96,7 @@
                         :model-value="allBulkSelected"
                         :binary="true"
                         :disabled="!bulkSelectableDevices.length"
-                        v-tooltip.bottom="'Select all for bulk reboot / reset'"
+                        v-tooltip.bottom="'Select all for bulk reboot / reset / release'"
                         @update:model-value="toggleAllBulkOps"
                     />
                 </template>
@@ -701,30 +710,28 @@
             v-model:visible="showBulkOpDialog"
             modal
             :blockScroll="false"
-            :header="bulkOp === 'reset' ? 'Reset Configuration' : 'Reboot Devices'"
+            :header="bulkOpText.header"
             :style="{ width: '480px', maxWidth: '90vw' }"
             class="responsive-dialog"
         >
             <div class="confirmation-content">
                 <i class="pi pi-exclamation-triangle mr-3"
-                   :style="{ fontSize: '2rem', color: bulkOp === 'reset' ? '#e74c3c' : '#f39c12' }" />
+                   :style="{ fontSize: '2rem', color: bulkOpText.color }" />
                 <div>
                     <h4 class="mb-2">
-                        {{ bulkOp === 'reset' ? 'Reset configuration of' : 'Reboot' }}
-                        {{ bulkSelectedDevices.length }} device{{ bulkSelectedDevices.length === 1 ? '' : 's' }}?
+                        {{ bulkOpText.question }}
+                        {{ bulkOpTargets.length }} device{{ bulkOpTargets.length === 1 ? '' : 's' }}?
                     </h4>
-                    <p v-if="bulkOp === 'reset'" class="text-color-secondary mb-2">
-                        All settings will be erased and factory defaults restored. This action cannot be undone.
-                    </p>
-                    <p v-else class="text-color-secondary mb-2">
-                        Devices will be restarted (1-2 minutes each). All connections will be temporarily interrupted.
-                    </p>
-                    <p class="text-color-secondary mb-2">
+                    <p class="text-color-secondary mb-2">{{ bulkOpText.note }}</p>
+                    <p v-if="bulkOp !== 'release'" class="text-color-secondary mb-2">
                         Devices are started one by one, every {{ bulkOpStepSec }} s.
+                    </p>
+                    <p v-if="bulkOp !== 'release' && bulkPowerSkipped" class="text-color-secondary mb-2">
+                        Rival devices ({{ bulkPowerSkipped }}) are not rebooted or reset — only released.
                     </p>
                     <div class="bulk-ops-list">
                         <Tag
-                            v-for="d in bulkSelectedDevices"
+                            v-for="d in bulkOpTargets"
                             :key="d.id"
                             :value="d.shortName ? `${d.hwId} · ${d.shortName}` : d.hwId"
                             :severity="isAnyOperationOnThisDevice(d) ? 'secondary' : 'info'"
@@ -737,9 +744,10 @@
                 <div class="dialog-footer">
                     <Button label="Cancel" icon="pi pi-times" class="p-button-text" @click="showBulkOpDialog = false" />
                     <Button
-                        :label="bulkOp === 'reset' ? `Reset ${bulkSelectedDevices.length}` : `Reboot ${bulkSelectedDevices.length}`"
-                        :icon="bulkOp === 'reset' ? 'pi pi-refresh' : 'pi pi-power-off'"
-                        :class="bulkOp === 'reset' ? 'p-button-danger' : 'p-button-warning'"
+                        :label="`${bulkOpText.action} ${bulkOpTargets.length}`"
+                        :icon="bulkOpText.icon"
+                        :class="bulkOpText.button"
+                        :disabled="!bulkOpTargets.length"
                         @click="confirmBulkOp"
                     />
                 </div>
@@ -1921,28 +1929,30 @@ const releaseBooking = async (deviceId) => {
     }
 }
 
-const releaseAllBookedDevices = async () => {
+// Снятие брони со списка устройств одним запросом (device:releaseMultiple):
+// «Release All» и массовое снятие выбранных
+const releaseDevicesBatch = async (deviceIds) => {
     releasingAllDevices.value = true
     try {
-        const devicesToRelease = deviceStore.bookedDevices
-        const deviceIds = devicesToRelease.map(device => device.id)
         deviceIds.forEach(deviceId => {
             if (consoleStore.isConsoleOpen(deviceId)) {
                 consoleStore.closeConsole(deviceId)
             }
         })
+        // Режим не стираем: устройство физически осталось в нём, сервер его помнит
         const result = await deviceStore.releaseMultipleDevices(deviceIds)
-        deviceIds.forEach(deviceId => {
-            // Режим не стираем: устройство физически осталось в нём, сервер его помнит
-            // (раньше после новой брони было «Unknown» до перезагрузки страницы)
-        })
         safeUpdateTable()
         if (result.failed && result.failed > 0) {
+            const reasons = (result.details?.failed || []).map(f => {
+                const hwId = deviceStore.devices.find(d => String(d.id) === String(f.deviceId))?.hwId || f.deviceId
+                return `${hwId}: ${f.error}`
+            })
             toast.add({
                 severity: 'warn',
                 summary: 'Partial Release',
-                detail: `Released ${result.released} devices, ${result.failed} failed`,
-                life: 6000
+                detail: `Released ${result.released} devices, ${result.failed} failed` +
+                    (reasons.length ? ` — ${reasons.join('; ')}` : ''),
+                life: 8000
             })
         } else {
             toast.add({
@@ -1965,6 +1975,9 @@ const releaseAllBookedDevices = async () => {
         showReleaseAllConfirmDialog.value = false
     }
 }
+
+const releaseAllBookedDevices = () =>
+    releaseDevicesBatch(deviceStore.bookedDevices.map(device => device.id))
 
 const showReleaseAllConfirm = () => {
     showReleaseAllConfirmDialog.value = true
@@ -2203,10 +2216,35 @@ const bulkOp = ref(null)
 const showBulkOpDialog = ref(false)
 const bulkOpStepSec = computed(() => (BULK_OP_STEP_MS[bulkOp.value] || 0) / 1000)
 
-const isBulkOpSelectable = (device) => !isRival(device) && isCurrentUserBooking(device)
+// Выбрать можно любую свою бронь (снять бронь можно и с устройства
+// конкурента); перезагрузка и сброс — только не конкуренты
+const isBulkOpSelectable = (device) => isCurrentUserBooking(device)
 const bulkSelectableDevices = computed(() => deviceStore.bookedDevices.filter(isBulkOpSelectable))
 const bulkSelectedDevices = computed(() =>
     bulkSelectableDevices.value.filter(d => bulkOpSelected.value.has(String(d.id))))
+const bulkPowerDevices = computed(() => bulkSelectedDevices.value.filter(d => !isRival(d)))
+const bulkPowerSkipped = computed(() => bulkSelectedDevices.value.length - bulkPowerDevices.value.length)
+// На кого действует открытая операция
+const bulkOpTargets = computed(() =>
+    bulkOp.value === 'release' ? bulkSelectedDevices.value : bulkPowerDevices.value)
+const BULK_OP_TEXT = {
+    reboot: {
+        header: 'Reboot Devices', question: 'Reboot', action: 'Reboot',
+        note: 'Devices will be restarted (1-2 minutes each). All connections will be temporarily interrupted.',
+        icon: 'pi pi-power-off', button: 'p-button-warning', color: '#f39c12'
+    },
+    reset: {
+        header: 'Reset Configuration', question: 'Reset configuration of', action: 'Reset',
+        note: 'All settings will be erased and factory defaults restored. This action cannot be undone.',
+        icon: 'pi pi-refresh', button: 'p-button-danger', color: '#e74c3c'
+    },
+    release: {
+        header: 'Release Devices', question: 'Release', action: 'Release',
+        note: 'The bookings end now and the devices become available to others. "Router LAN as WAN" schemes of these devices are dismantled first.',
+        icon: 'pi pi-sign-out', button: 'p-button-secondary', color: '#6c757d'
+    }
+}
+const bulkOpText = computed(() => BULK_OP_TEXT[bulkOp.value] || BULK_OP_TEXT.reboot)
 const allBulkSelected = computed(() =>
     bulkSelectableDevices.value.length > 0 &&
     bulkSelectedDevices.value.length === bulkSelectableDevices.value.length)
@@ -2243,9 +2281,16 @@ const openBulkOp = (op) => {
 
 const confirmBulkOp = () => {
     const op = bulkOp.value
+    if (op === 'release') {
+        const ids = bulkOpTargets.value.map(d => d.id)
+        showBulkOpDialog.value = false
+        clearBulkOps()
+        releaseDevicesBatch(ids)
+        return
+    }
     const step = BULK_OP_STEP_MS[op]
-    const list = bulkSelectedDevices.value.filter(d => !isAnyOperationOnThisDevice(d))
-    const skipped = bulkSelectedDevices.value.length - list.length
+    const list = bulkOpTargets.value.filter(d => !isAnyOperationOnThisDevice(d))
+    const skipped = bulkOpTargets.value.length - list.length
     showBulkOpDialog.value = false
     clearBulkOps()
     if (!list.length) {

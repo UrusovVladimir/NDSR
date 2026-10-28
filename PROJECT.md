@@ -571,8 +571,11 @@ App.vue
 │   │   ├─ Restore Switch & Reset (pi-undo: в строке — у extender_connect, в «More» — у extender,
 │   │   │  в меню по клику на Device — всегда): окно с выбором роутера (по умолчанию — из записанной
 │   │   │  связки) → device:restoreSwitchAndReset — порт свича в свой VLAN, снятие пробросов, сброс
-│   │   └─ массовые reboot / reset: чекбоксы в первой колонке (в заголовке — выбрать все свои,
-│   │      кроме конкурентов) → в шапке секции «Selected: N · Reboot (N) · Reset (N) · ×» →
+│   │   └─ массовые reboot / reset / release: чекбоксы в первой колонке (в заголовке — выбрать
+│   │      все свои брони, конкурентов тоже) → в шапке «Selected: N · Reboot (N) · Reset (N) ·
+│   │      Release (N) · ×»; Reboot/Reset считают и запускают только не конкурентов.
+│   │      Release — одним device:releaseMultiple (как Release All): бэкенд проверяет бронь и
+│   │      разбирает схемы «LAN как WAN»; не снятые — в тосте с причиной. Reboot/Reset →
 │   │      подтверждение со списком. Каждое устройство — обычная одиночная операция
 │   │      (useDeviceActionsStore.rebootDevice / resetConfig: строка в окне прогресса, вывод
 │   │      консоли, тост), запуск с шагом 6 с (reboot) / 13 с (reset), чтобы telnet-сессии
