@@ -328,7 +328,6 @@
           :panelStyle="dropdownPanelStyle"
           @focus="lockBodyScroll"
           @blur="unlockBodyScroll"
-          @before-show="onDropdownShow"
         />
       </div>
 
@@ -346,7 +345,6 @@
           :panelStyle="dropdownPanelStyle"
           @focus="lockBodyScroll"
           @blur="unlockBodyScroll"
-          @before-show="onDropdownShow"
         />
         <div v-if="selectedAction === 'extenderConnect' && !selectedRouterId" class="text-orange-500 text-sm mt-2">
           <i class="pi pi-exclamation-circle mr-1"></i>
@@ -1045,22 +1043,12 @@ const contentStyle = computed(() => {
 })
 
 // ========== DROPDOWN УПРАВЛЕНИЕ ==========
-const dropdownAppendTo = computed(() => {
-  return isMobile.value ? null : 'body'
-})
-
-const dropdownPanelStyle = computed(() => {
-  if (isMobile.value) {
-    return {
-      maxHeight: '200px',
-      position: 'fixed',
-      zIndex: 10000
-    }
-  }
-  return {
-    maxHeight: '200px'
-  }
-})
+// Панель списка — в body и на мобильном. Раньше на мобильном было
+// appendTo=null: для PrimeVue это Teleport в никуда, рендер окна ломался
+// («reading 'emitsOptions'»), список не открывался, окно не закрывалось.
+// Положение панели PrimeVue считает сам (ручной расчёт onDropdownShow убран).
+const dropdownAppendTo = 'body'
+const dropdownPanelStyle = { maxHeight: '200px' }
 
 const lockBodyScroll = () => {
     const scrollY = window.scrollY
@@ -1073,45 +1061,6 @@ const unlockBodyScroll = () => {
         window.scrollTo(0, parseInt(scrollY))
         delete document.body.dataset.scrollY
     }
-}
-
-const onDropdownShow = () => {
-  if (!isMobile.value) return
-  
-  nextTick(() => {
-    const dropdownPanels = document.querySelectorAll('.p-dropdown-panel')
-    dropdownPanels.forEach(panel => {
-      if (panel.style.display !== 'none') {
-        const input = panel.previousElementSibling
-        if (input) {
-          const inputRect = input.getBoundingClientRect()
-          const panelHeight = panel.offsetHeight
-          const viewportHeight = window.innerHeight
-          
-          const spaceBelow = viewportHeight - inputRect.bottom
-          const spaceAbove = inputRect.top
-          
-          let topPosition
-          
-          if (spaceBelow >= panelHeight || spaceBelow >= spaceAbove) {
-            topPosition = inputRect.bottom
-          } else {
-            topPosition = inputRect.top - panelHeight
-          }
-          
-          topPosition = Math.max(10, Math.min(topPosition, viewportHeight - panelHeight - 10))
-          
-          panel.style.position = 'fixed'
-          panel.style.top = `${topPosition}px`
-          panel.style.left = `${inputRect.left}px`
-          panel.style.width = `${inputRect.width}px`
-          panel.style.transform = 'none'
-          panel.style.maxHeight = '200px'
-          panel.style.zIndex = '10000'
-        }
-      }
-    })
-  })
 }
 
 // ========== WATCHERS ==========
