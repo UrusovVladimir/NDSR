@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>VNC Client</title>
+    <script src="https://cdn.jsdelivr.net/npm/@novnc/novnc@1.4.0/lib/rfb.min.js"></script>
+    <style>
+        body { margin: 0; padding: 0; background: #000; }
+        #screen { width: 100vw; height: 100vh; }
+        #status { 
+            position: absolute; top: 10px; left: 10px; 
+            background: rgba(0,0,0,0.8); color: #0f0; padding: 10px; z-index: 1000; 
+        }
+    </style>
+</head>
+<body>
+    <div id="status">Loading...</div>
+    <div id="screen"></div>
+    <script>
+        const rfb = new RFB(document.getElementById('screen'), 
+            'ws://' + window.location.host + '/websockify');
+        rfb.addEventListener('connect', () => {
+            document.getElementById('status').textContent = 'Connected!';
+        });
+        rfb.addEventListener('credentialsrequired', () => {
+            rfb.sendCredentials({password: 'password'});
+        });
+    </script>
+</body>
+</html>

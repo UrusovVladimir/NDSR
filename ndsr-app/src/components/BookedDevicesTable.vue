@@ -66,6 +66,9 @@
             </div>
         </div>
         
+        <!-- Схемы «LAN роутера как WAN» (кто чей WAN, подсети, разборка) -->
+        <LanWanChains />
+
         <DataTable
             :key="`booked-table-${tableKey}-${deviceActionsStore.powerStatusVersion}`"
             :value="deviceStore.bookedDevices"
@@ -140,6 +143,11 @@
                                 class="pi pi-copy details-inline"
                                 @click.stop="copyToClipboard(data.devicePassword, 'Device Password')"
                                 v-tooltip="'Copy access password'"></i>
+                            </div>
+                            <div v-if="data.routerLanIp && !isRival(data)" class="common-device-hwid">
+                                Router LAN IP: <b>{{ data.routerLanIp }}</b>
+                                <i class="pi pi-pencil details-inline" @click.stop="openRouterIpDialog(data)"
+                                   v-tooltip="'Set in the portal (the container uses it instead of DHCP). Click to change or return to auto'"></i>
                             </div>
                             <div v-else class="common-device-hwid">
                                 Device Password: <b>{{ getDeviceDisplayPassword(data) }}</b>
@@ -230,10 +238,11 @@
                 </template>
             </Column>
             
-            <Column header="Actions" style="min-width: 280px;">
+            <Column header="Actions" style="min-width: 220px;">
                 <template #body="{ data }">
                     <div class="actions-container">
-                        <!-- Конкурент: в Actions только VNC, веб и снятие брони -->
+                        <!-- В строке — частые: консоль, сброс, веб, снятие брони; остальное —
+                             в «More ▾» (actionsMenuItems). Конкурент: веб, снятие брони, More (VNC, VM) -->
                         <Button
                             v-if="!isRival(data)"
                             v-tooltip.bottom="consoleStore.isConsoleOpen(data.id) ? 'Focus Console' : 'Open Console'"
@@ -243,18 +252,19 @@
                             :disabled="!canOpenConsole(data)"
                             :class="{ 'console-open': consoleStore.isConsoleOpen(data.id) }"
                         />
-                        
+
+                        <!-- Сброс; у подключённого экстендера — Restore Switch & Reset (снять
+                             с контроллера, вернуть порт свича, сбросить) -->
                         <Button
-                            v-if="data.rebootPort && !isRival(data)"
-                            v-tooltip.bottom="'Power Management'"
-                            icon="pi pi-power-off"
-                            class="p-button-sm p-button-outlined p-button-warning p-button-rounded action-btn"
-                            @click="showPowerMenu(data)"
-                            :disabled="!canPowerManage(data) || isAnyOperationOnThisDevice(data)"
+                            v-if="!isRival(data) && isExtenderConnected(data)"
+                            v-tooltip.bottom="'Restore switch port & factory reset'"
+                            icon="pi pi-undo"
+                            class="p-button-sm p-button-outlined p-button-danger p-button-rounded action-btn"
+                            :disabled="!canResetConfig(data) || isAnyOperationOnThisDevice(data)"
+                            @click="openRestoreSwitch(data)"
                         />
-                        
                         <Button
-                            v-if="!isRival(data)"
+                            v-else-if="!isRival(data)"
                             v-tooltip.bottom="isResetting(data) ? 'Resetting...' : 'Reset Configuration'"
                             :icon="isResetting(data) ? 'pi pi-spinner pi-spin' : 'pi pi-refresh'"
                             class="p-button-sm p-button-outlined p-button-danger p-button-rounded action-btn"
@@ -262,52 +272,6 @@
                             @click="showResetConfirm(data)"
                         />
 
-                        <!-- Переведён в extender: откат порта свича + заводской сброс -->
-                        <Button
-                            v-if="!isRival(data) && isInExtenderMode(data)"
-                            v-tooltip.bottom="'Restore switch port & factory reset'"
-                            icon="pi pi-undo"
-                            class="p-button-sm p-button-outlined p-button-danger p-button-rounded action-btn"
-                            :disabled="!canResetConfig(data) || isAnyOperationOnThisDevice(data)"
-                            @click="openRestoreSwitch(data)"
-                        />
-                        
-                        <Button
-                            v-if="canMwsConnectType(data) && !isRival(data)"
-                            v-tooltip.bottom="isSwitchInRouterPosition(data) ? 'Switch in position A (Router) — move it to B (Access point) first' : 'Connection AP to Router(MWS)'"
-                            icon="pi pi-wifi"
-                            class="p-button-sm p-button-outlined p-button-success p-button-rounded action-btn"
-                            @click="openMwsConnection(data)"
-                            :disabled="!canMwsConnect(data)"
-                        />
-                        
-                        <Button
-                            v-if="data.type === 'router' && data.hwType !== 'HardwareAP' && !isApSwitchOn(data) && !isRival(data)"
-                            v-tooltip.bottom="'Change Mode'"
-                            icon="pi pi-wrench"
-                            class="p-button-sm p-button-outlined p-button-info p-button-rounded action-btn"
-                            @click="$emit('open-change-mode', data)"
-                            :disabled="!canChangeMode(data)"
-                        />
-                        
-                        <Button
-                            v-if="data.dslPort && !isRival(data)"
-                            v-tooltip.bottom="isResettingDsl(data) ? 'Resetting DSL...' : 'Reset DSL Line'"
-                            :icon="isResettingDsl(data) ? 'pi pi-spinner pi-spin' : 'pi pi-phone'"
-                            class="p-button-sm p-button-outlined p-button-help p-button-rounded action-btn"
-                            :disabled="!canResetDsl(data) || isAnyOperationOnThisDevice(data)"
-                            @click="showDslResetConfirm(data)"
-                        />
-                        
-                        <Button
-                            v-if="(data.type === 'router' || isRival(data)) && data.vncUrl"
-                            v-tooltip.bottom="'LAN VNC'"
-                            icon="pi pi-desktop"
-                            class="p-button-sm p-button-outlined p-button-secondary p-button-rounded action-btn"
-                            @click="openVnc(data)"
-                            :disabled="!canOpenVnc(data)"
-                        />
-                        
                         <Button
                             v-if="data.URL"
                             v-tooltip.bottom="'Open Device Interface'"
@@ -315,28 +279,6 @@
                             class="p-button-sm p-button-outlined p-button-primary p-button-rounded action-btn"
                             @click="openDeviceInterface(data)"
                         />
-                        
-                        <Button
-                            v-if="data.type === 'router' && !isRival(data)"
-                            v-tooltip.bottom="isInitializing(data) ? 'Initializing...' : 'Skip Wizard - set password'"
-                            :icon="isInitializing(data) ? 'pi pi-spinner pi-spin' : 'bi bi-magic'"
-                            class="p-button-sm p-button-outlined p-button-warning p-button-rounded action-btn"
-                            :disabled="!canInitialize(data) || isAnyOperationOnThisDevice(data)" 
-                            @click="handleInitialization(data)"
-                        />
-                        
-                        <!-- Тестовые VM в LAN устройства -->
-                        <!-- Тестовые VM — и у конкурентов тоже -->
-                        <span v-if="vmStore.vms.length" class="vm-btn-wrap">
-                            <Button
-                                v-tooltip.bottom="'Test VMs (RDP into the router LAN)'"
-                                icon="bi bi-pc-display"
-                                class="p-button-sm p-button-outlined p-button-rounded action-btn vm-action-btn"
-                                @click="openVmDialog(data)"
-                            />
-                            <Badge v-if="vmStore.vmsForDevice(data.id).length"
-                                :value="vmStore.vmsForDevice(data.id).length" class="vm-btn-badge" />
-                        </span>
 
                         <Button 
                             :icon="releasingDeviceId === data.id ? 'pi pi-spinner pi-spin' : 'pi pi-trash'"
@@ -345,6 +287,21 @@
                             v-tooltip.bottom="releasingDeviceId === data.id ? 'Releasing...' : 'Release device'"
                             :disabled="!isCurrentUserBooking(data) || releasingDeviceId === data.id"
                         />
+
+                        <span class="more-btn-wrap">
+                            <Button
+                                label="More"
+                                icon="pi pi-chevron-down"
+                                iconPos="right"
+                                class="p-button-sm p-button-outlined p-button-secondary more-btn"
+                                v-tooltip.bottom="'Power, VNC, mode, MWS, Skip Wizard, test VMs…'"
+                                aria-haspopup="true"
+                                @click="openActionsMenu($event, data)"
+                            />
+                            <Badge v-if="vmStore.vmsForDevice(data.id).length"
+                                :value="vmStore.vmsForDevice(data.id).length" class="vm-btn-badge"
+                                v-tooltip.bottom="'Test VMs attached'" />
+                        </span>
                     </div>    
                 </template>
             </Column>
@@ -357,6 +314,9 @@
         </DataTable>
 
         <VmAttachDialog v-model:visible="showVmDialog" :device="vmDialogDevice" />
+
+        <!-- Меню «⋯» в Actions: редкие действия по группам -->
+        <Menu ref="actionsMenu" :model="actionsMenuItems" :popup="true" class="actions-more-menu" />
 
         <!-- Floating Quick Actions Menu -->
         <OverlayPanel ref="quickActionsPanel" :showCloseIcon="true" :dismissable="true" class="quick-actions-panel">
@@ -396,7 +356,7 @@
                     />
                     
                     <Button
-                        v-if="!isRival(quickActionDevice)"
+                        v-if="!isRival(quickActionDevice) && !isExtenderConnected(quickActionDevice)"
                         :label="isResetting(quickActionDevice) ? 'Resetting...' : 'Reset Config'"
                         :icon="isResetting(quickActionDevice) ? 'pi pi-spinner pi-spin' : 'pi pi-refresh'"
                         class="p-button-sm p-button-outlined p-button-danger quick-action-btn"
@@ -521,7 +481,14 @@
         >
             <div class="confirmation-content">
                 <i class="pi pi-exclamation-triangle mr-3" style="font-size: 2rem; color: #e74c3c;" />
-                <span>Are you sure you want to release this device?</span>
+                <div>
+                    <span>Are you sure you want to release this device?</span>
+                    <p v-if="releaseChain.length" class="text-orange-600 mt-2 mb-0">
+                        <i class="pi pi-sitemap mr-1"></i>
+                        It is part of a WAN chain ({{ releaseChain.join(', ') }}) — the whole chain is
+                        dismantled first: WAN ports off, changed LAN subnets restored.
+                    </p>
+                </div>
             </div>
             <template #footer>
                 <div class="dialog-footer">
@@ -695,6 +662,40 @@
             </template>
         </Dialog>
 
+        <!-- Адрес роутера в его LAN, заданный вручную -->
+        <Dialog
+            v-model:visible="showRouterIpDialog"
+            modal
+            :blockScroll="false"
+            header="Router LAN IP"
+            :style="{ width: '460px', maxWidth: '92vw' }"
+            class="responsive-dialog"
+        >
+            <p class="mt-0 mb-2">
+                Address of <strong>{{ routerIpDevice?.hwId }}</strong> in its LAN. Normally the portal finds it
+                via DHCP (default 192.168.1.1, access points 192.168.1.3). Set it if the router LAN address was
+                changed and DHCP is off — otherwise its web interface is unreachable from the portal.
+            </p>
+            <div class="flex align-items-center gap-2">
+                <InputText v-model="routerIpInput" placeholder="192.168.5.1" class="p-inputtext-sm" style="width: 12rem"
+                    :disabled="routerIpSaving" @keydown.enter="saveRouterIp(routerIpInput)" />
+                <span class="text-color-secondary">/24</span>
+            </div>
+            <small v-if="routerIpInput && !routerIpValid" class="text-red-500 block mt-1">Enter an IPv4 address</small>
+            <small class="text-color-secondary block mt-2">
+                Current: <b>{{ routerIpDevice?.routerLanIp || 'auto (DHCP)' }}</b>. Needs the device container image with
+                router-ip support (ndsr-deploy/device-image).
+            </small>
+            <template #footer>
+                <div class="dialog-footer">
+                    <Button label="Auto (DHCP)" icon="pi pi-refresh" class="p-button-text"
+                        :disabled="routerIpSaving || !routerIpDevice?.routerLanIp" @click="saveRouterIp(null)" />
+                    <Button label="Save" icon="pi pi-check" :loading="routerIpSaving"
+                        :disabled="!routerIpValid" @click="saveRouterIp(routerIpInput)" />
+                </div>
+            </template>
+        </Dialog>
+
         <!-- Подтверждение массовой перезагрузки / сброса -->
         <Dialog
             v-model:visible="showBulkOpDialog"
@@ -840,6 +841,10 @@
                             {{ device.hwId }} - {{ device.shortName }}
                         </li>
                     </ul>
+                    <p v-if="releaseAllHasChains" class="text-orange-600 mt-2 mb-0">
+                        <i class="pi pi-sitemap mr-1"></i>
+                        WAN chains (router LAN as WAN) are dismantled first: WAN ports off, changed LAN subnets restored.
+                    </p>
                     <p class="text-color-secondary mt-2 mb-0">
                         This action cannot be undone.
                     </p>
@@ -1370,7 +1375,11 @@ import Chip from 'primevue/chip'
 import Tag from 'primevue/tag'
 import Badge from 'primevue/badge'
 import Checkbox from 'primevue/checkbox'
+import Menu from 'primevue/menu'
+import InputText from 'primevue/inputtext'
 import Dropdown from 'primevue/dropdown'
+import LanWanChains from './LanWanChains.vue'
+import { useLanWanStore } from '@/stores/useLanWanStore'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import OverlayPanel from 'primevue/overlaypanel'
@@ -1379,6 +1388,7 @@ const isCheckingAllFirmwares = ref(false)
 const modeStore = useModeStore()
 const toast = useToast()
 const deviceStore = useDeviceStore()
+const lanWanStore = useLanWanStore()
 const deviceActionsStore = useDeviceActionsStore()
 const todayPassword = inject('todayPassword')
 const firmwareStore = useFirmwareStore()
@@ -1962,6 +1972,14 @@ const confirmReleaseAll = () => {
     releaseAllBookedDevices()
 }
 
+// Снятие брони звена схемы «LAN как WAN» — сервер разбирает всю схему
+const releaseChain = computed(() => {
+    if (!selectedDevice.value) return []
+    return lanWanStore.componentOf(selectedDevice.value.id)
+        .map(id => deviceStore.devices.find(d => String(d.id) === String(id))?.hwId || id)
+})
+const releaseAllHasChains = computed(() => deviceStore.bookedDevices.some(d => lanWanStore.isInChain(d.id)))
+
 const showReleaseConfirm = (device) => {
     selectedDevice.value = device
     showReleaseConfirmDialog.value = true
@@ -2026,6 +2044,113 @@ const confirmReboot = () => {
     selectedDevice.value = null
 }
 
+// ========== Меню «⋯» в Actions ==========
+// В строке — частые (консоль, сброс / Restore, веб, снятие брони); остальное —
+// здесь («More ▾»), с теми же условиями, что были у кнопок.
+const actionsMenu = ref(null)
+const actionsMenuDevice = ref(null)
+const openActionsMenu = (event, device) => {
+    actionsMenuDevice.value = device
+    actionsMenu.value.toggle(event)
+}
+
+const actionsMenuItems = computed(() => {
+    const d = actionsMenuDevice.value
+    if (!d) return []
+    const busy = isAnyOperationOnThisDevice(d)
+    const groups = []
+
+    const access = []
+    if (d.rebootPort && !isRival(d)) {
+        access.push({ label: 'Power (on / off / reboot)', icon: 'pi pi-power-off', disabled: !canPowerManage(d) || busy, command: () => showPowerMenu(d) })
+    }
+    if ((d.type === 'router' || isRival(d)) && d.vncUrl) {
+        access.push({ label: 'LAN VNC', icon: 'pi pi-desktop', disabled: !canOpenVnc(d), command: () => openVnc(d) })
+    }
+    if (vmStore.vms.length) {
+        const n = vmStore.vmsForDevice(d.id).length
+        access.push({ label: n ? `Test VMs (${n} attached)` : 'Test VMs', icon: 'bi bi-pc-display', command: () => openVmDialog(d) })
+    }
+    if (access.length) groups.push({ label: 'Access', items: access })
+
+    if (!isRival(d)) {
+        const config = []
+        // Подключённый экстендер: Restore — кнопкой в строке; extender без связки — здесь
+        if (isInExtenderMode(d) && !isExtenderConnected(d)) {
+            config.push({ label: 'Restore switch & reset', icon: 'pi pi-undo', disabled: !canResetConfig(d) || busy, command: () => openRestoreSwitch(d) })
+        }
+        if (d.type === 'router') {
+            config.push({
+                label: isInitializing(d) ? 'Initializing…' : 'Skip Wizard (set password)',
+                icon: isInitializing(d) ? 'pi pi-spin pi-spinner' : 'bi bi-magic',
+                disabled: !canInitialize(d) || busy,
+                command: () => handleInitialization(d)
+            })
+        }
+        if (d.type === 'router' && d.hwType !== 'HardwareAP' && !isApSwitchOn(d)) {
+            config.push({ label: 'Change mode', icon: 'pi pi-wrench', disabled: !canChangeMode(d), command: () => emit('open-change-mode', d) })
+        }
+        if (config.length) groups.push({ label: 'Configuration', items: config })
+
+        const network = []
+        if (canMwsConnectType(d)) {
+            network.push({
+                label: isSwitchInRouterPosition(d) ? 'MWS connect (switch in A)' : 'MWS connect',
+                icon: 'pi pi-wifi',
+                disabled: !canMwsConnect(d),
+                command: () => openMwsConnection(d)
+            })
+        }
+        network.push({
+            label: d.routerLanIp ? `Router LAN IP (${d.routerLanIp})` : 'Router LAN IP…',
+            icon: 'pi pi-sitemap',
+            disabled: !isCurrentUserBooking(d),
+            command: () => openRouterIpDialog(d)
+        })
+        if (d.dslPort) {
+            network.push({
+                label: isResettingDsl(d) ? 'Resetting DSL…' : 'Reset DSL line',
+                icon: isResettingDsl(d) ? 'pi pi-spin pi-spinner' : 'pi pi-phone',
+                disabled: !canResetDsl(d) || busy,
+                command: () => showDslResetConfirm(d)
+            })
+        }
+        if (network.length) groups.push({ label: 'Network', items: network })
+    }
+    return groups
+})
+
+// ========== Router LAN IP ==========
+// Адрес роутера в его LAN, заданный вручную (сервер: routerIpService —
+// /etc/ndsr/router-ip в контейнере устройства)
+const showRouterIpDialog = ref(false)
+const routerIpDevice = ref(null)
+const routerIpInput = ref('')
+const routerIpSaving = ref(false)
+const routerIpValid = computed(() => /^(\d{1,3})(\.\d{1,3}){3}$/.test(routerIpInput.value.trim()) &&
+    routerIpInput.value.trim().split('.').every(o => Number(o) <= 255))
+
+const openRouterIpDialog = (device) => {
+    routerIpDevice.value = device
+    routerIpInput.value = device.routerLanIp || ''
+    showRouterIpDialog.value = true
+}
+
+const saveRouterIp = (ip) => {
+    const device = routerIpDevice.value
+    if (!device || (ip && !routerIpValid.value)) return
+    routerIpSaving.value = true
+    socket.emit('device:setRouterLanIp', { deviceId: device.id, ip: ip ? ip.trim() : null }, (res) => {
+        routerIpSaving.value = false
+        if (res?.success) {
+            showRouterIpDialog.value = false
+            toast.add({ severity: 'success', summary: 'Router LAN IP', detail: `${device.hwId}: ${res.ip || 'auto (DHCP)'}`, life: 4000 })
+        } else {
+            toast.add({ severity: 'error', summary: 'Router LAN IP failed', detail: res?.error || 'Failed', life: 6000 })
+        }
+    })
+}
+
 // ========== Restore Switch & Reset ==========
 // Устройство переводили в extender, связка в портале не записалась (или
 // подключение упало посреди) — порт свича остался в VLAN роутера. Бэкенд
@@ -2035,6 +2160,9 @@ const showRestoreSwitchDialog = ref(false)
 const restoreDevice = ref(null)
 const restoreRouterId = ref(null)
 const restoreKnownRouterId = ref(null)
+
+const isExtenderConnected = (device) =>
+    modeStore.getDeviceModeInfo(device.id)?.mode === 'extender_connect'
 
 const isInExtenderMode = (device) =>
     ['extender', 'extender_connect'].includes(modeStore.getDeviceModeInfo(device.id)?.mode)
@@ -3604,4 +3732,53 @@ onUnmounted(() => {
 .hw-switch-line .rival-tag {
     margin-left: 0;
 }
+.more-btn-wrap {
+    position: relative;
+    display: inline-flex;
+}
+
+/* «More ▾» — той же высоты и обводки, что круглые action-btn */
+.more-btn {
+    height: 2rem !important;
+    padding: 0 0.7rem !important;
+    border-radius: 1rem !important;
+    font-size: 0.8rem !important;
+    font-weight: 600;
+    gap: 0.35rem;
+    flex-shrink: 0;
+}
+
+.more-btn .p-button-icon {
+    font-size: 0.7rem !important;
+}
+
+/* Выпадающее меню «More» в стиле таблицы */
+:global(.actions-more-menu.p-menu) {
+    min-width: 15rem;
+    padding: 0.35rem 0;
+    border: 1px solid var(--surface-200);
+    border-radius: 10px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+}
+
+:global(.actions-more-menu .p-submenu-header) {
+    padding: 0.45rem 1rem 0.2rem;
+    font-size: 0.7rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--text-color-secondary);
+    background: transparent;
+}
+
+:global(.actions-more-menu .p-menuitem-link) {
+    padding: 0.5rem 1rem;
+    font-size: 0.875rem;
+}
+
+:global(.actions-more-menu .p-menuitem-icon) {
+    color: var(--primary-color);
+    width: 1.1rem;
+}
+
 </style>

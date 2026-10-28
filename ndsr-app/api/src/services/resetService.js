@@ -9,6 +9,8 @@ import { clearFirmwareCache } from './statusService.js';
 import { getActiveLink, releaseLinkInfrastructure } from './linkService.js';
 import { getMwsLink } from '../state/mwsLinks.js';
 import { isRival } from '../utils/deviceFlags.js';
+import { dismantleChainOf } from './lanWanService.js';
+import { getRouterLanIp, setRouterLanIp } from './routerIpService.js';
 
 const WAN_OFF = '4094';
 
@@ -34,6 +36,12 @@ async function factoryResetDevice(io, deviceId, { revertRouterId = null } = {}) 
   if (isRival(getDeviceById(deviceId))) {
     throw new Error('Not available for rival devices.');
   }
+
+  // Звено схемы «LAN как WAN» — схема разбирается целиком до сброса: WAN-порты
+  // → 4094, подсети других звеньев назад; у сбрасываемого — только контейнер
+  // (адрес вернёт сам сброс). Сбой не останавливает сброс — он в логе.
+  const chain = await dismantleChainOf(io, deviceId, { reason: 'factory reset', resetIds: [deviceId] });
+  if (!chain.ok) console.error(`❌ ${deviceId}: WAN chain dismantle before reset: ${chain.errors.join('; ')}`);
 
   const known = getActiveLink(deviceId)?.routerId || getMwsLink(deviceId)?.routerId || null;
   if (revertRouterId && String(revertRouterId) !== String(known)) {
@@ -76,6 +84,15 @@ async function factoryResetDevice(io, deviceId, { revertRouterId = null } = {}) 
 
   // Пароль после заводского сброса неактуален — чистим из конфига
   clearDevicePassword(deviceId, 'factory reset');
+
+  // Адрес роутера после сброса заводской — заданный порталом снимаем
+  if (getRouterLanIp(deviceId)) {
+    try {
+      await setRouterLanIp(deviceId, null, { reason: 'factory reset' });
+    } catch (err) {
+      console.error(`❌ ${deviceId}: router LAN IP reset: ${err.message}`);
+    }
+  }
 
   // Режим тоже откатывается к заводскому (router) — снимаем stale-состояние,
   // иначе портал будет считать устройство подключённым к роутеру-экстендеру

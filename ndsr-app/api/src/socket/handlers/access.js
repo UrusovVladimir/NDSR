@@ -10,6 +10,7 @@ import { getDeviceStatusWithMode } from '../../services/statusService.js';
 import { sendOperationProgress } from '../../services/progress.js';
 import { initializeDockerManager } from '../../services/docker.js';
 import { consoleTarget } from '../../services/consoleHub.js';
+import { setRouterLanIp } from '../../services/routerIpService.js';
 
 export function register(socket, io) {
   on(socket, 'tftp:getInterfaceIp', async (data, callback) => {
@@ -286,6 +287,16 @@ export function register(socket, io) {
       }
       callback({ success: false, error: errorMessage, code: err.code });
     }
+  });
+
+  // Адрес роутера в его LAN, заданный вручную (у роутера выключен DHCP или
+  // адрес изменён): { deviceId, ip } — ip null → снова автоопределение
+  on(socket, 'device:setRouterLanIp', async (data, callback) => {
+    const deviceId = String(data?.deviceId || '');
+    requireBooking(socket, deviceId);
+    requireNotRival(deviceId);
+    const ip = await setRouterLanIp(deviceId, data?.ip || null, { reason: `manual by ${socket.clientIp}` });
+    callback({ success: true, ip });
   });
 
   const iPs = process.env.MOXA_IPS

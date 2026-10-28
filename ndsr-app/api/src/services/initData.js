@@ -13,6 +13,7 @@ import { deviceStatusCache } from '../state/statusCache.js';
 import { buildBookingPayload } from './bookingService.js';
 import { getWanTypesSnapshot } from './wanService.js';
 import { getSwitchPosition } from './switchPosition.js';
+import { buildLanWanPayload } from './lanWanService.js';
 
 // Никогда не изменяются — клиент всегда получает { status: "None" } и {}.
 const currentMwsRouter = {};
@@ -143,6 +144,7 @@ async function sendInitData(socket) {
     
     // ✅ Синхронизируем статусы питания
     syncPowerStatusesToClient(socket);
+    socket.emit('lanWan:links', buildLanWanPayload());
     
   } catch (error) {
     const endTime = Date.now();

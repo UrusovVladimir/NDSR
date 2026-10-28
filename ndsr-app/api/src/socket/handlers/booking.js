@@ -7,6 +7,7 @@
 // зайти на него без factory reset.
 import { on } from '../wrap.js';
 import { detachVmsForDevice } from '../../services/vmService.js';
+import { dismantleChainOf } from '../../services/lanWanService.js';
 import { getDeviceById, getDevicePassword } from '../../devices.js';
 import { deviceBookings, saveBookings } from '../../state/bookings.js';
 import { devicePowerStatus } from '../../state/power.js';
@@ -124,7 +125,7 @@ export function register(socket, io) {
   });
 
   // Принимает и deviceId, и { deviceId } — фронт шлёт оба варианта
-  on(socket, 'device:release', (data, callback) => {
+  on(socket, 'device:release', async (data, callback) => {
     const deviceId = data && typeof data === 'object' ? data.deviceId : data;
     const currentBooking = deviceBookings.get(deviceId);
 
@@ -133,6 +134,13 @@ export function register(socket, io) {
     }
     if (currentBooking.bookedBy !== socket.clientIp) {
       return callback({ success: false, message: 'Not your booking' });
+    }
+
+    // Звено схемы «LAN как WAN» — сначала разобрать всю схему (WAN-порты,
+    // подсети); не вышло — бронь не снимаем, иначе роутер уйдёт с VLAN чужого LAN
+    const chain = await dismantleChainOf(io, deviceId, { reason: 'released' });
+    if (!chain.ok) {
+      return callback({ success: false, message: `WAN chain was not dismantled: ${chain.errors.join('; ')}` });
     }
 
     deviceBookings.delete(deviceId);
@@ -146,7 +154,7 @@ export function register(socket, io) {
     socket.emit('device:released', { deviceId });
   });
 
-  on(socket, 'device:releaseMultiple', (data, callback) => {
+  on(socket, 'device:releaseMultiple', async (data, callback) => {
     const deviceIds = data?.deviceIds;
     if (!Array.isArray(deviceIds)) {
       return callback({ success: false, message: 'Batch release operation failed', error: 'deviceIds array is required' });
@@ -166,6 +174,11 @@ export function register(socket, io) {
       const booking = deviceBookings.get(deviceId);
       if (!booking || booking.bookedBy !== userId) {
         failed.push({ deviceId, error: 'Not authorized or device not booked by user' });
+        continue;
+      }
+      const chain = await dismantleChainOf(io, deviceId, { reason: 'released' });
+      if (!chain.ok) {
+        failed.push({ deviceId, error: `WAN chain was not dismantled: ${chain.errors.join('; ')}` });
         continue;
       }
       deviceBookings.delete(deviceId);

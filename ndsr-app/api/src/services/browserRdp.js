@@ -103,6 +103,7 @@ function getRdpTokenFor(socket, vmId) {
     return {
         token: createRdpToken(vm, socket.clientIp),
         name: vm.name || String(vm.id),
+        os: vm.os || '',
         deviceName: device ? (device.shortName ? `${device.hwId} · ${device.shortName}` : device.hwId) : null,
         devicePassword: getEffectiveDevicePassword(a.deviceId) ||
             (booking && !booking.passwordInvalidated ? booking.accessPassword : null) || null

@@ -112,6 +112,14 @@
         </Message>
       </div>
       
+      <!-- WAN = LAN другого роутера -->
+      <LanWanPanel
+        v-if="isRouterLanSelected"
+        ref="lanWanPanel"
+        :device="currentDevice"
+        @can-apply="v => lanWanCanApply = v"
+      />
+
       <!-- PPPoE Credentials -->
       <Message v-if="showPPPoECredentials" severity="info" class="info-message">
         <div class="message-content">
@@ -420,7 +428,7 @@
             :loading="isLoading"
             class="apply-btn" 
             size="small"
-            :disabled="operationInProgress || !modalValue"
+            :disabled="operationInProgress || !modalValue || (isRouterLanSelected && !lanWanCanApply)"
           />
         </template>
         
@@ -614,6 +622,7 @@ import Password from 'primevue/password'
 import ProgressBar from 'primevue/progressbar'
 import Dropdown from 'primevue/dropdown'
 import Divider from 'primevue/divider'
+import LanWanPanel from './LanWanPanel.vue'
 import { useDeviceStore } from '@/stores/useDeviceStore'
 import { useModeStore } from '@/stores/useModeStore'
 import { useDeviceActionsStore } from '@/stores/useDeviceActionsStore'
@@ -672,6 +681,11 @@ const shouldShowIPSettings = computed(() => {
 // Основные состояния
 const visible = ref(false)
 const modalValue = ref(null)
+// «Router LAN (another router)» — WAN из LAN другого роутера (LanWanPanel)
+const ROUTER_LAN_ID = 'router_lan_special'
+const lanWanPanel = ref(null)
+const lanWanCanApply = ref(false)
+const isRouterLanSelected = computed(() => modalValue.value === ROUTER_LAN_ID)
 const modalType = ref('')
 const isLoading = ref(false)
 const operationType = ref('')
@@ -875,7 +889,12 @@ const filteredWanTypes = computed(() => {
         }
       }
       return wan
-    })
+    }).concat(
+      // WAN = LAN другого роутера (LanWanPanel) — только для роутеров
+      currentDevice.value?.type === 'router' && !isRival(currentDevice.value)
+        ? [{ type: 'Router LAN (another router)', _id: ROUTER_LAN_ID }]
+        : []
+    )
   }
   return []
 })
@@ -1146,7 +1165,10 @@ const selectWanType = (wan) => {
   // Проверяем, является ли это Dual WAN
   const isDualWan = wan.type === 'Dual WAN'
   
-  if (isDualWan) {
+  if (wan._id === ROUTER_LAN_ID) {
+    modalValue.value = ROUTER_LAN_ID
+    dualWanConfig.value = { wan1: null, wan2: null }
+  } else if (isDualWan) {
     // Используем специальный идентификатор для RadioButton
     modalValue.value = wan._id || 'dual_wan_special'
     // Инициализируем конфигурацию с первыми доступными типами
@@ -1249,6 +1271,10 @@ const show = async (type, password = '', source = 'global') => {
         dualWanConfig.value.wan2 = availableIds[1]
       }
     } 
+    // WAN из LAN другого роутера
+    else if (currentWan && typeof currentWan === 'object' && currentWan.type === 'router_lan') {
+      modalValue.value = ROUTER_LAN_ID
+    }
     // Если это строка (обычный WAN)
     else if (currentWan && typeof currentWan === 'string') {
       modalValue.value = currentWan === 'ISP not configured' ? null : currentWan
@@ -1409,8 +1435,18 @@ const saveChanges = async (action = 'connect') => {
 }
 
 // Обработка клика по Apply
-const handleApplyClick = () => {
+const handleApplyClick = async () => {
   if (isDeviceOffline.value && String(modalValue.value) !== WAN_OFF_VLAN) return
+  if (isRouterLanSelected.value) {
+    isLoading.value = true
+    try {
+      const ok = await lanWanPanel.value?.apply()
+      if (ok) closeModal()
+    } finally {
+      isLoading.value = false
+    }
+    return
+  }
   // Если выбран Dual WAN или IPoE Public - показываем предупреждение
   if (isDualWanSelected.value || isPublicIPSelected.value) {
     // Сохраняем текущую конфигурацию

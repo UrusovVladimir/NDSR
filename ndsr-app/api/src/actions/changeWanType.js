@@ -45,7 +45,10 @@ function describeWanResults(results) {
     }).join('; ');
 }
 
-async function changeWanType(deviceId, wanData, universalPromptRegex) {
+// secondaryKnownOff — второй WAN-порт уже выключен (прошлый тип был одиночным,
+// он гасил его): при одиночном WAN второй свич не трогаем совсем — иначе его
+// недоступность ломала смену, например, IPoE NAT → PPPoE.
+async function changeWanType(deviceId, wanData, universalPromptRegex, { secondaryKnownOff = false } = {}) {
     const isDualWan = wanData && typeof wanData === 'object' && wanData.type === 'dual_wan'
     
     let device = getDeviceById(deviceId);
@@ -100,8 +103,9 @@ async function changeWanType(deviceId, wanData, universalPromptRegex) {
                 run: (c) => configureWanOffLegacy(c, device, wanVlan, universalPromptRegex, OFF_VLAN, OFF_PVID)
             });
         }
-        // Одиночный WAN или выключение — второй порт гасим
-        if (secondaryPort) {
+        // Одиночный WAN или выключение — второй порт гасим (если он мог быть
+        // включён: прошлый тип Dual WAN или состояние неизвестно)
+        if (secondaryPort && !secondaryKnownOff) {
             steps.push({
                 role: 'wan2',
                 name: `отключения порта ${secondaryPort}`,
@@ -112,7 +116,7 @@ async function changeWanType(deviceId, wanData, universalPromptRegex) {
 
     // Адреса проверяем до первого подключения, чтобы не настроить полдела
     const primaryHost = wanSwitchAddress(device.switchIDWan, 'switchIDWan');
-    const secondaryHost = secondaryPort
+    const secondaryHost = secondaryPort && steps.some(s => s.role === 'wan2')
         ? wanSwitchAddress(device.switchIDWanSecondary || device.switchIDWan,
             device.switchIDWanSecondary ? 'switchIDWanSecondary' : 'switchIDWan')
         : null;

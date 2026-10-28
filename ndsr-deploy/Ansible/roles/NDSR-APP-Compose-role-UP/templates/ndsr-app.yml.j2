@@ -66,7 +66,7 @@ services:
 {% if browser_rdp_enabled | bool %}
   # RDP в браузере: guacd ходит к mgmt-IP VM (через docker-хост, VLAN vmmgmt)
   guacd:
-    image: guacamole/guacd:1.5.5
+    image: guacamole/guacd:1.6.0
     container_name: ndsr-guacd
     restart: unless-stopped
     logging: *default-logging

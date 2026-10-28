@@ -2,6 +2,7 @@
 import { on } from '../wrap.js';
 import { getDeviceById, wanTypes } from '../../devices.js';
 import { getWanTypesSnapshot, applyWanChange } from '../../services/wanService.js';
+import { getLanWanLink, teardownLink } from '../../services/lanWanService.js';
 import { requireBooking, requireNotRival } from '../../services/bookingService.js';
 
 export function register(socket, io) {
@@ -62,6 +63,12 @@ export function register(socket, io) {
               }
           }
           
+          // Был WAN из LAN другого роутера — снять связь (подсеть назад)
+          if (getLanWanLink(deviceId)) {
+              const torn = await teardownLink(io, deviceId, { reason: 'WAN type changed' });
+              if (!torn.ok) console.warn(`⚠️ LAN→WAN teardown ${deviceId}: ${torn.errors.join('; ')}`);
+          }
+
           // Настройка на коммутаторах + сохранение фактического состояния
           // (при недоступном втором свиче — status 'partial' и что применилось)
           const result = await applyWanChange(io, deviceId, wanData);

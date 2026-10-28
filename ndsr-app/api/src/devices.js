@@ -18,6 +18,24 @@ let devices = readConfig(process.env.DEVICES_CONFIG_PATH);
 let wanTypes = readConfig(process.env.WAN_TYPES_CONFIG_PATH);
 let users = readConfig(process.env.USER_CONFIG_PATH);
 let badgesConfig = readConfig(process.env.BADGES_CONFIG_PATH);
+
+// Порт консоли пускает одного клиента: два устройства на одном
+// consoleID + consolePort — окно консоли одного открывает другое (на 78 так
+// было у 1112 и 4910). Только предупреждение в логе: какой порт верный —
+// знает лишь проводка.
+function warnConsoleDuplicates(list) {
+    const seen = new Map();
+    for (const d of Array.isArray(list) ? list : []) {
+        if (d?.consoleID == null || d?.consolePort == null) continue;
+        const key = `${d.consoleID}:${d.consolePort}`;
+        if (seen.has(key)) {
+            console.warn(`⚠️ devices.json: ${d.hwId} (${d.id}) and ${seen.get(key)} share console ${key} (consoleID:consolePort)`);
+        } else {
+            seen.set(key, `${d.hwId} (${d.id})`);
+        }
+    }
+}
+warnConsoleDuplicates(devices);
 // Тестовые VM (services/vmService). Файла нет — VM просто не используются.
 let vms = readVmsConfig();
 
@@ -339,6 +357,7 @@ function reloadConfigs() {
     users = readConfig(process.env.USER_CONFIG_PATH);
     badgesConfig = readConfig(process.env.BADGES_CONFIG_PATH);  // 🔧 B20: badges забыт в reload
     vms = readVmsConfig();
+    warnConsoleDuplicates(devices);
     console.log('🔄 Configs reloaded');
     return { success: true, devicesCount: devices.length, usersCount: users.length, badgesCount: badgesConfig.length };
 }

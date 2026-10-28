@@ -5,6 +5,7 @@ import { isRival } from '../utils/deviceFlags.js';
 import { deviceBookings, saveBookings } from '../state/bookings.js';
 import { getIO } from '../state/io.js';
 import { getEffectiveDevicePassword, emitPasswordUpdate } from './passwordService.js';
+import { dismantleChainOf, isInLanWanChain } from './lanWanService.js';
 
 // 🔑 Единая сборка booking-payload для фронта. Раньше payload собирался
 // в 8+ местах вручную — и расползался (live-emit с daily против честной
@@ -108,6 +109,25 @@ function clearDevicePassword(deviceId, reason = '') {
     emitPasswordUpdate(deviceId, null);
 }
 
+// Истёкшая бронь звена схемы «LAN как WAN»: сначала разбирается вся схема,
+// бронь снимается после (если её за это время не продлили)
+const expiringChains = new Set();
+function releaseAfterDismantle(io, deviceId) {
+  if (expiringChains.has(deviceId)) return;
+  expiringChains.add(deviceId);
+  dismantleChainOf(io, deviceId, { reason: 'booking expired' })
+    .catch(err => console.error(`❌ LAN→WAN dismantle on expiry ${deviceId}: ${err.message}`))
+    .finally(() => {
+      expiringChains.delete(deviceId);
+      const booking = deviceBookings.get(deviceId);
+      if (booking && booking.expiresAt <= Math.floor(Date.now() / 1000)) {
+        deviceBookings.delete(deviceId);
+        saveBookings();
+        emitBookingUpdate(deviceId);
+      }
+    });
+}
+
 function autoReleaseOldBookings(io) {
   if (!io) return;
 
@@ -115,6 +135,10 @@ function autoReleaseOldBookings(io) {
   let released = 0;
 
   for (const [deviceId, booking] of deviceBookings.entries()) {
+    if (booking.expiresAt <= now && isInLanWanChain(deviceId)) {
+      releaseAfterDismantle(io, deviceId);
+      continue;
+    }
     if (booking.expiresAt <= now) {
       deviceBookings.delete(deviceId);
       released++;

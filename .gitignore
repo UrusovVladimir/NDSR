@@ -51,3 +51,6 @@ build/
 out/
 # файловый лог бэкенда (LOG_DIR)
 ndsr-app/api/logs/
+
+# Ключи SSH для контейнеров устройств — только на стенде (ndsr-deploy/device-image/README.md)
+ndsr-deploy/device-image/ssh/

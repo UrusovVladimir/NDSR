@@ -254,24 +254,15 @@
             </template>
           </Column>
 
+          <!-- WAN — всем, только показ (менять — в «My Booked Devices»).
+               Колонки Actions здесь нет: без брони все действия неактивны -->
           <Column field="currentWanType" header="WAN" class="wan-column">
             <template #body="{ data }">
               <WanTypeDisplay 
                 :device="data" 
                 :wan-types="wanTypes"
                 :current-user-id="deviceStore.currentUserId"
-                @open-modal="handleOpenModal"
-              />
-            </template>
-          </Column>
-
-          <Column header="Actions" class="actions-column">
-            <template #body="{ data }">
-              <DeviceActions 
-                :device="data"
-                :current-user-id="deviceStore.currentUserId"  
-                @open-console="handleOpenConsole"
-                @open-change-mode="handleOpenChangeMode"
+                readonly
               />
             </template>
           </Column>

@@ -473,6 +473,17 @@ const updateDeviceName = (deviceId, newShortName) => {
 
     // 🔀 Положение аппаратного переключателя (A — router, B — ap) —
     // сервер узнаёт его при определении режима / MWS Connect
+    // Адрес роутера в LAN, заданный порталом (null — автоопределение)
+    socket.on('device:routerLanIp', (data) => {
+      const deviceIndex = devices.value.findIndex(d => String(d.id) === String(data.deviceId))
+      if (deviceIndex !== -1) {
+        const next = { ...devices.value[deviceIndex] }
+        if (data.ip) next.routerLanIp = data.ip
+        else delete next.routerLanIp
+        devices.value[deviceIndex] = next
+      }
+    })
+
     socket.on('device:switchPosition', (data) => {
       const deviceIndex = devices.value.findIndex(d => String(d.id) === String(data.deviceId))
       if (deviceIndex !== -1) {
@@ -492,6 +503,7 @@ const updateDeviceName = (deviceId, newShortName) => {
     socket.off('device:wanTypeUpdated')
     socket.off('device:passwordUpdated')
     socket.off('device:switchPosition')
+    socket.off('device:routerLanIp')
   }
 
   

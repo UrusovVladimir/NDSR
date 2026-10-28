@@ -73,6 +73,8 @@ const fetchToken = () => new Promise((resolve, reject) => {
     if (!res?.success) return reject(new Error(res?.error || 'Cannot get RDP token'))
     devicePassword = res.devicePassword || null
     deviceName = res.deviceName || null
+    // Ctrl+Alt+Del — только Windows (os из vms.json); в xrdp/Linux не нужен
+    document.getElementById('rdp-cad').hidden = /linux|ubuntu|debian|fedora|centos/i.test(res.os || '')
     passBtn.hidden = !devicePassword
     if (deviceName) passBtn.title = `Put the password of ${deviceName} into the VM clipboard, then press Ctrl+V inside the VM`
     resolve(res.token)

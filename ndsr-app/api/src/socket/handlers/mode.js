@@ -36,6 +36,7 @@ import {
 import { sendMwsProgress, sendModeChangeProgress } from '../../services/progress.js';
 import { requireLinkAccess } from '../../services/bookingService.js';
 import { finishApDisconnect } from '../../services/linkService.js';
+import { isInLanWanChain } from '../../services/lanWanService.js';
 import {
   SWITCH_A_MESSAGE,
   getSwitchPosition,
@@ -356,6 +357,12 @@ export function register(socket, io) {
         return refuse(err.message);
       }
       
+      // Звено схемы «LAN как WAN» в extender не переводим: схема держится на
+      // режиме router (LAN/WAN) — сначала разобрать
+      if (isInLanWanChain(deviceId)) {
+        return refuse('The device is part of a WAN chain (router LAN as WAN) — dismantle the chain first');
+      }
+
       // 🛡 Guard: аппаратный AP-переключатель — софт-смена режима невозможна
       // (прошивка отдаёт 404 на /rci/system/mode, проверено на KN-4310).
       // Сценарии для таких устройств идут через другие операции (MWS-подключение и т.п.)

@@ -7,6 +7,8 @@ import { initializeStatusCache, initializeStatusSystem, initializePowerStatus } 
 import { initDockerManagerOnStart } from './services/docker.js';
 import { scheduleNightlyReset } from './services/nightlyReset.js';
 import { reconcileVms } from './services/vmService.js';
+import { reconcileLanWan } from './services/lanWanService.js';
+import { reconcileRouterIps } from './services/routerIpService.js';
 import { startBrowserRdp } from './services/browserRdp.js';
 
 let started = false;
@@ -33,8 +35,12 @@ export function startBackgroundTasks() {
   setInterval(() => {
     autoReleaseOldBookings(getIO());
     reconcileVms();
+    reconcileLanWan(getIO()).catch(err => console.error(`❌ LAN→WAN reconcile: ${err.message}`));
   }, 60 * 1000);
   setTimeout(() => reconcileVms(), 10 * 1000);
+  // Адрес роутера, заданный порталом, — обратно в пересозданные контейнеры
+  setTimeout(() => reconcileRouterIps().catch(err => console.error(`❌ router LAN IP reconcile: ${err.message}`)), 20 * 1000);
+  setInterval(() => reconcileRouterIps().catch(err => console.error(`❌ router LAN IP reconcile: ${err.message}`)), 5 * 60 * 1000);
 
   // 🔒 Отладочный вывод бронирований — только при явном включении в .env
   // (раньше шел каждые 30 секунд в логи на весь uptime сервера)

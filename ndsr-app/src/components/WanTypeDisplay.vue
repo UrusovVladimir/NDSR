@@ -1,6 +1,6 @@
 <template>
   <div class="wan-type-display">
-    <span v-if="!isOwnedByCurrentUser" class="text-color-secondary">
+    <span v-if="!isOwnedByCurrentUser && !readonly" class="text-color-secondary">
       Not available
     </span>
     <div v-else class="flex align-items-center gap-2">
@@ -27,6 +27,7 @@
       </div>
       
       <Button 
+        v-if="!readonly"
         icon="pi pi-cog" 
         class="p-button-sm p-button-outlined p-button-info p-button-rounded wan-btn"
         v-tooltip.bottom="'Change WAN Type'"
@@ -51,6 +52,8 @@ const deviceStore = useDeviceStore()
 
 const props = defineProps({
   device: Object,
+  // Только показ типа (таблица «Our Devices»): видно всем, без кнопки смены
+  readonly: { type: Boolean, default: false },
   wanTypes: Array,
   currentUserId: [String, Number]
 })
@@ -88,6 +91,11 @@ const displayWanType = computed(() => {
   const data = wanData.value
   if (!data) return 'Not configured'
   
+  // WAN из LAN другого роутера (lanWanService)
+  if (typeof data === 'object' && data.type === 'router_lan') {
+    const up = deviceStore.devices.find(d => String(d.id) === String(data.upstreamId))
+    return `LAN ← ${up?.hwId || data.upstreamId}`
+  }
   // Dual WAN не должен отображаться как обычный
   if (typeof data === 'object') return 'Not configured'
   
@@ -115,6 +123,7 @@ const wan2Display = computed(() => {
 // ✅ СЕВЕРИТИ ДЛЯ ТЕГА
 const getWanSeverity = (type) => {
   if (!type || type === 'Not configured') return 'secondary'
+  if (String(type).startsWith('LAN ← ')) return 'success'
   return 'info'
 }
 

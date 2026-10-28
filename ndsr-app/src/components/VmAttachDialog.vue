@@ -36,7 +36,7 @@
               <span v-else-if="vm.attachment.ipPending" class="vm-value">
                 <i class="pi pi-spin pi-spinner mr-1"></i> Waiting for DHCP…
               </span>
-              <span v-else class="vm-value text-color-secondary">{{ ipReasonText(vm.attachment.ipReason) }}</span>
+              <span v-else class="vm-value text-color-secondary">{{ ipReasonText(vm.attachment.ipReason, vm) }}</span>
               <!-- Повтор DHCP доступен всегда (в т.ч. если ожидание «зависло») -->
               <i
                 class="pi pi-refresh vm-icon-btn"
@@ -161,12 +161,16 @@ const others = computed(() =>
 const IP_REASONS = {
   'no-mac': 'Unknown — lanMac is not set in vms.json',
   rival: 'Unknown for rival routers — see ipconfig in Windows',
+  'rival-linux': 'Unknown for rival routers — see `ip addr` in the VM',
   auth: 'Router login failed — check the device password',
   cooldown: 'Router login paused after a failure — retry in a minute',
   unreachable: 'Router is unreachable',
   'not-found': 'Not in the router DHCP table yet'
 }
-const ipReasonText = (reason) => IP_REASONS[reason] || 'No address'
+// Linux-VM (os из vms.json): подсказки без Windows-команд
+const isLinuxVm = (vm) => /linux|ubuntu|debian|fedora|centos/i.test(vm?.os || '')
+const ipReasonText = (reason, vm) =>
+  (reason === 'rival' && isLinuxVm(vm) ? IP_REASONS['rival-linux'] : IP_REASONS[reason]) || 'No address'
 
 const isMine = (vm) => vm.attachment?.attachedBy === deviceStore.currentUserId
 const userName = (vm) => deviceStore.getUserName(vm.attachment?.attachedBy)

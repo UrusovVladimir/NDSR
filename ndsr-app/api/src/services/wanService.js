@@ -12,10 +12,14 @@ const WAN_OFF = '4094';
 const universalPromptRegex = /.*/i;
 
 const isDual = (wan) => !!(wan && typeof wan === 'object' && wan.type === 'dual_wan');
+// LAN другого роутера как WAN (services/lanWanService.js): основной порт —
+// vlanLocal вышестоящего роутера, второй выключен
+const isRouterLan = (wan) => !!(wan && typeof wan === 'object' && wan.type === 'router_lan');
 
 // WAN-состояние → [VLAN основного порта, VLAN второго порта]
 function splitWan(wan) {
     if (isDual(wan)) return [String(wan.wan1 ?? WAN_OFF), String(wan.wan2 ?? WAN_OFF)];
+    if (isRouterLan(wan)) return [String(wan.vlan ?? WAN_OFF), WAN_OFF];
     return [wan == null || wan === '' ? WAN_OFF : String(wan), WAN_OFF];
 }
 
@@ -41,15 +45,21 @@ function saveWanState(io, deviceId, type) {
 //     сохранено фактическое состояние (неприменённый порт — прежнее значение);
 //   throw — ничего не применено (состояние не меняется) или ошибка конфигурации.
 // wanData: VLAN строкой, '4094'/null — выключить, { type: 'dual_wan', wan1, wan2 }.
-export async function applyWanChange(io, deviceId, wanData) {
+// stateType — что сохранить как тип WAN вместо wanData (router_lan: на порт
+// уходит VLAN, а в состоянии — { type: 'router_lan', upstreamId, vlan }).
+export async function applyWanChange(io, deviceId, wanData, { stateType = null } = {}) {
     const device = getDeviceById(deviceId);
     if (!device) throw new Error(`Device ${deviceId} not found`);
     const target = wanData == null || wanData === '' ? WAN_OFF : wanData;
     const previous = currentWanTypes[deviceId]?.type ?? device.currentWanType ?? WAN_OFF;
 
+    // Второй порт уже выключен, если портал знает прошлый тип и он не Dual WAN
+    const known = currentWanTypes[deviceId]?.type ?? device.currentWanType;
+    const secondaryKnownOff = known != null && known !== '' && !isDual(known);
+
     let results;
     try {
-        results = await changeWanType(deviceId, target, universalPromptRegex);
+        results = await changeWanType(deviceId, target, universalPromptRegex, { secondaryKnownOff });
     } catch (error) {
         const applied = error.results?.filter(r => r.ok) || [];
         if (!applied.length) throw error;
@@ -67,8 +77,8 @@ export async function applyWanChange(io, deviceId, wanData) {
         return { status: 'partial', type, results: error.results, message: `Partially applied: ${error.message}` };
     }
 
-    saveWanState(io, deviceId, target);
-    return { status: 'ok', type: target, results };
+    saveWanState(io, deviceId, stateType ?? target);
+    return { status: 'ok', type: stateType ?? target, results };
 }
 
 export function getWanTypesSnapshot() {
