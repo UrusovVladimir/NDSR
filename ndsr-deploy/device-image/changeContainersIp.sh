@@ -48,8 +48,17 @@ LAST_DHCP_RESTART_TIME=0
 NO_GATEWAY_COUNT=0
 GATEWAY_DOWN_COUNT=0
 
+# LAN роутера: интерфейс kn…/nc… (имя сети docker-net-dhcp). Если задан
+# WEB_PORT (compose), имя моста может быть любым (kmb420, kn1011gp) — тогда
+# берём первый интерфейс, кроме lo и eth0.
 detect_interface() {
-    local preferred_interface=$(ip link show | grep -E "^[0-9]+:" | awk -F: '{print $2}' | tr -d ' ' | grep -oE "^(kn|nc)([0-9]+|[0-9]+_[0-9]+)")
+    local names=$(ip -o link show | awk -F': ' '{print $2}' | cut -d@ -f1)
+    local preferred_interface
+    if [ -n "$WEB_PORT" ]; then
+        preferred_interface=$(echo "$names" | grep -vxE "lo|eth0" | head -1)
+    else
+        preferred_interface=$(echo "$names" | grep -oE "^(kn|nc)([0-9]+|[0-9]+_[0-9]+)" | head -1)
+    fi
     
     if [ -n "$preferred_interface" ]; then
         echo "$preferred_interface"
@@ -531,8 +540,10 @@ apply_router_override() {
     return 0
 }
 
+# Шлюз — роутер в LAN; default через eth0 (сеть стенда, gw_priority в
+# compose) роутером не считается
 get_gateway() {
-    ip route | grep "default via" | awk '{print $3}' | head -1
+    ip route | grep "^default via" | grep -v " dev eth0" | awk '{print $3}' | head -1
 }
 
 get_interface_ip() {
@@ -547,14 +558,20 @@ if [ -z "$MODEL_NAME" ]; then
     exit 1
 fi
 
-# ИЗВЛЕКАЕМ ПОРТ: убираем kn/nc, берем цифры до _
-PORT=$(echo "$MODEL_NAME" | sed 's/^kn//;s/^nc//' | cut -d_ -f1)
+# ПОРТ ВЕБА: WEB_PORT из compose (…_WEB в VARS.env) главнее; без него —
+# из имени интерфейса: убираем kn/nc, берем цифры до _
+if [ -n "$WEB_PORT" ]; then
+    PORT="$WEB_PORT"
+    log "Порт из WEB_PORT: $PORT"
+else
+    PORT=$(echo "$MODEL_NAME" | sed 's/^kn//;s/^nc//' | cut -d_ -f1)
+fi
 
 # Сохраняем оригинальный порт для логирования
 ORIGINAL_PORT="$PORT"
 
 # Удаляем только один последний ноль, если в интерфейсе НЕТ символа _
-if [[ "$MODEL_NAME" != *_* ]]; then
+if [ -z "$WEB_PORT" ] && [[ "$MODEL_NAME" != *_* ]]; then
     if [[ "$PORT" =~ 0$ ]]; then
         PORT="${PORT%0}"  # Удаляем только один последний ноль
         log "Удален один последний ноль: $ORIGINAL_PORT → $PORT (интерфейс без _)"
@@ -580,6 +597,14 @@ log "Резервные шлюзы: ${BACKUP_GATEWAYS[*]}"
 log "Интервал проверки: ${CHECK_INTERVAL}с"
 log "Таймаут ping: ${PING_TIMEOUT}с"
 log "Макс. рестартов DHCP: $MAX_DHCP_RESTARTS"
+
+# Docker 28+ публикует порты только в сети со шлюзом по умолчанию — в
+# compose у сети стенда gw_priority, и default приходит через eth0. Default
+# здесь — роутер в LAN (как раньше); сети портала идут через eth0 явными
+# маршрутами monitorRoutes.sh
+if ip route | grep -q "^default via .* dev eth0"; then
+    ip route del default dev eth0 2>/dev/null && log "Удален default через eth0 (шлюз — роутер в LAN)"
+fi
 
 if ! ip link show "$MODEL_NAME" >/dev/null 2>&1; then
     log "ОШИБКА: Интерфейс $MODEL_NAME не существует"
