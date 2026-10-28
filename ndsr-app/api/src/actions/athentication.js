@@ -291,7 +291,24 @@ async function _authenticateOnce(ip, login, password) {
   let cookie;
   if (wa.includes('x-ndw4-interactive')) {
     console.log('🔐 Схема: x-ndw4-interactive (SCRAM-SHA3-512 + Argon2id)');
-    cookie = await ndw4Auth(ip, login, password, sessionCookie);
+    try {
+      cookie = await ndw4Auth(ip, login, password, sessionCookie);
+    } catch (error) {
+      // Фаза 1 ndw4 отвергнута (401 без X-NDM-Data), а устройство предлагает
+      // и ndw2 — входим по ndw2 со свежим challenge. Так отвечает Atlas SE
+      // 5.02 в режиме участника MWS (78, 1714, 29.10.2026): ndw4 не пускает
+      // при верном пароле, ndw2 пускает. Сразу после загрузки ndw2 обычно
+      // нет — тогда ошибка остаётся «не готово» с повтором выше.
+      if (!(error.isTransient && wa.includes('x-ndw2-interactive') &&
+            String(error.message).startsWith('ndw4: device not ready'))) throw error;
+      console.log(`🔐 ${error.message} — пробуем x-ndw2-interactive`);
+      const fresh = await axios.get(`${ip}/auth`, {
+        validateStatus: status => status === 401 || status === 200,
+        timeout: 10000
+      });
+      if (fresh.status === 200) return 'ALREADY_AUTHENTICATED';
+      cookie = await ndw2Auth(ip, login, password, fresh);
+    }
   } else if (wa.includes('x-ndw2-interactive')) {
     console.log('🔐 Схема: x-ndw2-interactive (классический хэш)');
     cookie = await ndw2Auth(ip, login, password, challengeRes);
