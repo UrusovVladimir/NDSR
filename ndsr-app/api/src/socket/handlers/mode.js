@@ -365,7 +365,8 @@ export function register(socket, io) {
     
 
     try {
-      const { deviceId: id, mode, routerId, password, routerPassword, action, extenderPasswordMode, extenderPassword } = data;
+      const { deviceId: id, password, routerPassword, action, extenderPasswordMode, extenderPassword } = data;
+      let { mode, routerId } = data;
       deviceId = id;
 
       // Отказ до старта: ack + итог событием — окно прогресса (ProgressModal)
@@ -375,6 +376,21 @@ export function register(socket, io) {
         io.emit('device:modeChangeResult', { deviceId, success: false, error, timestamp: Date.now() });
       };
       
+      // Подключённый экстендер нельзя просто перевести в router/extender:
+      // связка (порт свича в VLAN роутера, пробросы, mws_links) осталась бы,
+      // а портал считал бы устройство роутером (77, 2312 → 2710, 29.10.2026).
+      // router — через отключение от роутера; extender без роутера — отказ
+      const linkedNow = currentModes.get(String(deviceId));
+      if ((mode === 'router' || mode === 'extender') && linkedNow?.mode === 'extender_connect' && linkedNow.routerId) {
+        const routerName = getDeviceById(linkedNow.routerId)?.hwId || linkedNow.routerId;
+        if (mode === 'extender') {
+          return refuse(`The device is connected to ${routerName} — disconnect it first (it then becomes a router), or use Restore`);
+        }
+        console.log(`🔀 ${deviceId}: router requested while connected to ${routerName} — running extender_disconnect`);
+        mode = 'extender_disconnect';
+        routerId = String(linkedNow.routerId);
+      }
+
       console.log(`🔄 Processing mode change: ${mode} for device ${deviceId}, action: ${action}`);
 
       // 🔒 S7: смена режима — только владелец брони; для extender_connect/

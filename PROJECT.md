@@ -764,6 +764,8 @@ AP-устройства (`type: AP` + `hwType` — `isApSwitchOn`: 'yes'/'true'/
 
 Что править при изменениях: формат правил — `manageHostFirewall` / `manageContainerFirewall` (`utils/dockerManager.js`) и, если поменялся вид строки, регулярки `hostHasRule` / `containerHasRule` в `mwsForwardService.js`; новые поля связки — `state/mwsLinks.js` (`saveMwsLink` в `setupPortForwarding` и `MWSConnectionManager.setupMWSConnection`); частота — `bootstrap.js`, интервалы поиска адреса — `IP_REFRESH_MS` / `PASSWORD_RETRY_MS` в `mwsForwardService.js`; какие адреса не считаются адресом экстендера — `isRealExtenderIp`. Ручные правила для портов экстендеров в nft-файл класть не нужно.
 
+**Смена режима подключённого экстендера** (`device:changeMode`, в `current_modes` — `extender_connect` + `routerId`): `router` выполняется как `extender_disconnect` от этого роутера (порт свича — в свой VLAN, пробросы и `mws_links` снимаются), `extender` без роутера — отказ «disconnect it first». Раньше `router` только менял режим на устройстве: связка оставалась (порт в VLAN роутера, `mws_links`), а портал считал устройство роутером (77, 2312 → 2710, 29.10.2026).
+
 Согласованное состояние — либо всё из таблицы есть (подключено), либо ничего нет. Все операции снятия **идемпотентны** (правила сначала ищутся, удаляются только найденные; `pvid`/`forbidden` просто выставляются заново), поэтому при «полуразобранной» связке безопасно повторить отключение или сделать factory reset экстендера.
 
 ### 8.6 Тип WAN
