@@ -122,6 +122,20 @@ export const checkDeviceMode = async (url, login, password) => {
 
 
 // Пароль admin на устройстве (как Skip Wizard) + проверка входа с новым
+// Заводское состояние: пока EULA (и DPN, если есть) не приняты, устройство
+// не меняет ни пароль, ни режим. Принимаем перед сменой режима; сохраняем,
+// чтобы пережило перезагрузку после смены режима (как Skip Wizard)
+async function acceptEulaDpn(url, login, password) {
+  const res = await makeAuthenticatedRequest(url, login, password, '/rci/', 'POST', [
+    { eula: { accept: {} } },
+    { dpn: { accept: {} } },
+    { system: { configuration: { save: true } } }
+  ]);
+  assertRciOk(res, 'accept EULA/DPN');
+}
+
+const isEulaError = (error) => /EULA not accepted/i.test(String(error?.message || error || ''));
+
 async function setAdminPassword(url, oldPassword, newPassword) {
   const res = await makeAuthenticatedRequest(url, 'admin', oldPassword, '/rci/', 'POST', [
     { user: { password: { name: 'admin', password: newPassword } } },
@@ -672,6 +686,9 @@ export const changeSystemMode = async (deviceId, routerId, mode, password, route
         
         console.log(`📋 Текущий режим: ${currentMode}, целевой режим: ${mode}`);
 
+        // Заводское состояние (EULA не принята) — выяснится на шаге пароля
+        let defaultState = false;
+
         // 🔑 Пароль экстендера = пароль роутера (или выбранный пользователем) —
         // пока устройство ещё роутер и доступно напрямую
         if (mode === 'extender' && routerId && options.extenderPassword && options.extenderPassword !== password) {
@@ -682,14 +699,25 @@ export const changeSystemMode = async (deviceId, routerId, mode, password, route
                     details: 'Setting extender password', timestamp: Date.now()
                 });
             }
+            defaultState = false;
             try {
                 await setAdminPassword(url, password, options.extenderPassword);
             } catch (pwError) {
-                throw new Error(`Не удалось сменить пароль устройства перед переводом в extender: ${pwError.message}`);
+                // Устройство в заводском состоянии (EULA не принята, пароля нет):
+                // пароль не ставим — контроллер захватит его и задаст свой
+                // (77, 1713, 29.10.2026). Пароль нужен только устройству со своим
+                // паролем: иначе контроллер получает «access unauthorized».
+                if (!isEulaError(pwError)) {
+                    throw new Error(`Не удалось сменить пароль устройства перед переводом в extender: ${pwError.message}`);
+                }
+                defaultState = true;
+                console.log(`🔑 ${device.hwId}: factory state (EULA not accepted) — password left to the controller`);
             }
-            password = options.extenderPassword;
-            rememberDevicePassword(deviceId, password);
-            console.log(`✅ ${device.hwId}: admin password changed and saved`);
+            if (!defaultState) {
+                password = options.extenderPassword;
+                rememberDevicePassword(deviceId, password);
+                console.log(`✅ ${device.hwId}: admin password changed and saved`);
+            }
         }
 
         // Уже extender, а нужно подключить к роутеру — смену режима и ребут
@@ -715,8 +743,23 @@ export const changeSystemMode = async (deviceId, routerId, mode, password, route
             const modeToSend = mode === 'extender_connect' ? 'extender' : mode;
             // Ответ проверяем: прошивка отвечает 200 и при отказе
             // (например, «execute blocked in MWS member mode»)
-            const modeResponse = await makeAuthenticatedRequest(url, login, password, '/rci/system/mode', 'POST', { mode: modeToSend });
-            assertRciOk(modeResponse, 'system mode');
+            // Сначала EULA/DPN, если не приняты (заводское состояние), потом режим
+            if (defaultState) {
+                console.log(`📜 ${device.hwId}: accepting EULA/DPN before the mode change`);
+                await acceptEulaDpn(url, login, password);
+            }
+            const sendMode = async () => assertRciOk(
+                await makeAuthenticatedRequest(url, login, password, '/rci/system/mode', 'POST', { mode: modeToSend }),
+                'system mode');
+            try {
+                await sendMode();
+            } catch (modeError) {
+                // Шаг пароля не выполнялся (или не показал заводское состояние)
+                if (!isEulaError(modeError) || defaultState) throw modeError;
+                console.log(`📜 ${device.hwId}: mode change needs EULA — accepting EULA/DPN and retrying`);
+                await acceptEulaDpn(url, login, password);
+                await sendMode();
+            }
 
             console.log(`⏳ Ожидание перед перезагрузкой...`);
             await new Promise(resolve => setTimeout(resolve, 2000));
