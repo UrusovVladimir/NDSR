@@ -745,6 +745,23 @@ App.vue
 
 AP-устройства (`type: AP` + `hwType` — `isApSwitchOn`: 'yes'/'true'/'1') при MWS Connect ждут адрес дольше (`waitForAPInDHCP`). Раньше `mwsConnectionManager` сравнивал `hwType === 'true'`, а на 78 у AP `'yes'` — они ждали как обычные устройства 5×3 с.
 
+**Ручная проверка — кнопка «Check port forwarding»** (🔍 в строке подключённого экстендера в «My Booked Devices» и More → Network). Событие `mws:checkForward { deviceId }` (`socket/handlers/mode.js`, права как у отключения: экстендер в своей брони, роутер не в чужой) → `checkMwsForward` в `mwsForwardService.js`:
+1. связка: `current_modes` = `extender_connect` + `routerId`; у экстендера нужен `macAddress`;
+2. адрес по MAC: участники MWS контроллера (`/rci/show/mws/member`, если там есть ip) → DHCP bindings / ARP роутера → ARP изнутри CFK роутера (при промахе — пинг /24 LAN-интерфейса контейнера и повтор);
+3. адрес — в `mws_links.json` (снятие правил и сверка работают с ним);
+4. правило хоста (`dport <id>` → CFK роутера) — нет, ставится;
+5. правило в CFK роутера: правила этого порта на другие адреса снимаются, `→ <ip>:80` — ставится, если нет;
+6. доступность: `curl` из CFK роутера на `http://<ip>/` и запрос `checkUrl` с бэкенда; успех — бэкенд сразу шлёт `device:status`.
+Ответ `{ ok, ip, reachable, steps: [{ step, ok, detail }] }` — окно с шагами (Run again / Open web). Пока идёт ручная проверка, сверка этот экстендер пропускает.
+
+Автопроверка: `autoCheckOfflineExtenders` (`bootstrap.js`, раз в 30 с) — связка жива, экстендер не отвечает (`deviceStatusCache` ≠ 200) дольше 1 мин → `checkMwsForward(id, { auto: true })`, не чаще раза в 5 мин на экстендер. В режиме auto адрес и правила пишутся, только если запись связки ещё есть (проверка перед сохранением и перед каждым правилом) — отключение, снявшее связку посреди проверки, не получит её обратно. Починила — `mws:forwardAutoFixed { deviceId, ip, owner, steps }` (тост владельцу брони) и `device:status`. Интервалы — `AUTO_OFFLINE_MS` / `AUTO_RETRY_MS`.
+
+Резервирование адреса на роутере — только по кнопке пользователя в окне проверки («Reserve <ip> on router» / «Remove reservation»): схеме может быть нужно, чтобы точка получала новый адрес. `mws:dhcpReservation { deviceId, action: 'set'|'clear' }` → RCI `ip dhcp host <mac> <ip>` / `no ip dhcp host <mac>` + `system configuration save`; текущее состояние — `GET /rci/ip/dhcp/host` (в ответе проверки — `reservation`). Синтаксис проверен на 196 (1121) 29.10.2026.
+
+Адрес экстендера в строке «Connected to: NC-1013 (Giga) · 192.168.1.95» (My Booked Devices и Our Devices): `state/mwsLinks` при `saveMwsLink`/`dropMwsLink` шлёт `mws:linkIp { deviceId, ip }`, начальное состояние — `mws:linkIps` (`useModeStore.getExtenderIp`).
+
+Подсветка: экстендер `extender_connect` в своей брони не отвечает (статус ≠ 200) дольше 90 с и над ним нет операции — кнопка 🔍 пульсирует, один тост на эпизод («Check port forwarding or device availability…»). Порог — `FORWARD_ALERT_MS` в `BookedDevicesTable.vue`.
+
 Что править при изменениях: формат правил — `manageHostFirewall` / `manageContainerFirewall` (`utils/dockerManager.js`) и, если поменялся вид строки, регулярки `hostHasRule` / `containerHasRule` в `mwsForwardService.js`; новые поля связки — `state/mwsLinks.js` (`saveMwsLink` в `setupPortForwarding` и `MWSConnectionManager.setupMWSConnection`); частота — `bootstrap.js`, интервалы поиска адреса — `IP_REFRESH_MS` / `PASSWORD_RETRY_MS` в `mwsForwardService.js`; какие адреса не считаются адресом экстендера — `isRealExtenderIp`. Ручные правила для портов экстендеров в nft-файл класть не нужно.
 
 Согласованное состояние — либо всё из таблицы есть (подключено), либо ничего нет. Все операции снятия **идемпотентны** (правила сначала ищутся, удаляются только найденные; `pvid`/`forbidden` просто выставляются заново), поэтому при «полуразобранной» связке безопасно повторить отключение или сделать factory reset экстендера.

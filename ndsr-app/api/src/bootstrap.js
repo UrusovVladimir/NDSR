@@ -9,7 +9,7 @@ import { scheduleNightlyReset } from './services/nightlyReset.js';
 import { reconcileVms } from './services/vmService.js';
 import { reconcileLanWan } from './services/lanWanService.js';
 import { reconcileRouterIps } from './services/routerIpService.js';
-import { reconcileMwsForwards } from './services/mwsForwardService.js';
+import { reconcileMwsForwards, autoCheckOfflineExtenders } from './services/mwsForwardService.js';
 import { startBrowserRdp } from './services/browserRdp.js';
 
 let started = false;
@@ -46,6 +46,8 @@ export function startBackgroundTasks() {
   // и пересоздания контейнера роутера (services/mwsForwardService.js)
   setTimeout(() => reconcileMwsForwards(), 30 * 1000);
   setInterval(() => reconcileMwsForwards(), 2 * 60 * 1000);
+  // Подключённый экстендер не отвечает > 1 мин — та же проверка, что по кнопке
+  setInterval(() => autoCheckOfflineExtenders(), 30 * 1000);
 
   // 🔒 Отладочный вывод бронирований — только при явном включении в .env
   // (раньше шел каждые 30 секунд в логи на весь uptime сервера)

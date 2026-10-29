@@ -37,6 +37,8 @@ import { sendMwsProgress, sendModeChangeProgress } from '../../services/progress
 import { requireLinkAccess } from '../../services/bookingService.js';
 import { finishApDisconnect } from '../../services/linkService.js';
 import { isInLanWanChain } from '../../services/lanWanService.js';
+import { checkMwsForward, setDhcpReservation } from '../../services/mwsForwardService.js';
+import { linkIps } from '../../state/mwsLinks.js';
 import {
   SWITCH_A_MESSAGE,
   getSwitchPosition,
@@ -47,6 +49,36 @@ import {
 const universalPromptRegex = /.*/i;
 
 export function register(socket, io) {
+  // Проверка проброса подключённого экстендера (кнопка «Check forwarding»):
+  // поиск по MAC на контроллере/в LAN роутера, сохранение адреса, правила
+  // хоста и CFK роутера, проверка доступности (services/mwsForwardService.js).
+  // Права — как у отключения: экстендер в своей брони, роутер не в чужой.
+  on(socket, 'mws:checkForward', async (data, callback) => {
+    const deviceId = String(data?.deviceId || '');
+    const routerId = currentModes.get(deviceId)?.routerId || null;
+    requireLinkAccess(socket, deviceId, routerId, { disconnect: true });
+    const result = await checkMwsForward(deviceId, { userId: socket.clientIp });
+    // Статус в таблице — сразу, не дожидаясь цикла проверки статусов
+    if (result.ok) {
+      getDeviceStatusWithMode(deviceId)
+        .then(status => io.emit('device:status', { deviceId, status }))
+        .catch(() => {});
+    }
+    callback({ success: true, ...result });
+  });
+
+  // Закрепить / снять адрес экстендера на роутере (ip dhcp host) — по решению пользователя
+  on(socket, 'mws:dhcpReservation', async (data, callback) => {
+    const deviceId = String(data?.deviceId || '');
+    const routerId = currentModes.get(deviceId)?.routerId || null;
+    requireLinkAccess(socket, deviceId, routerId, { disconnect: true });
+    const res = await setDhcpReservation(deviceId, data?.action, { userId: socket.clientIp });
+    callback({ success: true, ...res });
+  });
+
+  // Адреса подключённых экстендеров (строка «Connected to … · IP»)
+  on(socket, 'mws:linkIps', (callback) => callback({ success: true, ips: linkIps() }));
+
   on(socket, 'device:getMwsConnection', (deviceId, callback) => {
     try {
       console.log('🔗 Requested MWS connection for device:', deviceId);

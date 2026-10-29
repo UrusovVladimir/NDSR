@@ -570,6 +570,19 @@ const getCurrentMode = async (deviceId, password) => {
     return currentMode.value[deviceId] || null
   }
 
+  // Адреса подключённых экстендеров в LAN роутера (сервер: state/mwsLinks —
+  // mws:linkIps при подключении, mws:linkIp при каждом изменении)
+  const extenderIps = ref({})
+  const loadExtenderIps = () => socket.emit('mws:linkIps', (res) => {
+    if (res?.success) extenderIps.value = res.ips || {}
+  })
+  socket.on('mws:linkIp', ({ deviceId, ip } = {}) => {
+    if (deviceId) extenderIps.value = { ...extenderIps.value, [String(deviceId)]: ip || null }
+  })
+  socket.on('connect', loadExtenderIps)
+  if (socket.connected) loadExtenderIps()
+  const getExtenderIp = (deviceId) => extenderIps.value[String(deviceId)] || null
+
 const listenForModeUpdates = (callback) => {
   socket.on('device:modeUpdated', (data) => {
     // console.log('📡 Mode Update received from server:', data)
@@ -957,6 +970,7 @@ const checkDeviceStatusImmediately = async (deviceId, maxAttempts = 10, interval
     getCurrentMode,
     getDeviceMode,
     getDeviceModeInfo,
+    getExtenderIp,
     listenForModeUpdates,
     listenForMwsUpdates,
     resetMode,

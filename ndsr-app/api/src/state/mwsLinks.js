@@ -6,6 +6,7 @@
 // Формат файла: { "extenderId": { routerId, routerIp, extenderIp, timestamp } }.
 // Путь резолвится от process.cwd(), как у current_modes.json.
 import { PersistentMap } from '../utils/persistentMap.js';
+import { getIO } from './io.js';
 
 export const mwsLinks = new PersistentMap(process.env.MWS_LINKS_PATH || './mws_links.json');
 
@@ -18,6 +19,13 @@ export function saveMwsLink(extenderId, { routerId, routerIp, extenderIp }) {
     extenderIp,
     timestamp: Date.now()
   });
+  // Адрес экстендера — в строке портала («Connected to … · 192.168.1.95»)
+  getIO()?.emit('mws:linkIp', { deviceId: String(extenderId), ip: extenderIp || null });
+}
+
+// { extenderId: extenderIp | null } — начальное состояние для портала (mws:linkIps)
+export function linkIps() {
+  return Object.fromEntries([...mwsLinks.entries()].map(([id, l]) => [id, l?.extenderIp || null]));
 }
 
 export function getMwsLink(extenderId) {
@@ -36,5 +44,7 @@ export function isRealExtenderIp(ip, { routerIp, device } = {}) {
 }
 
 export function dropMwsLink(extenderId) {
-  return mwsLinks.delete(String(extenderId));
+  const had = mwsLinks.delete(String(extenderId));
+  if (had) getIO()?.emit('mws:linkIp', { deviceId: String(extenderId), ip: null });
+  return had;
 }

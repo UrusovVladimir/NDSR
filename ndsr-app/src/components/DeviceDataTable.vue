@@ -383,7 +383,9 @@ const connectedTo = (device) => {
   const info = modeStore.getDeviceModeInfo(device.id)
   if (info?.mode !== 'extender_connect' || !info.routerId) return ''
   const r = deviceStore.devices.find(d => String(d.id) === String(info.routerId))
-  return r ? (r.shortName ? `${r.hwId} (${r.shortName})` : r.hwId) : String(info.routerId)
+  const name = r ? (r.shortName ? `${r.hwId} (${r.shortName})` : r.hwId) : String(info.routerId)
+  const ip = modeStore.getExtenderIp(device.id)
+  return ip ? `${name} · ${ip}` : name
 }
 const clipboardStore = useClipboardStore()
 

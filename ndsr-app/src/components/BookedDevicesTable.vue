@@ -289,6 +289,18 @@
                             @click="openDeviceInterface(data)"
                         />
 
+                        <!-- Подключённый экстендер: проверка проброса (поиск по MAC, правила,
+                             доступность). Пульсирует, если устройство не отвечает дольше 90 с -->
+                        <Button
+                            v-if="!isRival(data) && isExtenderConnected(data)"
+                            v-tooltip.bottom="isForwardAlert(data) ? 'Not reachable — check port forwarding / availability' : 'Check port forwarding'"
+                            :icon="forwardChecking.has(String(data.id)) ? 'pi pi-spinner pi-spin' : 'pi pi-search'"
+                            class="p-button-sm p-button-outlined p-button-help p-button-rounded action-btn"
+                            :class="{ 'forward-alert': isForwardAlert(data) }"
+                            :disabled="forwardChecking.has(String(data.id)) || isAnyOperationOnThisDevice(data)"
+                            @click="runForwardCheck(data)"
+                        />
+
                         <Button 
                             :icon="releasingDeviceId === data.id ? 'pi pi-spinner pi-spin' : 'pi pi-trash'"
                             class="p-button-outlined p-button-danger p-button-sm p-button-rounded action-btn release-btn"
@@ -672,6 +684,80 @@
         </Dialog>
 
         <!-- Адрес роутера в его LAN, заданный вручную -->
+        <!-- Проверка проброса подключённого экстендера -->
+        <Dialog
+            v-model:visible="showForwardDialog"
+            modal
+            :blockScroll="false"
+            :header="`Port forwarding — ${forwardDevice?.hwId || ''}`"
+            :style="{ width: '560px', maxWidth: '95vw' }"
+            class="responsive-dialog"
+        >
+            <div v-if="!forwardResult" class="flex align-items-center gap-2 py-3">
+                <i class="pi pi-spin pi-spinner"></i>
+                Searching the device by MAC on the controller and in the router LAN, checking the rules…
+            </div>
+            <template v-else>
+                <Message v-if="forwardResult.reachable" severity="success" :closable="false" class="mb-3">
+                    The device answers{{ forwardResult.ip ? ` (${forwardResult.ip})` : '' }} — open its web interface to check.
+                </Message>
+                <Message v-else-if="forwardResult.ok" severity="warn" :closable="false" class="mb-3">
+                    Forwarding is set up for {{ forwardResult.ip }}, but the device does not answer yet — it may still be booting. Run the check again in a minute.
+                </Message>
+                <Message v-else severity="error" :closable="false" class="mb-3">
+                    The device was not found or forwarding could not be set up — see the steps below.
+                </Message>
+                <!-- Резервирование адреса на роутере — решает пользователь: схеме
+                     может быть нужно, чтобы точка получала новый адрес -->
+                <div v-if="forwardResult.ok && forwardResult.ip" class="forward-reservation mb-3">
+                    <span v-if="forwardResult.reservation === forwardResult.ip">
+                        <i class="pi pi-lock mr-1"></i>{{ forwardResult.ip }} is reserved for this device on the router (DHCP).
+                    </span>
+                    <span v-else-if="forwardResult.reservation">
+                        <i class="pi pi-lock mr-1"></i>The router reserves {{ forwardResult.reservation }} for this device, it now has {{ forwardResult.ip }}.
+                    </span>
+                    <span v-else>
+                        <i class="pi pi-lock-open mr-1"></i>The address is not reserved — after a reboot the device may get another one.
+                    </span>
+                    <div class="mt-2 flex gap-2 flex-wrap">
+                        <Button
+                            v-if="forwardResult.reservation !== forwardResult.ip"
+                            :label="`Reserve ${forwardResult.ip} on router`" icon="pi pi-lock"
+                            class="p-button-sm p-button-outlined" :loading="forwardReserving"
+                            @click="setForwardReservation('set')"
+                        />
+                        <Button
+                            v-if="forwardResult.reservation"
+                            label="Remove reservation" icon="pi pi-lock-open"
+                            class="p-button-sm p-button-outlined p-button-secondary" :loading="forwardReserving"
+                            @click="setForwardReservation('clear')"
+                        />
+                    </div>
+                </div>
+                <ul class="forward-steps">
+                    <li v-for="(st, i) in forwardResult.steps" :key="i">
+                        <i :class="st.ok ? 'pi pi-check-circle' : 'pi pi-times-circle'" :style="{ color: st.ok ? '#22c55e' : '#ef4444' }"></i>
+                        <span>{{ st.detail }}</span>
+                    </li>
+                </ul>
+            </template>
+            <template #footer>
+                <div class="dialog-footer">
+                    <Button label="Close" icon="pi pi-times" class="p-button-text" @click="showForwardDialog = false" />
+                    <Button
+                        v-if="forwardResult?.reachable && forwardDevice?.URL"
+                        label="Open web" icon="bi bi-layout-sidebar" class="p-button-outlined"
+                        @click="openDeviceInterface(forwardDevice)"
+                    />
+                    <Button
+                        label="Run again" icon="pi pi-refresh"
+                        :disabled="!forwardResult || forwardChecking.has(String(forwardDevice?.id))"
+                        @click="runForwardCheck(forwardDevice)"
+                    />
+                </div>
+            </template>
+        </Dialog>
+
         <Dialog
             v-model:visible="showRouterIpDialog"
             modal
@@ -1361,7 +1447,7 @@
 </template>
 
 <script setup>
-import { ref, computed, inject, onMounted, onUnmounted, watch, nextTick } from 'vue'
+import { ref, reactive, computed, inject, onMounted, onUnmounted, watch, nextTick } from 'vue'
 import { isRival, isApSwitchOn, canMwsConnectType, hwSwitchTag, isSwitchInRouterPosition, SWITCH_A_HINT } from '@/utils/deviceFlags'
 import { useToast } from 'primevue/usetoast'
 import { socket } from '@/socket'
@@ -1386,6 +1472,7 @@ import Checkbox from 'primevue/checkbox'
 import Menu from 'primevue/menu'
 import InputText from 'primevue/inputtext'
 import Dropdown from 'primevue/dropdown'
+import Message from 'primevue/message'
 import LanWanChains from './LanWanChains.vue'
 import { useLanWanStore } from '@/stores/useLanWanStore'
 import DataTable from 'primevue/datatable'
@@ -1785,7 +1872,9 @@ const getConnectedRouterInfo = (deviceId) => {
         const routerIdToFind = String(modeInfo.routerId)
         let router = deviceStore.devices?.find(d => String(d.id) === routerIdToFind) || 
                     deviceStore.allDevices?.find(d => String(d.id) === routerIdToFind)
-        return router ? `${router.hwId} (${router.shortName})` : `Router ${routerIdToFind}`
+        const name = router ? `${router.hwId} (${router.shortName})` : `Router ${routerIdToFind}`
+        const ip = modeStore.getExtenderIp(deviceId)
+        return ip ? `${name} · ${ip}` : name
     }
     return 'Not connected'
 }
@@ -2116,6 +2205,14 @@ const actionsMenuItems = computed(() => {
                 command: () => openMwsConnection(d)
             })
         }
+        if (isExtenderConnected(d)) {
+            network.push({
+                label: 'Check port forwarding',
+                icon: 'pi pi-search',
+                disabled: forwardChecking.value.has(String(d.id)) || busy,
+                command: () => runForwardCheck(d)
+            })
+        }
         network.push({
             label: d.routerLanIp ? `Router LAN IP (${d.routerLanIp})` : 'Router LAN IP…',
             icon: 'pi pi-sitemap',
@@ -2134,6 +2231,112 @@ const actionsMenuItems = computed(() => {
     }
     return groups
 })
+
+// ========== Проверка проброса подключённого экстендера ==========
+// Сервер (mws:checkForward → services/mwsForwardService.checkMwsForward):
+// ищет экстендер по MAC (участники MWS, DHCP/ARP роутера, ARP из CFK
+// роутера), сохраняет адрес, ставит недостающие правила (хост, CFK роутера),
+// проверяет веб в LAN роутера и через порт портала. Здесь — кнопка, отчёт,
+// подсветка: экстендер extender_connect не отвечает дольше FORWARD_ALERT_MS —
+// кнопка пульсирует, один тост на эпизод.
+const FORWARD_ALERT_MS = 90 * 1000
+const forwardChecking = ref(new Set())
+const showForwardDialog = ref(false)
+const forwardDevice = ref(null)
+const forwardResult = ref(null)
+const offlineSince = reactive(new Map()) // deviceId → с какого момента не отвечает (reactive — подсветка в ячейке)
+const forwardToasted = new Set()       // deviceId — тост в этом эпизоде уже был
+const forwardNow = ref(Date.now())
+let forwardTimer = null
+
+const isForwardAlert = (device) => {
+    const since = offlineSince.get(String(device.id))
+    return !!since && forwardNow.value - since >= FORWARD_ALERT_MS && !isAnyOperationOnThisDevice(device)
+}
+
+const trackForwardAlerts = () => {
+    forwardNow.value = Date.now()
+    for (const d of deviceStore.bookedDevices) {
+        const id = String(d.id)
+        if (isRival(d) || !isCurrentUserBooking(d) || !isExtenderConnected(d) || d.statusCode === 200) {
+            offlineSince.delete(id)
+            forwardToasted.delete(id)
+            continue
+        }
+        if (!offlineSince.has(id)) offlineSince.set(id, Date.now())
+        if (isForwardAlert(d) && !forwardToasted.has(id)) {
+            forwardToasted.add(id)
+            toast.add({
+                severity: 'warn',
+                summary: `${d.hwId} is not reachable`,
+                detail: 'Check port forwarding or device availability: press the highlighted 🔍 button in its row (or More → Network → Check port forwarding).',
+                life: 15000
+            })
+        }
+    }
+}
+onMounted(() => { forwardTimer = setInterval(trackForwardAlerts, 10000) })
+onUnmounted(() => { if (forwardTimer) clearInterval(forwardTimer) })
+
+const forwardReserving = ref(false)
+const setForwardReservation = (action) => {
+    const device = forwardDevice.value
+    if (!device || forwardReserving.value) return
+    forwardReserving.value = true
+    socket.emit('mws:dhcpReservation', { deviceId: String(device.id), action }, (res) => {
+        forwardReserving.value = false
+        if (res?.success) {
+            if (forwardResult.value) forwardResult.value = { ...forwardResult.value, reservation: res.reservation || null }
+            toast.add({ severity: 'success', summary: 'DHCP reservation',
+                detail: res.reservation ? `${device.hwId}: ${res.reservation} reserved on the router` : `${device.hwId}: reservation removed`, life: 4000 })
+        } else {
+            toast.add({ severity: 'error', summary: 'DHCP reservation failed', detail: res?.error || 'Failed', life: 6000 })
+        }
+    })
+}
+
+// Сервер сам починил проброс (автопроверка: не отвечал > 1 мин) — тост владельцу
+const onForwardAutoFixed = ({ deviceId, ip, owner, steps } = {}) => {
+    if (owner && owner !== deviceStore.currentUserId) return
+    const d = deviceStore.devices.find(x => String(x.id) === String(deviceId))
+    if (!d || !isCurrentUserBooking(d)) return
+    offlineSince.delete(String(deviceId))
+    forwardToasted.delete(String(deviceId))
+    toast.add({
+        severity: 'success',
+        summary: `${d.hwId}: port forwarding restored`,
+        detail: `Found at ${ip}${steps?.length ? ` — ${steps.join('; ')}` : ''}. The device answers again.`,
+        life: 10000
+    })
+}
+onMounted(() => socket.on('mws:forwardAutoFixed', onForwardAutoFixed))
+onUnmounted(() => socket.off('mws:forwardAutoFixed', onForwardAutoFixed))
+
+const runForwardCheck = (device) => {
+    const id = String(device.id)
+    if (forwardChecking.value.has(id)) return
+    forwardChecking.value = new Set([...forwardChecking.value, id])
+    forwardDevice.value = device
+    forwardResult.value = null
+    showForwardDialog.value = true
+    let done = false
+    const finish = (res) => {
+        if (done) return
+        done = true
+        const next = new Set(forwardChecking.value); next.delete(id); forwardChecking.value = next
+        forwardResult.value = res
+        if (res?.reachable) {
+            offlineSince.delete(id)
+            forwardToasted.delete(id)
+        }
+    }
+    // Поиск по ARP с пингом подсети и подбор пароля роутера — до ~1 мин
+    const timer = setTimeout(() => finish({ ok: false, steps: [{ step: 'timeout', ok: false, detail: 'No answer from the server in 90 s' }] }), 90000)
+    socket.emit('mws:checkForward', { deviceId: id }, (res) => {
+        clearTimeout(timer)
+        finish(res?.success ? res : { ok: false, steps: [{ step: 'error', ok: false, detail: res?.error || 'Check failed' }] })
+    })
+}
 
 // ========== Router LAN IP ==========
 // Адрес роутера в его LAN, заданный вручную (сервер: routerIpService —
@@ -3784,6 +3987,38 @@ onUnmounted(() => {
 .more-btn-wrap {
     position: relative;
     display: inline-flex;
+}
+
+/* Проверка проброса: экстендер не отвечает — кнопка пульсирует */
+.forward-alert {
+    animation: forward-pulse 1.4s ease-in-out infinite;
+    border-color: #f59e0b !important;
+    color: #d97706 !important;
+}
+@keyframes forward-pulse {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(245, 158, 11, 0.55); }
+    50% { box-shadow: 0 0 0 8px rgba(245, 158, 11, 0); }
+}
+.forward-reservation {
+    padding: 0.6rem 0.75rem;
+    border: 1px solid var(--surface-300, #dee2e6);
+    border-radius: 8px;
+    background: var(--surface-50, #f8f9fa);
+}
+.forward-steps {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+.forward-steps li {
+    display: flex;
+    gap: 0.5rem;
+    align-items: flex-start;
+    padding: 0.3rem 0;
+    line-height: 1.35;
+}
+.forward-steps li i {
+    margin-top: 0.15rem;
 }
 
 /* «More ▾» — той же высоты и обводки, что круглые action-btn */
