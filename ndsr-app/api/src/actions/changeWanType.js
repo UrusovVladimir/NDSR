@@ -48,11 +48,16 @@ function describeWanResults(results) {
 // secondaryKnownOff — второй WAN-порт уже выключен (прошлый тип был одиночным,
 // он гасил его): при одиночном WAN второй свич не трогаем совсем — иначе его
 // недоступность ломала смену, например, IPoE NAT → PPPoE.
-async function changeWanType(deviceId, wanData, universalPromptRegex, { secondaryKnownOff = false } = {}) {
+// customVlans — VLAN, которых нет в wan_types.json, но которые можно ставить
+// на порт («LAN как WAN»: LAN-VLAN вышестоящего роутера); clearVlans — с каких
+// VLAN ещё снять порт (прошлый «LAN как WAN»: иначе порт остался бы в LAN
+// вышестоящего роутера — очистка идёт только по VLAN из wan_types.json)
+async function changeWanType(deviceId, wanData, universalPromptRegex, { secondaryKnownOff = false, customVlans = [], clearVlans = [] } = {}) {
     const isDualWan = wanData && typeof wanData === 'object' && wanData.type === 'dual_wan'
     
     let device = getDeviceById(deviceId);
-    let wanVlan = getVlanId();
+    let wanVlan = [...new Set([...getVlanId().map(String), ...clearVlans.map(String)])];
+    const custom = customVlans.map(String);
 
     // Определяем команды
     let PVID = wanTypes.find(command => command.setting === "onVlanPVID");
@@ -80,13 +85,13 @@ async function changeWanType(deviceId, wanData, universalPromptRegex, { secondar
         steps.push({
             role: 'wan1',
             name: `настройки порта ${primaryPort}`,
-            run: (c) => configureSingleWan(c, primaryPort, wanData.wan1, wanVlan, universalPromptRegex, PVID, VLAN, OFF_VLAN)
+            run: (c) => configureSingleWan(c, primaryPort, wanData.wan1, wanVlan, universalPromptRegex, PVID, VLAN, OFF_VLAN, custom)
         });
         if (secondaryPort) {
             steps.push({
                 role: 'wan2',
                 name: `настройки порта ${secondaryPort}`,
-                run: (c) => configureSingleWan(c, secondaryPort, wanData.wan2, wanVlan, universalPromptRegex, PVID, VLAN, OFF_VLAN)
+                run: (c) => configureSingleWan(c, secondaryPort, wanData.wan2, wanVlan, universalPromptRegex, PVID, VLAN, OFF_VLAN, custom)
             });
         }
     } else {
@@ -94,7 +99,7 @@ async function changeWanType(deviceId, wanData, universalPromptRegex, { secondar
             steps.push({
                 role: 'wan1',
                 name: `настройки одиночного WAN`,
-                run: (c) => configureSingleWanLegacy(c, device, wanData, wanVlan, universalPromptRegex, PVID, VLAN, OFF_VLAN)
+                run: (c) => configureSingleWanLegacy(c, device, wanData, wanVlan, universalPromptRegex, PVID, VLAN, OFF_VLAN, custom)
             });
         } else {
             steps.push({
@@ -207,11 +212,15 @@ async function executeWithReconnect(connection, operationFn, operationName) {
 }
 
 // ✅ ФУНКЦИЯ ДЛЯ НАСТРОЙКИ ОДНОГО WAN (упрощенная версия для Dual WAN)
-async function configureSingleWan(connection, port, vlanId, wanVlan, universalPromptRegex, PVID, VLAN, OFF_VLAN) {
+// VLAN из wan_types.json; не из справочника — только разрешённый вызывающим (customVlans)
+const findWanType = (vlanId, custom = []) =>
+    wanTypes.find(wan => String(wan.vlanId) === String(vlanId)) ||
+    (custom.includes(String(vlanId)) ? { type: 'router_lan', vlanId: String(vlanId) } : null);
+
+async function configureSingleWan(connection, port, vlanId, wanVlan, universalPromptRegex, PVID, VLAN, OFF_VLAN, custom = []) {
     console.log(`🔧 Настройка порта ${port} на VLAN ${vlanId}`);
     
-    let selectedWanTypes = wanTypes.filter(wan => String(wan.vlanId) === String(vlanId));
-    let selectedWanType = selectedWanTypes[0];
+    let selectedWanType = findWanType(vlanId, custom);
     
     if (!selectedWanType) {
         throw new Error(`WAN type with VLAN ${vlanId} not found`);
@@ -269,9 +278,8 @@ async function configureSingleWan(connection, port, vlanId, wanVlan, universalPr
 }
 
 // ✅ ФУНКЦИЯ ДЛЯ ОДИНОЧНОГО WAN (сохраняем оригинальную логику)
-async function configureSingleWanLegacy(connection, device, wanData, wanVlan, universalPromptRegex, PVID, VLAN, OFF_VLAN) {
-    let selectedWanTypes = wanTypes.filter(wan => String(wan.vlanId) === String(wanData));
-    let selectedWanType = selectedWanTypes[0];
+async function configureSingleWanLegacy(connection, device, wanData, wanVlan, universalPromptRegex, PVID, VLAN, OFF_VLAN, custom = []) {
+    let selectedWanType = findWanType(wanData, custom);
     
     if (!selectedWanType) {
         throw new Error(`WAN type with VLAN ${wanData} not found`);

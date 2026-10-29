@@ -59,7 +59,11 @@ export async function applyWanChange(io, deviceId, wanData, { stateType = null }
 
     let results;
     try {
-        results = await changeWanType(deviceId, target, universalPromptRegex, { secondaryKnownOff });
+        // «LAN как WAN»: VLAN вышестоящего роутера не из wan_types.json — разрешаем
+        // его ставить; при уходе с такого WAN снимаем порт и с этого VLAN
+        const customVlans = isRouterLan(stateType) ? [String(stateType.vlan)] : [];
+        const clearVlans = isRouterLan(previous) && previous.vlan ? [String(previous.vlan)] : [];
+        results = await changeWanType(deviceId, target, universalPromptRegex, { secondaryKnownOff, customVlans, clearVlans });
     } catch (error) {
         const applied = error.results?.filter(r => r.ok) || [];
         if (!applied.length) throw error;

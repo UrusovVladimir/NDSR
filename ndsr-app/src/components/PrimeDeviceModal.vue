@@ -15,7 +15,7 @@
       <ProgressBar mode="indeterminate" style="height: 6px; width: 100%"></ProgressBar>
       <div class="progress-message">
         <i class="pi pi-spin pi-spinner"></i>
-        <span>{{ progressMessage }}</span>
+        <span>{{ progressMessage || 'Working…' }}</span>
       </div>
       
       <!-- Специфичная информация для WAN операций -->
@@ -1439,11 +1439,13 @@ const handleApplyClick = async () => {
   if (isDeviceOffline.value && String(modalValue.value) !== WAN_OFF_VLAN) return
   if (isRouterLanSelected.value) {
     isLoading.value = true
+    progressMessage.value = 'Router LAN as WAN: checking subnets, changing the LAN if needed, configuring the switch…'
     try {
       const ok = await lanWanPanel.value?.apply()
       if (ok) closeModal()
     } finally {
       isLoading.value = false
+      progressMessage.value = ''
     }
     return
   }
@@ -1943,8 +1945,6 @@ defineExpose({
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
-  max-height: 50vh;
-  overflow-y: auto;
 }
 
 .option-item {
