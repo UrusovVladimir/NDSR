@@ -160,7 +160,7 @@ async function retargetContainer(device, fromIp, toIp) {
   ].join('\n');
   const b64 = Buffer.from(script).toString('base64');
   const dm = await initializeDockerManager();
-  const res = await dm.ssh.executeCommand(`docker exec ${name} sh -c "$(echo ${b64} | base64 -d)"`);
+  const res = await dm.sshManager.executeCommand(`docker exec ${name} sh -c "$(echo ${b64} | base64 -d)"`);
   if (res.code !== 0) throw new Error(`container ${name}: ${res.stderr || `exit ${res.code}`}`);
   console.log(`🔀 ${name}: web ${port} → ${toIp}:80 (was ${fromIp}), ${res.stdout}`);
 }
