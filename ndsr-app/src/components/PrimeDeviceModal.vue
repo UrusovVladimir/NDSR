@@ -863,40 +863,42 @@ const isDeviceOffline = computed(() => {
 })
 
 const filteredWanTypes = computed(() => {
-  if (modalType.value === 'wanTypes') {
-    if (isDeviceOffline.value) {
-      return props.wanTypes.filter(wan => String(wan.vlanId) === WAN_OFF_VLAN)
-    }
-    return props.wanTypes.filter(wan => {
-      // Для Dual WAN пропускаем всегда (даже если нет vlanId)
-      if (wan.type === 'Dual WAN') return true
-      // Для остальных проверяем vlanId
-      return wan.vlanId !== undefined && 
-             wan.vlanId !== null && 
-             wan.type?.trim() !== ""
-    }).map(wan => {
-      // Для Dual WAN добавляем специальный идентификатор
-      if (wan.type === 'Dual WAN') {
-        return {
-          ...wan,
-          _id: 'dual_wan_special'  // Специальный ID для RadioButton
-        }
-      }
-      else if (wan.type === 'IPoE Public') {
-        return {
-          ...wan,
-          _id: 'public_ip'
-        }
-      }
-      return wan
-    }).concat(
-      // WAN = LAN другого роутера (LanWanPanel) — только для роутеров
-      currentDevice.value?.type === 'router' && !isRival(currentDevice.value)
-        ? [{ type: 'Router LAN (another router)', _id: ROUTER_LAN_ID }]
-        : []
-    )
+  if (modalType.value !== 'wanTypes') return []
+
+  if (isDeviceOffline.value) {
+    return props.wanTypes.filter(wan => String(wan.vlanId) === WAN_OFF_VLAN)
   }
-  return []
+
+  const baseList = props.wanTypes
+    .filter(wan => {
+      if (wan.type === 'Dual WAN') return true
+      return wan.vlanId !== undefined &&
+             wan.vlanId !== null &&
+             wan.type?.trim() !== ""
+    })
+    .map(wan => {
+      if (wan.type === 'Dual WAN')  return { ...wan, _id: 'dual_wan_special' }
+      if (wan.type === 'IPoE Public') return { ...wan, _id: 'public_ip' }
+      return wan
+    })
+
+  // Router LAN — только для роутеров, и только не-rival
+  if (!(currentDevice.value?.type === 'router' && !isRival(currentDevice.value))) {
+    return baseList
+  }
+
+  const routerLanItem = { type: 'Router LAN (another router)', _id: ROUTER_LAN_ID }
+
+  // Вставляем ПЕРЕД "Clear WAN type" (vlanId === '4094').
+  // Если "Clear WAN type" в списке нет — кладём в конец.
+  const clearIdx = baseList.findIndex(w => String(w.vlanId) === WAN_OFF_VLAN)
+  if (clearIdx === -1) return [...baseList, routerLanItem]
+
+  return [
+    ...baseList.slice(0, clearIdx),
+    routerLanItem,
+    ...baseList.slice(clearIdx)
+  ]
 })
 
 const availableRouters = computed(() => {
